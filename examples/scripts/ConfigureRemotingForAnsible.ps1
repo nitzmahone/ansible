@@ -73,7 +73,7 @@ Trap
     Exit 1
 }
 $ErrorActionPreference = "Stop"
-
+$VerbosePreference = "Continue"
 
 # Detect PowerShell version.
 If ($PSVersionTable.PSVersion.Major -lt 3)
