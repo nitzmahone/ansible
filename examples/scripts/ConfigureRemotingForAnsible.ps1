@@ -69,6 +69,7 @@ Function New-LegacySelfSignedCert
 Trap
 {
     $_
+    $Error
     Exit 1
 }
 $ErrorActionPreference = "Stop"
