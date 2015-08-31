@@ -74,6 +74,7 @@ Trap
 }
 $ErrorActionPreference = "Stop"
 $VerbosePreference = "Continue"
+Start-Transcript c:\remotingsetuplog.txt
 
 # Detect PowerShell version.
 If ($PSVersionTable.PSVersion.Major -lt 3)
