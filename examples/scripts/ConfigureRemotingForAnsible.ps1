@@ -72,16 +72,16 @@ Trap
     $Error
     Exit 1
 }
+
 $ErrorActionPreference = "Stop"
 $VerbosePreference = "Continue"
-Start-Transcript c:\remotingsetuplog.txt
+Start-Transcript c:\remotingsetup.txt
 
 # Detect PowerShell version.
 If ($PSVersionTable.PSVersion.Major -lt 3)
 {
     Throw "PowerShell version 3 or higher is required."
 }
-
 
 # Find and start the WinRM service.
 Write-Verbose "Verifying WinRM service."
@@ -106,6 +106,31 @@ Else
 {
     Write-Verbose "PS Remoting is already enabled."
 }
+
+
+# Test a remoting connection to localhost, which should work.
+$httpResult = Invoke-Command -ComputerName "localhost" -ScriptBlock {$env:COMPUTERNAME} -ErrorVariable httpError -ErrorAction SilentlyContinue
+$httpsOptions = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
+
+$httpsResult = New-PSSession -UseSSL -ComputerName "localhost" -SessionOption $httpsOptions -ErrorVariable httpsError -ErrorAction SilentlyContinue
+
+If ($httpResult -and $httpsResult)
+{
+    Write-Verbose "HTTP and HTTPS sessions are enabled."
+}
+ElseIf ($httpsResult -and !$httpResult)
+{
+    Write-Verbose "HTTP sessions are disabled, HTTPS session are enabled."
+}
+ElseIf ($httpResult -and !$httpsResult)
+{
+    Write-Verbose "HTTPS sessions are disabled, HTTP session are enabled."
+}
+Else
+{
+    Throw "Unable to establish an HTTP or HTTPS remoting session."
+}
+
 
 
 # Make sure there is a SSL listener.
@@ -170,29 +195,6 @@ ElseIf (($fwtest1.count -ge 5) -and ($fwtest2.count -lt 5))
 Else
 {
     Write-Verbose "Firewall rule already exists to allow WinRM HTTPS."
-}
-
-# Test a remoting connection to localhost, which should work.
-$httpResult = Invoke-Command -ComputerName "localhost" -ScriptBlock {$env:COMPUTERNAME} -ErrorVariable httpError -ErrorAction SilentlyContinue
-$httpsOptions = New-PSSessionOption -SkipCACheck -SkipCNCheck -SkipRevocationCheck
-
-$httpsResult = New-PSSession -UseSSL -ComputerName "localhost" -SessionOption $httpsOptions -ErrorVariable httpsError -ErrorAction SilentlyContinue
-
-If ($httpResult -and $httpsResult)
-{
-    Write-Verbose "HTTP and HTTPS sessions are enabled."
-}
-ElseIf ($httpsResult -and !$httpResult)
-{
-    Write-Verbose "HTTP sessions are disabled, HTTPS session are enabled."
-}
-ElseIf ($httpResult -and !$httpsResult)
-{
-    Write-Verbose "HTTPS sessions are disabled, HTTP session are enabled."
-}
-Else
-{
-    Throw "Unable to establish an HTTP or HTTPS remoting session."
 }
 
 Write-Verbose "PS Remoting has been successfully configured for Ansible."
