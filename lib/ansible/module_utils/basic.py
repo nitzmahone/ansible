@@ -521,7 +521,7 @@ class AnsibleModule(object):
         self.run_command_environ_update = {}
 
         self.aliases = {}
-        self._legal_inputs = ['_ansible_check_mode', '_ansible_no_log', '_ansible_debug', '_ansible_diff', '_ansible_verbosity']
+        self._legal_inputs = ['_ansible_check_mode', '_ansible_no_log', '_ansible_debug', '_ansible_diff', '_ansible_verbosity', '_ansible_bridge']
 
         if add_file_common_args:
             for k, v in FILE_COMMON_ARGUMENTS.items():
@@ -529,6 +529,8 @@ class AnsibleModule(object):
                     self.argument_spec[k] = v
 
         self.params = self._load_params()
+
+        self.bridge_args = self.params.get('_ansible_bridge', dict())
 
         # append to legal_inputs and then possibly check against them
         try:
@@ -1379,7 +1381,10 @@ class AnsibleModule(object):
 
     def _set_defaults(self, pre=True):
         for (k,v) in self.argument_spec.items():
-            default = v.get('default', None)
+            # TODO: clean this up
+            bridge_allowed = self.boolean(v.get('allow_inventory_bridge', False))
+            default = self.bridge_args.get(k, v.get('default', None)) if bridge_allowed else v.get('default', None)
+
             if pre == True:
                 # this prevents setting defaults on required items
                 if default is not None and k not in self.params:

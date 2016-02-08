@@ -27,10 +27,17 @@ class ActionModule(ActionBase):
         if task_vars is None:
             task_vars = dict()
 
+        # TODO: why isn't six iteritems visible here?
+        # TODO: no dict comprehension
+        bridge_args = {k.replace('ansible_bridge_', '', 1): v for (k,v) in task_vars.iteritems() if k.startswith('ansible_bridge_')}
+
+        self._task.args['_ansible_bridge'] = bridge_args
+
         results = super(ActionModule, self).run(tmp, task_vars)
         # remove as modules might hide due to nolog
         del results['invocation']['module_args']
         results = merge_hash(results, self._execute_module(tmp=tmp, task_vars=task_vars))
+
         # Remove special fields from the result, which can only be set
         # internally by the executor engine. We do this only here in
         # the 'normal' action, as other action plugins may set this.
