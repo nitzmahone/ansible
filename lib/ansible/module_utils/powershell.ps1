@@ -195,6 +195,9 @@ Function Parse-Args($arguments, $supports_check_mode = $false)
     {
         $parameters = Get-Content $arguments[0] | ConvertFrom-Json
     }
+    Else {
+        $parameters = $complex_args | ConvertFrom-Json
+    }
     $check_mode = Get-Attr $parameters "_ansible_check_mode" $false | ConvertTo-Bool
     If ($check_mode -and -not $supports_check_mode)
     {

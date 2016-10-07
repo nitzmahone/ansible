@@ -164,6 +164,9 @@ class ShellModule(object):
         return self._encode_script(script)
 
     def build_module_command(self, env_string, shebang, cmd, arg_path=None, rm_tmp=None):
+        # TODO: this will ignore env_string; gotta plug that back into the pipelined data
+        if shebang == "#!powershell" and cmd == '': # pipelining hack
+            return "powershell -noninteractive -noprofile -"
         cmd_parts = shlex.split(to_bytes(cmd), posix=False)
         cmd_parts = map(to_text, cmd_parts)
         if shebang and shebang.lower() == '#!powershell':

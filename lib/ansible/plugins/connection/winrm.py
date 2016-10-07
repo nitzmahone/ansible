@@ -71,7 +71,7 @@ class Connection(ConnectionBase):
 
     def __init__(self,  *args, **kwargs):
 
-        self.has_pipelining   = False
+        self.has_pipelining   = True
         self.protocol         = None
         self.shell_id         = None
         self.delegate         = None
@@ -250,20 +250,24 @@ class Connection(ConnectionBase):
     def exec_command(self, cmd, in_data=None, sudoable=True):
         super(Connection, self).exec_command(cmd, in_data=in_data, sudoable=sudoable)
         cmd_parts = shlex.split(to_bytes(cmd), posix=False)
-        cmd_parts = map(to_text, cmd_parts)
-        script = None
-        cmd_ext = cmd_parts and self._shell._unquote(cmd_parts[0]).lower()[-4:] or ''
-        # Support running .ps1 files (via script/raw).
-        if cmd_ext == '.ps1':
-            script = '& %s' % cmd
-        # Support running .bat/.cmd files; change back to the default system encoding instead of UTF-8.
-        elif cmd_ext in ('.bat', '.cmd'):
-            script = '[System.Console]::OutputEncoding = [System.Text.Encoding]::Default; & %s' % cmd
-        # Encode the command if not already encoded; supports running simple PowerShell commands via raw.
-        elif '-EncodedCommand' not in cmd_parts:
-            script = cmd
-        if script:
-            cmd_parts = self._shell._encode_script(script, as_list=True, strict_mode=False)
+        if in_data:
+            script_iterator = self._script_stdin_iterator(in_data)
+        else:
+            script_iterator = None
+            cmd_parts = map(to_text, cmd_parts)
+            script = None
+            cmd_ext = cmd_parts and self._shell._unquote(cmd_parts[0]).lower()[-4:] or ''
+            # Support running .ps1 files (via script/raw).
+            if cmd_ext == '.ps1':
+                script = '& %s' % cmd
+            # Support running .bat/.cmd files; change back to the default system encoding instead of UTF-8.
+            elif cmd_ext in ('.bat', '.cmd'):
+                script = '[System.Console]::OutputEncoding = [System.Text.Encoding]::Default; & %s' % cmd
+            # Encode the command if not already encoded; supports running simple PowerShell commands via raw.
+            elif '-EncodedCommand' not in cmd_parts:
+                script = cmd
+            if script:
+                cmd_parts = self._shell._encode_script(script, as_list=True, strict_mode=False)
         if '-EncodedCommand' in cmd_parts:
             encoded_cmd = cmd_parts[cmd_parts.index('-EncodedCommand') + 1]
             decoded_cmd = to_text(base64.b64decode(encoded_cmd).decode('utf-16-le'))
@@ -271,7 +275,7 @@ class Connection(ConnectionBase):
         else:
             display.vvv("EXEC %s" % cmd, host=self._winrm_host)
         try:
-            result = self._winrm_exec(cmd_parts[0], cmd_parts[1:], from_exec=True)
+            result = self._winrm_exec(cmd_parts[0], cmd_parts[1:], from_exec=True, stdin_iterator=script_iterator)
         except Exception:
             traceback.print_exc()
             raise AnsibleConnectionFailure("failed to exec cmd %s" % cmd)
@@ -297,6 +301,13 @@ class Connection(ConnectionBase):
         doc = xmltodict.parse(clear_xml)
         lines = [l.get('#text', '').replace('_x000D__x000A_', '') for l in doc.get('Objs', {}).get('S', {}) if l.get('@S') == stream_name]
         return '\r\n'.join(lines)
+
+    def _script_stdin_iterator(self, in_data, buffer_size=250000):
+        data_length = len(in_data)
+
+        for i in range(0, data_length, buffer_size):
+            yield in_data[i:i+buffer_size], i+buffer_size >= data_length
+
 
     # FUTURE: determine buffer size at runtime via remote winrm config?
     def _put_file_stdin_iterator(self, in_path, out_path, buffer_size=250000):
