@@ -275,3 +275,6 @@ class ConnectionBase(with_metaclass(ABCMeta, object)):
         f = self._play_context.connection_lockfd
         fcntl.lockf(f, fcntl.LOCK_UN)
         display.vvvv('CONNECTION: pid %d released lock on %d' % (os.getpid(), f), host=self._play_context.remote_addr)
+
+    def reset(self):
+        pass

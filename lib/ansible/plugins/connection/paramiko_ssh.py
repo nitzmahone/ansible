@@ -480,3 +480,9 @@ class Connection(ConnectionBase):
             fcntl.lockf(KEY_LOCK, fcntl.LOCK_UN)
 
         self.ssh.close()
+
+    def reset(self):
+        self.close()
+        SSH_CONNECTION_CACHE = {}
+        SFTP_CONNECTION_CACHE = {}
+
