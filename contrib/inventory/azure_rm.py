@@ -484,7 +484,13 @@ class AzureInventory(object):
             # get VMs for requested resource groups
             for resource_group in self.resource_groups:
                 try:
-                    virtual_machines = self._compute_client.virtual_machines.list(resource_group)
+                    virtual_machines = self._compute_client.virtual_machines.list(resource_group, raw=True)
+                    print ('***RAW-VM-RESPONSE***')
+                    for x in virtual_machines:
+                        pass
+
+                    print ('***RAW-VM-RESPONSE***' + virtual_machines.raw.response.content)
+
                 except Exception as exc:
                     sys.exit("Error: fetching virtual machines for resource group {0} - {1}".format(resource_group,
                                                                                                    str(exc)))
@@ -496,7 +502,14 @@ class AzureInventory(object):
         else:
             # get all VMs within the subscription
             try:
-                virtual_machines = self._compute_client.virtual_machines.list_all()
+                virtual_machines = self._compute_client.virtual_machines.list_all(raw=True)
+
+                # iterate response to force raw-fetched chunked data to be present
+                for x in virtual_machines:
+                    pass
+
+                print ('***RAW-VM-RESPONSE***' + virtual_machines.raw.response.content)
+
             except Exception as exc:
                 sys.exit("Error: fetching virtual machines - {0}".format(str(exc)))
 
