@@ -1,4 +1,5 @@
 # (c) 2016, Fran Fitzpatrick <francis.x.fitzpatrick@gmail.com>
+# (c) 2017, Rackspace Managed Security
 #
 # This file is part of Ansible
 #
