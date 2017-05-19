@@ -15,6 +15,41 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+'''
+DOCUMENTATION:
+    connection: awsrun
+    short_description: connect via AWS Run Command
+    description:
+        - This connection plugin allows ansible to communicate to an EC2 Instance using Run Command.
+        - AWS Run Command itself has the following limitations and [prerequisites](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/remote-commands-prereq.html), so an instance must adhere to these restrictions:
+            - Run Command is only available in the SSM [regions](http://docs.aws.amazon.com/general/latest/gr/rande.html#ssm_region)
+            - Instances must be running the latest version of the SSM [agent](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/install-ssm-agent.html)
+            - Proper IAM Roles/Permissions must be [configured](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ssm-iam.html)
+            - The EC2 instances must have outbound Internet access (although AWS documentation does not specify *exactly* where the agent needs access to)
+    author: Rackspace Managed Security
+    version_added: 2.x  # XXX: Update me.
+    options:
+        AWS Access Key ID:
+            description: Access Key for the account that has the EC2 instance
+            host_vars:
+               - aws_access_key_id
+        AWS Secret Access Key:
+            description: Secret Key for the account that has the EC2 instance
+            host_vars:
+               - aws_secret_access_key
+        AWS Session Token:
+            description: OPTIONAL: For use with temporary security credentials
+            host_vars:
+                - aws_session_token
+        AWS Region Name:
+            description: Name of the region in which the instance resides
+            host_vars:
+                - aws_region_name
+        S3 Output Bucket:
+            description:
+                - S3 bucket for where to save results
+                - Used to temporarily store command output. Without using S3, command output is truncated at 2500 characters and Ansible does a horrible death.
+'''
 from __future__ import absolute_import, division, print_function
 
 from __main__ import display
