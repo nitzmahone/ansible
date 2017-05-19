@@ -7,4 +7,5 @@ jinja2
 PyYAML
 paramiko
 cryptography
+retrying
 setuptools
