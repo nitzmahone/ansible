@@ -7,5 +7,6 @@ jinja2
 PyYAML
 paramiko
 cryptography
+# XXX: Work towards removing this
 retrying
 setuptools
