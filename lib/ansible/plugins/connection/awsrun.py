@@ -29,6 +29,10 @@ DOCUMENTATION:
     author: Rackspace Managed Security
     version_added: 2.x  # XXX: Update me.
     options:
+        Host:
+            description: When using this transport, the host is the instance ID (not an IP address).
+            host_vars:
+                - ansible_host
         AWS Access Key ID:
             description: Access Key for the account that has the EC2 instance
             host_vars:
