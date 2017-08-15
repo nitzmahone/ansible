@@ -296,8 +296,8 @@ if ($mode -eq "query") {
 
     # Detect if the PS zip assemblies are available or whether to use Shell
     try {
-        Add-Type -Assembly System.IO.Compression.FileSystem | Out-Null
-        Add-Type -Assembly System.IO.Compression | Out-Null
+        Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+        Add-Type -AssemblyName System.IO.Compression | Out-Null
     } catch {
         Set-Alias -Name Exract-Zip -Value Extract-ZipLegacy
     }
