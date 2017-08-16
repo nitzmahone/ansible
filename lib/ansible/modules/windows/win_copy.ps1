@@ -205,11 +205,11 @@ Function Extract-ZipLegacy($src, $dest) {
         New-Item -Path $dest -ItemType Directory -WhatIf:$check_mode | Out-Null
     }
     $shell = New-Object -ComObject Shell.Application
-    $zip = $shell.NameSpace([IO.Path]::GetFullPath($src))
-    $dest_path = $shell.NameSpace([IO.Path]::GetFullPath($dest))
+    $zip = $shell.NameSpace($src)
+    $dest_path = $shell.NameSpace($dest)
 
     foreach ($entry in $zip.Items()) {
-        $is_dir = $entry.IsFolder()
+        $is_dir = $entry.IsFolder
         $encoded_archive_entry = $entry.Name
         # to handle unicode character, win_copy action plugin has encoded the filename
         $decoded_archive_entry = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($encoded_archive_entry))
@@ -295,13 +295,18 @@ if ($mode -eq "query") {
     }
 
     # Detect if the PS zip assemblies are available or whether to use Shell
+    $use_legacy = $false
     try {
         Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
         Add-Type -AssemblyName System.IO.Compression | Out-Null
     } catch {
-        Set-Alias -Name Exract-Zip -Value Extract-ZipLegacy
+        $use_legacy = $true
     }
-    Extract-Zip -src $src -dest $dest
+    if ($use_legacy) {
+        Extract-ZipLegacy -src $src -dest $dest
+    } else {
+        Extract-Zip -src $src -dest $dest
+    }
 
     $result.changed = $true
 } elseif ($mode -eq "remote") {

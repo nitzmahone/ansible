@@ -303,9 +303,9 @@ class ActionModule(ActionBase):
             os.removedirs(os.path.dirname(zip_path))
             return module_return
 
-        # send zip file to remote
+        # send zip file to remote, file must end in .zip so Com Shell.Application works
         tmp_path = self._make_tmp_path()
-        tmp_src = self._connection._shell.join_path(tmp_path, 'source')
+        tmp_src = self._connection._shell.join_path(tmp_path, 'source.zip')
         self._transfer_file(zip_path, tmp_src)
 
         # run the explode operation of win_copy on remote
