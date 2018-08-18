@@ -15,7 +15,6 @@ except ImportError:
 from collections import namedtuple
 from ansible import release
 from azure.common.credentials import get_azure_cli_credentials
-from azure.mgmt.compute import ComputeManagementClient
 from msrest import ServiceClient, Serializer, Deserializer
 from msrestazure import AzureConfiguration
 from msrestazure.polling.arm_polling import ARMPolling
@@ -43,13 +42,14 @@ UrlAction = namedtuple('UrlAction', ['url', 'api_version', 'handler'])
 
 
 class InventoryClient(object):
-    def __init__(self, credentials, subscription_id, base_url=None):
+    def __init__(self, config):
+        self._config = config
         self._serializer = Serializer()
         self._deserializer = Deserializer()
-        self._config = AzureRMRestConfiguration(credentials, subscription_id, base_url)
-        self._client = ServiceClient(self._config.credentials, self._config)
         self._hosts = []
 
+        self._clientconfig = AzureRMRestConfiguration(config['credentials'], config['subscription_id'], config.get('base_url'))
+        self._client = ServiceClient(self._clientconfig.credentials, self._clientconfig)
 
         # TODO: use API profiles with defaults
         self._compute_api_version = '2017-03-30'
@@ -62,22 +62,30 @@ class InventoryClient(object):
     def _enqueue_get(self, url, api_version, handler):
         self._request_queue.put_nowait(UrlAction(url=url, api_version=api_version, handler=handler))
 
-    def get_hosts(self, batch=True):
-        # TODO: add specific RG support
-        url = '/subscriptions/{subscriptionId}/providers/Microsoft.Compute/virtualMachines'.format(
-            subscriptionId=self._config.subscription_id
-        )
+    def _enqueue_vm_list(self, rg='*'):
+        if not rg or rg == '*':
+            url = '/subscriptions/{subscriptionId}/providers/Microsoft.Compute/virtualMachines'
+        else:
+            url = '/subscriptions/{subscriptionId}/resourceGroups/{rg}/providers/Microsoft.Compute/virtualMachines'
 
+        url = url.format(subscriptionId=self._clientconfig.subscription_id, rg=rg)
         self._enqueue_get(url=url, api_version=self._compute_api_version, handler=self._on_vm_page_response)
 
-        # TODO: add specific RG support
-        url = '/subscriptions/{subscriptionId}/providers/Microsoft.Compute/virtualMachineScaleSets'.format(
-            subscriptionId=self._config.subscription_id
-        )
+    def _enqueue_vmss_list(self, rg=None):
+        if not rg or rg == '*':
+            url = '/subscriptions/{subscriptionId}/providers/Microsoft.Compute/virtualMachineScaleSets'
+        else:
+            url = '/subscriptions/{subscriptionId}/resourceGroups/{rg}/providers/Microsoft.Compute/virtualMachineScaleSets'
 
+        url = url.format(subscriptionId=self._clientconfig.subscription_id, rg=rg)
         self._enqueue_get(url=url, api_version=self._compute_api_version, handler=self._on_vmss_page_response)
 
-        # TODO: add support for VMSS hosts
+    def get_hosts(self, batch=True):
+        for vm_rg in self._config.get('include_vm_resource_groups', ['*']):
+            self._enqueue_vm_list(vm_rg)
+
+        for vmss_rg in self._config.get('include_vmss_resource_groups', []):
+            self._enqueue_vmss_list(vmss_rg)
 
         if batch:
             self._process_queue_batch()
@@ -87,7 +95,7 @@ class InventoryClient(object):
         return self._hosts
 
     def _process_queue_serial(self):
-        # TODO: parallelize fetch with worker threads?
+        # FUTURE: parallelize fetch with worker threads?
         try:
             while True:
                 item = self._request_queue.get_nowait()
@@ -106,7 +114,6 @@ class InventoryClient(object):
             self._hosts.append(Host(h, self))
 
     def _on_vmss_page_response(self, response):
-        print("vmss yay")
         next_link = response.get('nextLink')
 
         if next_link:
@@ -114,8 +121,9 @@ class InventoryClient(object):
 
         # TODO: filter VMSSs by config
         for vmss in response['value']:
+            print("vmss yay")
             url = '{0}/virtualMachines'.format(vmss['id'])
-            # VMSS instances look close enough to regular VMs that we can share the impl...
+            # VMSS instances look close enough to regular VMs that we can share the handler impl...
             self._enqueue_get(url=url, api_version=self._compute_api_version, handler=self._on_vm_page_response)
 
     def _process_queue_batch(self):
@@ -216,19 +224,17 @@ class Host(object):
 
 def main():
     config = dict(
-        resource_groups=["mdavistest", "mdavistest2"],
-        include_virtual_machines=True,
-        include_vmss=True
+        include_vm_resource_groups=['mdavistest', 'mdavistest2'],
+        include_vmss_resource_groups=['mdavistest2'],
+#        include_vm_resource_groups=["*"],
+#        include_vmss_resource_groups=["*"],
     )
 
     credentials, subscription_id = get_azure_cli_credentials()
+    config['credentials'] = credentials
+    config['subscription_id'] = subscription_id
 
-    client = ComputeManagementClient(
-        credentials=credentials,
-        subscription_id=subscription_id,
-    )
-
-    ic = InventoryClient(credentials=credentials, subscription_id=subscription_id)
+    ic = InventoryClient(config=config)
 
     h = ic.get_hosts(batch=True)
 
