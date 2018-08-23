@@ -14,6 +14,7 @@ except ImportError:
 
 from collections import namedtuple
 from ansible import release
+from ansible.plugins.inventory import BaseInventoryPlugin, Constructable, Cacheable
 from azure.common.credentials import get_azure_cli_credentials
 from msrest import ServiceClient, Serializer, Deserializer
 from msrestazure import AzureConfiguration
@@ -41,12 +42,22 @@ class AzureRMRestConfiguration(AzureConfiguration):
 UrlAction = namedtuple('UrlAction', ['url', 'api_version', 'handler'])
 
 
-class InventoryClient(object):
-    def __init__(self, config):
-        self._config = config
+class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
+
+    NAME = 'azure_rm'
+
+    def __init__(self):
+        super(InventoryModule, self).__init__()
+
         self._serializer = Serializer()
         self._deserializer = Deserializer()
         self._hosts = []
+
+
+    # TODO: wire this up after verify/parse
+    def later_init(self):
+
+        self._config = config
 
         self._clientconfig = AzureRMRestConfiguration(config['credentials'], config['subscription_id'], config.get('base_url'))
         self._client = ServiceClient(self._clientconfig.credentials, self._clientconfig)
@@ -226,6 +237,7 @@ def main():
     config = dict(
         include_vm_resource_groups=['mdavistest', 'mdavistest2'],
         include_vmss_resource_groups=['mdavistest2'],
+
 #        include_vm_resource_groups=["*"],
 #        include_vmss_resource_groups=["*"],
     )
