@@ -10,7 +10,7 @@ DOCUMENTATION = '''
     short_description: Azure Resource Manager inventory plugin
     requirements:
         - TODO
-    # TODO: extends_documentation_fragment
+    # TODO: extends_documentation_fragment azure_rm?
     description:
         - Query VM details from Azure Resource Manager
         - Requires a *.azure_rm.yaml YAML configuration file
@@ -23,7 +23,31 @@ DOCUMENTATION = '''
             description: TODO 
             choices: ['cli']
             default: cli
-        # TODO: document auth options
+        profile:
+            description: TODO
+        subscription_id:
+            description: TODO
+        client_id:
+            description: TODO
+        secret:
+            description: TODO
+        tenant:
+            description: TODO
+        ad_user:
+            description: TODO
+        password:
+            description: TODO
+        cloud_environment:
+            description: TODO
+            default: AzureCloud
+        cert_validation_mode:
+            description: TODO
+            default: validate
+        api_profile:
+            description: TODO
+            default: latest
+        adfs_authority_url:
+            description: TODO           
         include_vm_resource_groups:
             description: A list of resource group names to search for virtual machines. '*' will include all resource 
                 groups in the subscription.
@@ -33,13 +57,11 @@ DOCUMENTATION = '''
                 include all resource groups in the subscription.
             default: []
         hostname_sources:
-          
+          # TODO: implemented?
           description: A list in order of precedence for hostname variables. You can use the options specified in
               U(http://docs.aws.amazon.com/cli/latest/reference/ec2/describe-instances.html#options). To use tags as hostnames
               use the syntax tag:Name=Value to use the hostname Name_Value, or tag:Name to use the value of the Name tag.
-        filters:
-          description: A dictionary of filter value pairs. Available filters are listed here
-              U(http://docs.aws.amazon.com/cli/latest/reference/ec2/describe-instances.html#options)
+        # TODO: filters: ?  
         batch_fetch:
           description: TODO 
           default: true
@@ -64,6 +86,7 @@ from collections import namedtuple
 from ansible import release
 from ansible.plugins.inventory import BaseInventoryPlugin, Constructable, Cacheable
 from ansible.module_utils.six import iteritems
+from ansible.module_utils.azure_rm_common import AzureRMAuth
 from ansible.utils.display import Display
 from azure.common.credentials import get_azure_cli_credentials
 from azure.common.cloud import get_cli_active_cloud
@@ -113,6 +136,8 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
 
         self._request_queue = Queue()
 
+        self.azure_auth = None
+
         self._batch_fetch = False
 
 
@@ -134,7 +159,6 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
         self._read_config_data(path)
         self._batch_fetch = self.get_option('batch_fetch')
 
-
         try:
             self._credential_setup()
 
@@ -147,17 +171,24 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
             raise
 
     def _credential_setup(self):
-        # TODO: share refactored auth code with modules
-        self._auth_source = self.get_option('auth_source')
+        auth_options = dict(
+            auth_source=self.get_option('auth_source'),
+            profile=self.get_option('profile'),
+            subscription_id=self.get_option('subscription_id'),
+            client_id=self.get_option('client_id'),
+            secret=self.get_option('secret'),
+            tenant=self.get_option('tenant'),
+            ad_user=self.get_option('ad_user'),
+            password=self.get_option('password'),
+            cloud_environment=self.get_option('cloud_environment'),
+            cert_validation_mode=self.get_option('cert_validation_mode'),
+            api_profile=self.get_option('api_profile'),
+            adfs_authority_url=self.get_option('adfs_authority_url')
+        )
 
-        if self._auth_source == 'cli':
-            # TODO: error handling
-            credentials, subscription_id = get_azure_cli_credentials()
-            cloud_environment = get_cli_active_cloud()
-        else:
-            raise NotImplemented('auth_source "{0}" is unknown or not implemented')
+        self.azure_auth = AzureRMAuth(**auth_options)
 
-        self._clientconfig = AzureRMRestConfiguration(credentials, subscription_id, cloud_environment.endpoints.resource_manager)
+        self._clientconfig = AzureRMRestConfiguration(self.azure_auth.credentials, self.azure_auth.subscription_id, self.azure_auth._cloud_environment.endpoints.resource_manager)
         self._client = ServiceClient(self._clientconfig.credentials, self._clientconfig)
 
     def _enqueue_get(self, url, api_version, handler, handler_args={}):
@@ -243,6 +274,8 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
             # VMSS instances look close enough to regular VMs that we can share the handler impl...
             self._enqueue_get(url=url, api_version=self._compute_api_version, handler=self._on_vm_page_response)
 
+    # use the undocumented /batch endpoint to bulk-send up to 500 requests in a single round-trip
+    #
     def _process_queue_batch(self):
         while True:
             batch_requests = []
