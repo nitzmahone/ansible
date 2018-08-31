@@ -339,10 +339,10 @@ class AzureRMAuth(object):
                       "ad_user, password, client_id, tenant and adfs_authority_url(optional) for ADFS authentication, or "
                       "be logged in using AzureCLI.")
 
-    def fail(self, msg):
+    def fail(self, msg, exception=None, **kwargs):
         self._fail_impl(msg)
 
-    def _default_fail_impl(self, msg):
+    def _default_fail_impl(self, msg, exception=None, **kwargs):
         raise AzureRMAuthException(msg)
 
     def _get_profile(self, profile="default"):
