@@ -178,8 +178,8 @@ class AzureRMRestConfiguration(AzureConfiguration):
 
 UrlAction = namedtuple('UrlAction', ['url', 'api_version', 'handler', 'handler_args'])
 
-
-class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
+# FUTURE: add Cacheable support once we have a sane serialization format
+class InventoryModule(BaseInventoryPlugin, Constructable):
 
     NAME = 'azure_rm'
 
@@ -223,9 +223,6 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
 
         try:
             self._credential_setup()
-
-            # TODO: add caching support
-
             self._get_hosts()
         except Exception as ex:
             raise
@@ -294,10 +291,10 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
             if self._filter_host(inventory_hostname, h.hostvars):
                 continue
             self.inventory.add_host(inventory_hostname)
-            # TODO: configurable default IP list?
+            # FUTURE: configurable default IP list? can already do this via hostvar_expressions
             self.inventory.set_variable(inventory_hostname, "ansible_host", next(chain(h.hostvars['public_ipv4_addresses'],h.hostvars['private_ipv4_addresses']), None))
             for k, v in iteritems(h.hostvars):
-                # TODO: configurable prefix?
+                # FUTURE: configurable hostvar prefix? Makes docs harder...
                 self.inventory.set_variable(inventory_hostname, k, v)
 
             # constructable delegation
@@ -382,8 +379,6 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
 
             batch_resp = self._send_batch(batch_requests)
 
-            # TODO: validate batch response count matches request count
-
             for idx, r in enumerate(batch_resp['responses']):
                 # TODO: check individual response codes
                 item = batch_response_handlers[idx]
@@ -401,7 +396,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         request = self._client.post(url, query_parameters)
         initial_response = self._client.send(request, self._default_header_parameters, body_content)
 
-        # TODO: configurable timeout?
+        # FUTURE: configurable timeout?
         poller = ARMPolling(timeout=2)
         poller.initialize(client=self._client,
                           initial_response=initial_response,
