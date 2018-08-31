@@ -8,46 +8,19 @@ DOCUMENTATION = '''
     name: azure_rm
     plugin_type: inventory
     short_description: Azure Resource Manager inventory plugin
-    requirements:
-        - TODO
-    # TODO: extends_documentation_fragment azure_rm?
+    extends_documentation_fragment:
+      - azure
     description:
         - Query VM details from Azure Resource Manager
         - Requires a *.azure_rm.yaml YAML configuration file
+        - By default, sets C(ansible_host) to the first public IP address found (preferring the primary NIC). If no
+          public IPs are found, the first private IP (also preferring the primary NIC). The default may be overridden
+          via C(hostvar_expressions); see examples.
     options:
         plugin:
             description: marks this as an instance of the 'azure_rm' plugin
             required: true
             choices: ['azure_rm']
-        auth_source:
-            description: TODO 
-            choices: ['cli']
-            default: cli
-        profile:
-            description: TODO
-        subscription_id:
-            description: TODO
-        client_id:
-            description: TODO
-        secret:
-            description: TODO
-        tenant:
-            description: TODO
-        ad_user:
-            description: TODO
-        password:
-            description: TODO
-        cloud_environment:
-            description: TODO
-            default: AzureCloud
-        cert_validation_mode:
-            description: TODO
-            default: validate
-        api_profile:
-            description: TODO
-            default: latest
-        adfs_authority_url:
-            description: TODO           
         include_vm_resource_groups:
             description: A list of resource group names to search for virtual machines. '*' will include all resource 
                 groups in the subscription.
@@ -56,21 +29,110 @@ DOCUMENTATION = '''
             description: A list of resource group names to search for virtual machine scale sets (VMSSs). '*' will
                 include all resource groups in the subscription.
             default: []
-        hostname_sources:
-          # TODO: implemented?
-          description: A list in order of precedence for hostname variables. You can use the options specified in
-              U(http://docs.aws.amazon.com/cli/latest/reference/ec2/describe-instances.html#options). To use tags as hostnames
-              use the syntax tag:Name=Value to use the hostname Name_Value, or tag:Name to use the value of the Name tag.
-        # TODO: filters: ?  
+        fail_on_template_errors:
+            description: When false, template failures during group and filter processing are silently ignored (eg,
+                if a filter or group expression refers to an undefined host variable)   
+            choices: [True, False]
+            default: True
+        keyed_groups:
+            description: Creates groups based on the value of a host variable. Requires a list of dictionaries,
+                defining C(key) (the source dictionary-typed variable), C(prefix) (the prefix to use for the new group
+                name), and optionally C(separator) (which defaults to C(_))
+        conditional_groups:
+            description: A mapping of group names to Jinja2 expressions. When the mapped expression is true, the host
+                is added to the named group.
+        hostvar_expressions:
+            description: A mapping of hostvar names to Jinja2 expressions. The value for each host is the result of the 
+                Jinja2 expression (which may refer to any of the host's existing variables at the time this inventory
+                plugin runs). 
+        exclude_host_filters:
+            description: Excludes hosts from the inventory with a list of Jinja2 conditional expressions. Each
+                expression in the list is evaluated for each host; when the expression is true, the host is excluded
+                from the inventory.
+            default: []
         batch_fetch:
-          description: TODO 
-          default: true
+            description: To improve performance, results are fetched using an unsupported batch API. Disabling
+                C(batch_fetch) uses a much slower serial fetch, resulting in many more round-trips. Generally only
+                useful for troubleshooting.
+            default: true
 '''
 
 EXAMPLES = '''
-# TODO
+# The following host variables are always available:
+# public_ipv4_addresses: all public IP addresses, with the primary IP config from the primary NIC first
+# public_dns_hostnames: all public DNS hostnames, with the primary IP config from the primary NIC first
+# private_ipv4_addresses: all private IP addressses, with the primary IP config from the primary NIC first
+# id: the VM's Azure resource ID, eg /subscriptions/00000000-0000-0000-1111-1111aaaabb/resourceGroups/my_rg/providers/Microsoft.Compute/virtualMachines/my_vm
+# location: the VM's Azure location, eg 'westus', 'eastus'
+# name: the VM's resource name, eg 'myvm'
+# powerstate: the VM's current power state, eg: 'running', 'stopped', 'deallocated'
+# provisioning_state: the VM's current provisioning state, eg: 'succeeded'
+# tags: dictionary of the VM's defined tag values
+# resource_type: the VM's resource type, eg: 'Microsoft.Compute/virtualMachine', 'Microsoft.Compute/virtualMachineScaleSets/virtualMachines'
+# vmid: the VM's internal SMBIOS ID, eg: '36bca69d-c365-4584-8c06-a62f4a1dc5d2'
+# vmss: if the VM is a member of a scaleset (vmss), a dictionary including the id and name of the parent scaleset
+
+
+# sample 'myazuresub.azure_rm.yaml'
+
+# required for all azure_rm inventory plugin configs
+plugin: azure_rm
+
+# forces this plugin to use a CLI auth session instead of the automatic auth source selection (eg, prevents the
+# presence of 'ANSIBLE_AZURE_RM_X' environment variables from overriding CLI auth)
+auth_source: cli
+
+# fetches VMs from an explicit list of resource groups instead of default all (- '*')
+include_vm_resource_groups:
+- myrg1
+- myrg2
+
+# fetches VMs from VMSSs in all resource groups (defaults to no VMSS fetch)
+include_vmss_resource_groups:
+- '*'
+
+# places a host in the named group if the associated condition evaluates to true
+conditional_groups:
+  # since this will be true for every host, every host sourced from this inventory plugin config will be in the
+  # group 'all_the_hosts'
+  all_the_hosts: true
+  # if the VM's "name" variable contains "dbserver", it will be placed in the 'db_hosts' group
+  db_hosts: "'dbserver' in name"
+
+# adds variables to each host found by this inventory plugin, whose values are the result of the associated expression
+hostvar_expressions:
+  my_host_var:
+  # A statically-valued expression has to be both single and double-quoted, or use escaped quotes, since the outer
+  # layer of quotes will be consumed by YAML. Without the second set of quotes, it interprets 'staticvalue' as a
+  # variable instead of a string literal.
+  some_statically_valued_var: "'staticvalue'"
+  # overrides the default ansible_host value with a custom Jinja2 expression, in this case, the first DNS hostname, or
+  # if none are found, the first public IP address.
+  ansible_host: (public_dns_hostnames + public_ipv4_addresses) | first
+
+# places hosts in dynamically-created groups based on a variable value.
+keyed_groups:
+# places each host in a group named 'tag_(tag name)_(tag value)' for each tag on a VM.
+- prefix: tag
+  key: tags
+# places each host in a group named 'azure_loc_(location name)', depending on the VM's location
+- prefix: azure_loc
+  key: location
+# places host in a group named 'some_tag_X' using the value of the 'sometag' tag on a VM as X, and defaulting to the
+# value 'none' (eg, the group 'some_tag_none') if the 'sometag' tag is not defined for a VM.
+- prefix: some_tag
+  key: tags.sometag | default('none')
+
+# excludes a host from the inventory when any of these expressions is true, can refer to any vars defined on the host
+exclude_host_filters:
+# excludes hosts in the eastus region
+- location in ['eastus']
+# excludes hosts that are powered off
+- powerstate != 'running'
 '''
 
+# FUTURE: do we need a set of sane default filters, separate from the user-defineable ones?
+# eg, powerstate==running, provisioning_state==succeeded
 
 
 import hashlib
@@ -87,9 +149,9 @@ from ansible import release
 from ansible.plugins.inventory import BaseInventoryPlugin, Constructable, Cacheable
 from ansible.module_utils.six import iteritems
 from ansible.module_utils.azure_rm_common import AzureRMAuth
-from ansible.utils.display import Display
-from azure.common.credentials import get_azure_cli_credentials
-from azure.common.cloud import get_cli_active_cloud
+from ansible.errors import AnsibleParserError
+from ansible.module_utils.parsing.convert_bool import boolean
+from ansible.module_utils._text import to_native
 from itertools import chain
 from msrest import ServiceClient, Serializer, Deserializer
 from msrestazure import AzureConfiguration
@@ -117,7 +179,7 @@ class AzureRMRestConfiguration(AzureConfiguration):
 UrlAction = namedtuple('UrlAction', ['url', 'api_version', 'handler', 'handler_args'])
 
 
-class InventoryModule(BaseInventoryPlugin, Constructable):
+class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
 
     NAME = 'azure_rm'
 
@@ -128,7 +190,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
         self._deserializer = Deserializer()
         self._hosts = []
 
-        # TODO: use API profiles with defaults
+        # FUTURE: use API profiles with defaults
         self._compute_api_version = '2017-03-30'
         self._network_api_version = '2015-06-15'
 
@@ -148,7 +210,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
             :return the contents of the config file
         '''
         if super(InventoryModule, self).verify_file(path):
-            if re.match(r'.+\.azure_rm.y(a)?ml$', path):
+            if re.match(r'.+\.azure_rm\.y(a)?ml$', path):
                 return True
         display.debug("azure_rm inventory filename must match '*.azure_rm.yml' or '*.azure_rm.yaml'")
         return False
@@ -162,11 +224,9 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
         try:
             self._credential_setup()
 
-            # TODO: parse filters
             # TODO: add caching support
 
             self._get_hosts()
-            self._process_groups()
         except Exception as ex:
             raise
 
@@ -188,7 +248,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
 
         self.azure_auth = AzureRMAuth(**auth_options)
 
-        self._clientconfig = AzureRMRestConfiguration(self.azure_auth.credentials, self.azure_auth.subscription_id, self.azure_auth._cloud_environment.endpoints.resource_manager)
+        self._clientconfig = AzureRMRestConfiguration(self.azure_auth.azure_credentials, self.azure_auth.subscription_id, self.azure_auth._cloud_environment.endpoints.resource_manager)
         self._client = ServiceClient(self._clientconfig.credentials, self._clientconfig)
 
     def _enqueue_get(self, url, api_version, handler, handler_args={}):
@@ -224,26 +284,49 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
         else:
             self._process_queue_serial()
 
+        constructable_config_strict = boolean(self.get_option('fail_on_template_errors'))
+        constructable_config_compose = self.get_option('hostvar_expressions')
+        constructable_config_groups = self.get_option('conditional_groups')
+        constructable_config_keyed_groups = self.get_option('keyed_groups')
+
         for h in self._hosts:
             inventory_hostname = self._get_hostname(h)
+            if self._filter_host(inventory_hostname, h.hostvars):
+                continue
             self.inventory.add_host(inventory_hostname)
             # TODO: configurable default IP list?
-            self.inventory.set_variable(inventory_hostname, "ansible_host", next(chain(h.hostvars['public_ipv4_addresses'],h.hostvars['private_ipv4_addresses'])))
+            self.inventory.set_variable(inventory_hostname, "ansible_host", next(chain(h.hostvars['public_ipv4_addresses'],h.hostvars['private_ipv4_addresses']), None))
             for k, v in iteritems(h.hostvars):
                 # TODO: configurable prefix?
                 self.inventory.set_variable(inventory_hostname, k, v)
 
+            # constructable delegation
+            self._set_composite_vars(constructable_config_compose, h.hostvars, inventory_hostname, strict=constructable_config_strict)
+            self._add_host_to_composed_groups(constructable_config_groups, h.hostvars, inventory_hostname, strict=constructable_config_strict)
+            self._add_host_to_keyed_groups(constructable_config_keyed_groups, h.hostvars, inventory_hostname, strict=constructable_config_strict)
 
-    # TODO: do we want the configurable logic here or down in the actual objects?
+
+    # FUTURE: fix underlying inventory stuff to allow us to quickly access known groupvars from reconciled host
+    def _filter_host(self, inventory_hostname, hostvars):
+        self.templar.set_available_variables(hostvars)
+        for condition in self.get_option('exclude_host_filters'):
+            # FUTURE: should warn/fail if conditional doesn't return True or False
+            conditional = "{{% if {0} %}} True {{% else %}} False {{% endif %}}".format(condition)
+            try:
+                if boolean(self.templar.template(conditional)):
+                    return True
+            except Exception as e:
+                if boolean(self.get_option('fail_on_template_errors')):
+                    raise AnsibleParserError("Error evaluating filter condition '{0}' for host {1}: {2}".format(condition, inventory_hostname, to_native(e)))
+                continue
+
+        return False
+
     def _get_hostname(self, host):
-        #TODO: configurable hostname sources
+        # FUTURE: configurable hostname sources
         return host.default_inventory_hostname
 
-    def _process_groups(self):
-        pass
-
     def _process_queue_serial(self):
-        # FUTURE: parallelize serial fetch with worker threads?
         try:
             while True:
                 item = self._request_queue.get_nowait()
@@ -252,14 +335,15 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
         except Empty:
             pass
 
-    def _on_vm_page_response(self, response):
+    def _on_vm_page_response(self, response, vmss=None):
         next_link = response.get('nextLink')
 
         if next_link:
             self._enqueue_get(url=next_link, api_version=self._compute_api_version, handler=self._on_vm_page_response)
 
         for h in response['value']:
-            self._hosts.append(AzureHost(h, self))
+            # FUTURE: add direct VM filtering by tag here (performance optimization)?
+            self._hosts.append(AzureHost(h, self, vmss=vmss))
 
     def _on_vmss_page_response(self, response):
         next_link = response.get('nextLink')
@@ -267,12 +351,11 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
         if next_link:
             self._enqueue_get(url=next_link, api_version=self._compute_api_version, handler=self._on_vmss_page_response)
 
-        # TODO: filter VMSSs by config
+        # FUTURE: add direct VMSS filtering by tag here (performance optimization)?
         for vmss in response['value']:
-            print("vmss yay")
             url = '{0}/virtualMachines'.format(vmss['id'])
             # VMSS instances look close enough to regular VMs that we can share the handler impl...
-            self._enqueue_get(url=url, api_version=self._compute_api_version, handler=self._on_vm_page_response)
+            self._enqueue_get(url=url, api_version=self._compute_api_version, handler=self._on_vm_page_response, handler_args=dict(vmss=vmss))
 
     # use the undocumented /batch endpoint to bulk-send up to 500 requests in a single round-trip
     #
@@ -345,14 +428,16 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
 # VMSS VMs (all SS, N specific SS, N resource groups?): SS -> VM -> InstanceView, N NICs, N PublicIPAddress)
 
 class AzureHost(object):
-    def __init__(self, vm_model, inventory_client):
+    _powerstate_regex = re.compile('^PowerState/(?P<powerstate>.+)$')
+
+    def __init__(self, vm_model, inventory_client, vmss=None):
         self._inventory_client = inventory_client
         self._vm_model = vm_model
+        self._vmss = vmss
 
-        # determine if this is a VMSS instance
-        self.is_vmss_instance = (vm_model['type'] == 'Microsoft.Compute/virtualMachineScaleSets/virtualMachines')
+        self._instanceview = None
 
-        self.instanceview = None
+        self._powerstate = "unknown"
         self.nics = []
 
         # Azure often doesn't provide a globally-unique filename, so use resource name + a chunk of ID hash
@@ -368,10 +453,6 @@ class AzureHost(object):
             is_primary = nic.get('properties', {}).get('primary', len(nic_refs) == 1)
             inventory_client._enqueue_get(url=nic['id'], api_version=self._inventory_client._network_api_version, handler=self._on_nic_response, handler_args=dict(is_primary=is_primary))
 
-        if self.is_vmss_instance:
-            print("vmss instance yay")
-        else:
-            print("host yay")
 
     @property
     def hostvars(self):
@@ -385,8 +466,15 @@ class AzureHost(object):
             id=self._vm_model['id'],
             location=self._vm_model['location'],
             name=self._vm_model['name'],
-            provisioning_state=self._vm_model['properties']['provisioningState'],
+            powerstate=self._powerstate,
+            provisioning_state=self._vm_model['properties']['provisioningState'].lower(),
+            tags=self._vm_model.get('tags', {}),
+            resource_type=self._vm_model.get('type', "unknown"),
             vmid=self._vm_model['properties']['vmId'],
+            vmss=dict(
+                id=self._vmss['id'],
+                name=self._vmss['name'],
+            ) if self._vmss else {}
         )
 
         # set nic-related values from the primary NIC first
@@ -409,10 +497,11 @@ class AzureHost(object):
         return self._hostvars
 
     def _on_instanceview_response(self, vm_instanceview_model):
-        print("instanceview yay")
+        self._instanceview = vm_instanceview_model
+        self._powerstate = next((self._powerstate_regex.match(s.get('code', '')).group('powerstate') for s in
+              vm_instanceview_model.get('statuses', []) if self._powerstate_regex.match(s.get('code', ''))), 'unknown')
 
     def _on_nic_response(self, nic_model, is_primary=False):
-        print("nic yay")
         nic = AzureNic(nic_model=nic_model, inventory_client=self._inventory_client, is_primary=is_primary)
         # TODO: lock+sort for repeatable order?
         self.nics.append(nic)
@@ -431,18 +520,11 @@ class AzureNic(object):
             if pip:
                 self._inventory_client._enqueue_get(url=pip['id'], api_version=self._inventory_client._network_api_version, handler=self._on_pip_response)
 
-
-
     def _on_pip_response(self, pip_model):
-        print("pip yay: %s" % pip_model['properties']['ipAddress'])
         self.public_ips[pip_model['id']] = AzurePip(pip_model)
 
 
 class AzurePip(object):
     def __init__(self, pip_model):
         self._pip_model = pip_model
-
-    @property
-    def fqdn(self):
-        return self._pip_model['properties'].get('dnsSettings', {}).get('fqdn')
 
