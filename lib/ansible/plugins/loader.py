@@ -11,6 +11,7 @@ import glob
 import imp
 import os
 import os.path
+import pkgutil
 import sys
 import warnings
 
@@ -231,6 +232,49 @@ class PluginLoader:
                 self._paths = None
                 display.debug('Added %s to loader search path' % (directory))
 
+    def _find_fq_plugin(self, fq_name, extension):
+        splitname = fq_name.rsplit('.', 1)
+        if len(splitname) != 2:
+            raise ValueError('{0} is not a valid namespace-qualified plugin name'.format(to_native(fq_name)))
+
+        package = splitname[0]
+        resource = splitname[1]
+
+        if extension:
+            resource += extension
+
+        module_data = None
+
+        try:
+            module_data = pkgutil.get_data(package, resource)
+
+            # HACK: if this is a typed loader, ensure there's a class in there
+            if self.class_name:
+                if not b"class %s" % to_bytes(self.class_name) in module_data:
+                    return None
+        except IOError:
+            if extension:
+                return None  # extension was specified and we didn't find it, move on
+
+        pkg = sys.modules.get(package)
+        pkg_path = os.path.dirname(pkg.__file__)
+
+        if module_data:  # we found it earlier, just return the reconstructed path
+            return os.path.join(pkg_path, resource)
+
+        # look for any matching extension in the package location (sans filter)
+        ext_blacklist = ['.pyc', '.pyo']
+        found_files = [f for f in glob.iglob(os.path.join(pkg_path, resource) + '.*') if os.path.isfile(f) and os.path.splitext(f)[1] not in ext_blacklist]
+
+        if not found_files:
+            return None
+
+        if len(found_files) > 1:
+            # TODO: warn?
+            pass
+
+        return found_files[0]
+
     def _find_plugin(self, name, mod_type='', ignore_deprecated=False, check_aliases=False):
         ''' Find a plugin named name '''
 
@@ -250,6 +294,9 @@ class PluginLoader:
 
         if check_aliases:
             name = self.aliases.get(name, name)
+
+        if name.startswith('a.'):
+            return self._find_fq_plugin(name, suffix)
 
         # The particular cache to look for modules within.  This matches the
         # requested mod_type
