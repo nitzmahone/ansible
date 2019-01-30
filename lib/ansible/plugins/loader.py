@@ -594,11 +594,17 @@ class Jinja2Loader(PluginLoader):
     def find_plugin(self, name):
         # Nothing using Jinja2Loader use this method.  We can't use the base class version because
         # we deduplicate differently than the base class
+        if '.' in name:
+            return super(Jinja2Loader, self).find_plugin(name)
+
         raise AnsibleError('No code should call find_plugin for Jinja2Loaders (Not implemented)')
 
     def get(self, name, *args, **kwargs):
         # Nothing using Jinja2Loader use this method.  We can't use the base class version because
         # we deduplicate differently than the base class
+        if '.' in name:
+            return super(Jinja2Loader, self).get(name, *args, **kwargs)
+
         raise AnsibleError('No code should call find_plugin for Jinja2Loaders (Not implemented)')
 
     def all(self, *args, **kwargs):
