@@ -1400,6 +1400,12 @@ HOST_PATTERN_MISMATCH:
   - {key: host_pattern_mismatch, section: inventory}
   choices: ['warning', 'error', 'ignore']
   version_added: "2.8"
+INSTALLED_CONTENT_ROOTS:
+  name: root paths for loading installed role/plugin content
+  default: ['~/.ansible/content', '/usr/share/ansible/content']
+  type: list
+  ini:
+  - {key: installed_content_roots, section: defaults}
 INVALID_TASK_ATTRIBUTE_FAILED:
   name: Controls whether invalid attributes for a task result in errors instead of warnings
   default: True

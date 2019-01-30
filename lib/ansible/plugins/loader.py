@@ -625,10 +625,20 @@ def _load_plugin_filter():
     return filters
 
 
+def _add_content_roots():
+    roots = C.config.get_config_value('INSTALLED_CONTENT_ROOTS')
+    pathset = set(sys.path)
+    for root in (to_native(r) for r in reversed(roots)):  # preserve as-listed precedence
+        if root not in pathset:
+            sys.path.insert(0, root)
+
+
 # TODO: All of the following is initialization code   It should be moved inside of an initialization
 # function which is called at some point early in the ansible and ansible-playbook CLI startup.
 
 _PLUGIN_FILTERS = _load_plugin_filter()
+
+_add_content_roots()
 
 # doc fragments first
 fragment_loader = PluginLoader(
