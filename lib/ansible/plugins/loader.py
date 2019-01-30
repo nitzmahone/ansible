@@ -233,6 +233,10 @@ class PluginLoader:
                 display.debug('Added %s to loader search path' % (directory))
 
     def _find_fq_plugin(self, fq_name, extension):
+        # prefix our extension Python namespace if it isn't already there
+        if not fq_name.startswith('a.'):
+            fq_name = 'a.' + fq_name
+
         splitname = fq_name.rsplit('.', 1)
         if len(splitname) != 2:
             raise ValueError('{0} is not a valid namespace-qualified plugin name'.format(to_native(fq_name)))
@@ -240,17 +244,26 @@ class PluginLoader:
         package = splitname[0]
         resource = splitname[1]
 
+        append_plugin_type = self.subdir
+
+        if append_plugin_type:
+            # rewrite for more consistent module dirname
+            if append_plugin_type == 'library':
+                append_plugin_type = 'modules'
+            package += '.plugins.{0}'.format(append_plugin_type)
+
         if extension:
             resource += extension
 
-        module_data = None
+        plugin_content = None
 
         try:
-            module_data = pkgutil.get_data(package, resource)
+            plugin_content = pkgutil.get_data(package, resource)
 
             # HACK: if this is a typed loader, ensure there's a class in there
+            # NB: this hack should not be necessary for type-specific plugins
             if self.class_name:
-                if not b"class %s" % to_bytes(self.class_name) in module_data:
+                if not b"class %s" % to_bytes(self.class_name) in plugin_content:
                     return None
         except IOError:
             if extension:
@@ -259,7 +272,7 @@ class PluginLoader:
         pkg = sys.modules.get(package)
         pkg_path = os.path.dirname(pkg.__file__)
 
-        if module_data:  # we found it earlier, just return the reconstructed path
+        if plugin_content:  # we found it earlier, just return the reconstructed path
             return os.path.join(pkg_path, resource)
 
         # look for any matching extension in the package location (sans filter)
@@ -295,7 +308,8 @@ class PluginLoader:
         if check_aliases:
             name = self.aliases.get(name, name)
 
-        if name.startswith('a.'):
+        # TODO: we should still probably require a well-known prefix on FQNS so we don't paint ourselves into a corner with future stuff
+        if '.' in name and not name.startswith('Ansible'):  # HACK: need this right now so we can still load shipped PS module_utils
             return self._find_fq_plugin(name, suffix)
 
         # The particular cache to look for modules within.  This matches the
