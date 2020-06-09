@@ -1331,6 +1331,7 @@ def get_action_args_with_defaults(action, args, defaults, templar, redirected_na
         'openstack.cloud': 'os',
         'ovirt.ovirt': 'ovirt',
         'community.vmware': 'vmware',
+        'testns.testcoll': 'testgroup',
     }
 
     if not redirected_names:
