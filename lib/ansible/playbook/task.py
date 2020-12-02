@@ -95,6 +95,8 @@ class Task(Base, Conditional, Taggable, CollectionSearch):
         # This isn't a FieldAttribute to prevent it from being set via the playbook
         self._ansible_internal_redirect_list = []
 
+        self._resolved_task_plugin = None
+
         self._role = role
         self._parent = None
         self.implicit = False

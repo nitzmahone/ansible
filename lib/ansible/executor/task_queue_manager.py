@@ -43,7 +43,6 @@ from ansible.vars.hostvars import HostVars
 from ansible.vars.reserved import warn_if_reserved
 from ansible.utils.display import Display
 from ansible.utils.lock import lock_decorator
-from ansible.utils.multiprocessing import context as multiprocessing_context
 
 
 __all__ = ['TaskQueueManager']
@@ -60,8 +59,8 @@ class CallbackSend:
 
 class FinalQueue(multiprocessing.queues.Queue):
     def __init__(self, *args, **kwargs):
-        if PY3:
-            kwargs['ctx'] = multiprocessing_context
+        # force creation as a spawn context queue; that will allow us to share this between both forked and spawned workers
+        kwargs['ctx'] = multiprocessing.get_context('spawn')
         super(FinalQueue, self).__init__(*args, **kwargs)
 
     def send_callback(self, method_name, *args, **kwargs):
@@ -101,7 +100,7 @@ class TaskQueueManager:
     RUN_UNKNOWN_ERROR = 255
 
     def __init__(self, inventory, variable_manager, loader, passwords, stdout_callback=None, run_additional_callbacks=True, run_tree=False, forks=None):
-
+        self._workers = []
         self._inventory = inventory
         self._variable_manager = variable_manager
         self._loader = loader
@@ -115,6 +114,7 @@ class TaskQueueManager:
         self._callbacks_loaded = False
         self._callback_plugins = []
         self._start_at_done = False
+        self._worker_shutdown = multiprocessing.get_context('spawn').Event()
 
         # make sure any module paths (if specified) are added to the module_loader
         if context.CLIARGS.get('module_path', False):
@@ -287,7 +287,7 @@ class TaskQueueManager:
         )
 
         # adjust to # of workers to configured forks or size of batch, whatever is lower
-        self._initialize_processes(min(self._forks, iterator.batch_size))
+        #self._initialize_processes(min(self._forks, iterator.batch_size))
 
         # load the specified strategy (or the default linear one)
         strategy = strategy_loader.get(new_play.strategy, self)
@@ -346,6 +346,7 @@ class TaskQueueManager:
             pass
 
     def _cleanup_processes(self):
+        self._worker_shutdown.set()
         if hasattr(self, '_workers'):
             for attempts_remaining in range(C.WORKER_SHUTDOWN_POLL_COUNT - 1, -1, -1):
                 if not any(worker_prc and worker_prc.is_alive() for worker_prc in self._workers):

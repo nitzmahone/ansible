@@ -212,7 +212,6 @@ class StrategyModule(StrategyBase):
         self._set_hosts_cache(iterator._play)
 
         while work_to_do and not self._tqm._terminated:
-
             try:
                 display.debug("getting the remaining hosts for this loop")
                 hosts_left = self.get_hosts_left(iterator)
@@ -319,7 +318,8 @@ class StrategyModule(StrategyBase):
                     if run_once:
                         break
 
-                    results += self._process_pending_results(iterator, max_passes=max(1, int(len(self._tqm._workers) * 0.1)))
+                    # FIXME: decide max passes logic; this seems hinky
+                    results += self._process_pending_results(iterator, max_passes=max(1, self._tqm._forks * 0.1))
 
                 # go to next host/task group
                 if skip_rest:

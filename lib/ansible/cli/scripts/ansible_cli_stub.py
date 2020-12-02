@@ -31,10 +31,10 @@ import shutil
 import sys
 import traceback
 
-from ansible import context
-from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleParserError
-from ansible.module_utils._text import to_text
-
+if __name__ != '__mp_main__':
+    from ansible import context
+    from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleParserError
+    from ansible.module_utils._text import to_text
 
 # Used for determining if the system is running a new enough python version
 # and should only restrict on our documented minimum versions
@@ -54,6 +54,9 @@ class LastResort(object):
     def error(self, msg, wrap_text=None):
         print(msg, file=sys.stderr)
 
+
+if __name__ == '__mp_main__':
+    globals()['_smuggled'] = os.environ.get('SMUGGLE', 'EMPTY ENVVAR')
 
 if __name__ == '__main__':
 
