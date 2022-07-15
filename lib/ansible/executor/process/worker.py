@@ -31,6 +31,8 @@ from ansible.module_utils._text import to_text
 from ansible.utils.display import Display
 from ansible.utils.multiprocessing import context as multiprocessing_context
 
+from . import controller_queue
+
 __all__ = ['WorkerProcess']
 
 display = Display()
@@ -55,6 +57,7 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
         self._loader = loader
         self._variable_manager = variable_manager
         self._shared_loader_obj = shared_loader_obj
+        self._from_controller_queue = multiprocessing_context.Queue()
 
         # NOTE: this works due to fork, if switching to threads this should change to per thread storage of temp files
         # clear var to ensure we only delete files for this child
@@ -152,6 +155,9 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
 
         # Set the queue on Display so calls to Display.display are proxied over the queue
         display.set_queue(self._final_q)
+
+        controller_queue._send_queue = self._final_q
+        controller_queue._recv_queue = self._from_controller_queue
 
         try:
             # execute the task and build a TaskResult from the result

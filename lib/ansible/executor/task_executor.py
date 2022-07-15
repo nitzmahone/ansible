@@ -1105,6 +1105,11 @@ class TaskExecutor:
         '''
         Returns the correct action plugin to handle the requestion task action and the module context
         '''
+
+        # FOR THURSDAY: what's the ??? we're returning- is it just a new-style action plugin instance?
+        # if task action is a module and connection is asyncable, return ??? to trigger the new spawn worker
+        # special cases to consider: become, async+python
+
         module_collection, separator, module_name = self._task.action.rpartition(".")
         module_prefix = module_name.split('_')[0]
         if module_collection:
