@@ -18,27 +18,15 @@ DOCUMENTATION = '''
         - The remote user is ignored, the user with which the ansible CLI was executed is used instead.
 '''
 
-import os
-import pty
-import shutil
-import subprocess
-import fcntl
 import getpass
 import uuid
+import typing as t
 
-import ansible.constants as C
-from ansible.errors import AnsibleError, AnsibleFileNotFound
-from ansible.module_utils.compat import selectors
-from ansible.module_utils.six import text_type, binary_type
-from ansible.module_utils._text import to_bytes, to_native, to_text
 from ansible.plugins.connection import ConnectionBase
 from ansible.utils.display import Display
-from ansible.utils.path import unfrackpath
 
-
-from ansible.worker_utils.connection.async_local import LocalConnection
 from ansible.executor.process import controller_queue
-from ansible.worker_utils.message import ActionRequest
+from ansible.worker_utils.message import ActionRequest, TaskOptions
 
 
 display = Display()
@@ -72,139 +60,57 @@ class Connection(ConnectionBase):
         ''' run a command on the local host '''
 
         super(Connection, self).exec_command(cmd, in_data=in_data, sudoable=sudoable)
-
-
-        # (stuff action message here)
-        req = ActionRequest(
-            task_id=uuid.uuid4(),
-            action='ansible.worker_utils.action._exec_command_internal',
-            action_args={
-                'cmd': cmd,
-                'in_data': in_data,
-            },
+        request = self._generate_async_request(
+            'ansible.worker_utils.action._exec_command_internal',
+            cmd=cmd,
+            in_data=in_data,
+            sudoable=sudoable,
         )
-
-        response = controller_queue.dispatch(req)
-
-        display.debug("in local.exec_command()")
-
-        executable = C.DEFAULT_EXECUTABLE.split()[0] if C.DEFAULT_EXECUTABLE else None
-
-        if not os.path.exists(to_bytes(executable, errors='surrogate_or_strict')):
-            raise AnsibleError("failed to find the executable specified %s."
-                               " Please verify if the executable exists and re-try." % executable)
-
-        display.vvv(u"EXEC {0}".format(to_text(cmd)), host=self._play_context.remote_addr)
-        display.debug("opening command with Popen()")
-
-        if isinstance(cmd, (text_type, binary_type)):
-            cmd = to_bytes(cmd)
-        else:
-            cmd = map(to_bytes, cmd)
-
-        master = None
-        stdin = subprocess.PIPE
-        if sudoable and self.become and self.become.expect_prompt() and not self.get_option('pipelining'):
-            # Create a pty if sudoable for privlege escalation that needs it.
-            # Falls back to using a standard pipe if this fails, which may
-            # cause the command to fail in certain situations where we are escalating
-            # privileges or the command otherwise needs a pty.
-            try:
-                master, stdin = pty.openpty()
-            except (IOError, OSError) as e:
-                display.debug("Unable to open pty: %s" % to_native(e))
-
-        p = subprocess.Popen(
-            cmd,
-            shell=isinstance(cmd, (text_type, binary_type)),
-            executable=executable,
-            cwd=self.cwd,
-            stdin=stdin,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-        # if we created a master, we can close the other half of the pty now, otherwise master is stdin
-        if master is not None:
-            os.close(stdin)
-
-        display.debug("done running command with Popen()")
-
-        if self.become and self.become.expect_prompt() and sudoable:
-            fcntl.fcntl(p.stdout, fcntl.F_SETFL, fcntl.fcntl(p.stdout, fcntl.F_GETFL) | os.O_NONBLOCK)
-            fcntl.fcntl(p.stderr, fcntl.F_SETFL, fcntl.fcntl(p.stderr, fcntl.F_GETFL) | os.O_NONBLOCK)
-            selector = selectors.DefaultSelector()
-            selector.register(p.stdout, selectors.EVENT_READ)
-            selector.register(p.stderr, selectors.EVENT_READ)
-
-            become_output = b''
-            try:
-                while not self.become.check_success(become_output) and not self.become.check_password_prompt(become_output):
-                    events = selector.select(self._play_context.timeout)
-                    if not events:
-                        stdout, stderr = p.communicate()
-                        raise AnsibleError('timeout waiting for privilege escalation password prompt:\n' + to_native(become_output))
-
-                    for key, event in events:
-                        if key.fileobj == p.stdout:
-                            chunk = p.stdout.read()
-                        elif key.fileobj == p.stderr:
-                            chunk = p.stderr.read()
-
-                    if not chunk:
-                        stdout, stderr = p.communicate()
-                        raise AnsibleError('privilege output closed while waiting for password prompt:\n' + to_native(become_output))
-                    become_output += chunk
-            finally:
-                selector.close()
-
-            if not self.become.check_success(become_output):
-                become_pass = self.become.get_option('become_pass', playcontext=self._play_context)
-                if master is None:
-                    p.stdin.write(to_bytes(become_pass, errors='surrogate_or_strict') + b'\n')
-                else:
-                    os.write(master, to_bytes(become_pass, errors='surrogate_or_strict') + b'\n')
-
-            fcntl.fcntl(p.stdout, fcntl.F_SETFL, fcntl.fcntl(p.stdout, fcntl.F_GETFL) & ~os.O_NONBLOCK)
-            fcntl.fcntl(p.stderr, fcntl.F_SETFL, fcntl.fcntl(p.stderr, fcntl.F_GETFL) & ~os.O_NONBLOCK)
-
-        display.debug("getting output with communicate()")
-        stdout, stderr = p.communicate(in_data)
-        display.debug("done communicating")
-
-        # finally, close the other half of the pty, if it was created
-        if master:
-            os.close(master)
-
-        display.debug("done with local.exec_command()")
-        return (p.returncode, stdout, stderr)
+        resp = controller_queue.dispatch(request)
+        return resp.result['rc'], resp.result['stdout'], resp.result['stderr']
 
     def put_file(self, in_path, out_path):
         ''' transfer a file from local to local '''
 
         super(Connection, self).put_file(in_path, out_path)
 
-        in_path = unfrackpath(in_path, basedir=self.cwd)
-        out_path = unfrackpath(out_path, basedir=self.cwd)
-
-        display.vvv(u"PUT {0} TO {1}".format(in_path, out_path), host=self._play_context.remote_addr)
-        if not os.path.exists(to_bytes(in_path, errors='surrogate_or_strict')):
-            raise AnsibleFileNotFound("file or module does not exist: {0}".format(to_native(in_path)))
-        try:
-            shutil.copyfile(to_bytes(in_path, errors='surrogate_or_strict'), to_bytes(out_path, errors='surrogate_or_strict'))
-        except shutil.Error:
-            raise AnsibleError("failed to copy: {0} and {1} are the same".format(to_native(in_path), to_native(out_path)))
-        except IOError as e:
-            raise AnsibleError("failed to transfer file to {0}: {1}".format(to_native(out_path), to_native(e)))
+        request = self._generate_async_request(
+            'ansible.worker_utils.action._put_file_internal',
+            in_path=in_path,
+            out_path=out_path,
+        )
+        controller_queue.dispatch(request)
 
     def fetch_file(self, in_path, out_path):
         ''' fetch a file from local to local -- for compatibility '''
 
         super(Connection, self).fetch_file(in_path, out_path)
 
-        display.vvv(u"FETCH {0} TO {1}".format(in_path, out_path), host=self._play_context.remote_addr)
-        self.put_file(in_path, out_path)
+        request = self._generate_async_request(
+            'ansible.worker_utils.action._fetch_file_internal',
+            in_path=in_path,
+            out_path=out_path,
+        )
+        controller_queue.dispatch(request)
 
     def close(self):
         ''' terminate the connection; nothing to do here '''
         self._connected = False
+
+    def _generate_async_request(self, action: str, **kwargs: t.Any) -> ActionRequest:
+        # FIXME: Somehow generate this dynamically like cli.py does.
+        task_options = TaskOptions(
+            plugins={
+                'connection': 'ansible.worker_utils.connection.async_local',
+            },
+            plugin_options={
+                'ansible.worker_utils.connection.async_local': {},
+            },
+        )
+
+        return ActionRequest(
+            task_id=uuid.uuid4(),
+            task_options=task_options,
+            action=action,
+            action_args=kwargs,
+        )

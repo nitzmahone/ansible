@@ -205,6 +205,7 @@ def main() -> None:
         tm.shutdown()
 
 
+# FIXME: transplant into
 class TaskManager:
     def __init__(self):
         self._running_tasks: dict[uuid.UUID, BaseTask] = {}
@@ -239,6 +240,7 @@ class TaskManager:
         return pool
 
     def queue(self, task: BaseTask, *, track: bool = True) -> None:
+        # FIXME: lazily make a local worker thread
         pool = self._get_pool_for_task(task)
         pool.queue(task)
 

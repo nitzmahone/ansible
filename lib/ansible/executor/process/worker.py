@@ -156,6 +156,7 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
         # Set the queue on Display so calls to Display.display are proxied over the queue
         display.set_queue(self._final_q)
 
+        controller_queue._work_proc_id = id(self)
         controller_queue._send_queue = self._final_q
         controller_queue._recv_queue = self._from_controller_queue
 

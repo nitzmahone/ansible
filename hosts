@@ -1,0 +1,11 @@
+[manylocalhosts]
+local1
+local2
+local3
+local4
+
+[manylocalhosts:vars]
+ansible_connection=local
+ansible_python_interpreter={{ansible_playbook_python}}
+
+

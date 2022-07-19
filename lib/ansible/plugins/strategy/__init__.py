@@ -24,10 +24,12 @@ import functools
 import os
 import pprint
 import queue
+import shutil
 import sys
 import threading
 import time
 import traceback
+import typing as t
 
 from collections import deque
 from multiprocessing import Lock
@@ -40,6 +42,7 @@ from ansible.errors import AnsibleError, AnsibleFileNotFound, AnsibleUndefinedVa
 from ansible.executor import action_write_locks
 from ansible.executor.play_iterator import IteratingStates, FailedStates
 from ansible.executor.process.worker import WorkerProcess
+from ansible.executor.process.controller_queue import ForkedWorkerRequest
 from ansible.executor.task_result import TaskResult
 from ansible.executor.task_queue_manager import CallbackSend, DisplaySend
 from ansible.module_utils.six import string_types
@@ -58,6 +61,7 @@ from ansible.utils.fqcn import add_internal_fqcns
 from ansible.utils.unsafe_proxy import wrap_var
 from ansible.utils.vars import combine_vars
 from ansible.vars.clean import strip_internal_keys, module_response_deepcopy
+from ansible.worker_utils.message import TaskResult as WorkerTaskResult  # FIXME: name conflict
 
 display = Display()
 
@@ -134,6 +138,36 @@ def results_thread_main(strategy):
                         strategy._handler_results.append(result)
                     else:
                         strategy._results.append(result)
+            elif isinstance(result, ForkedWorkerRequest):
+                request = result.request
+                try:
+                    worker = next(w for w in strategy._workers if result.worker_id == id(w))
+
+                    worker_result: t.Dict[str, t.Any] = {}
+                    if request.action == 'ansible.worker_utils.action._exec_command_internal':
+                        worker_result = {
+                            'rc': 0,
+                            'stdout': b'me\n',
+                            'stderr': b'',
+                        }
+                    elif request.action == 'ansible.worker_utils.action._fetch_file_internal':
+                        shutil.copyfile(request.action_args['in_path'], request.action_args['out_path'])
+
+                    elif request.action == 'ansible.worker_utils.action._put_file_internal':
+                        shutil.copyfile(request.action_args['in_path'], request.action_args['out_path'])
+
+                    else:
+                        raise Exception(f'unknown action {request.action}')
+                        
+                except Exception as e:
+                    worker._from_controller_queue.put(e)
+
+                else:
+                    worker._from_controller_queue.put(WorkerTaskResult(
+                        task_id=request.task_id,
+                        result=worker_result
+                    ))
+            
             else:
                 display.warning('Received an invalid object (%s) in the result queue: %r' % (type(result), result))
         except (IOError, EOFError):
@@ -256,6 +290,9 @@ class StrategyBase:
         self._handler_results = deque()
         self._results_lock = threading.Condition(threading.Lock())
 
+        # FIXME: transplant TaskManager here and configure it as needed to pump spawn worker stuff
+
+
         # create the result processing thread for reading results in the background
         self._results_thread = threading.Thread(target=results_thread_main, args=(self,))
         self._results_thread.daemon = True
@@ -361,6 +398,10 @@ class StrategyBase:
         ''' handles queueing the task up to be sent to a worker '''
 
         display.debug("entering _queue_task() for %s/%s" % (host.name, task.action))
+        # load and examine the task handler, is it async or not? (TE _get_action_handler_with_module_context will have already swapped an async action if possible)
+        # we'll still have to block here for "throttle", so we need to have integrated bookkeeping on outstanding tasks for that
+        # if async, call TaskManager.queue once throttle is happy
+        # if not async (just run all the code below)
 
         # Add a write lock for tasks.
         # Maybe this should be added somewhere further up the call stack but
