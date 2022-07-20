@@ -2,23 +2,27 @@
 # (c) 2015 Toshio Kuratomi <tkuratomi@ansible.com>
 # (c) 2017, Peter Sprygada <psprygad@redhat.com>
 # (c) 2017 Ansible Project
-from __future__ import (absolute_import, division, print_function)
-__metaclass__ = type
+from __future__ import annotations
 
+import abc
 import fcntl
 import os
 import shlex
 import typing as t
+import uuid
+
 
 from abc import abstractmethod
 from functools import wraps
 
 from ansible import constants as C
-from ansible.module_utils._text import to_bytes, to_text
+from ansible.module_utils.common.text.converters import to_text
 from ansible.plugins import AnsiblePlugin
 from ansible.utils.display import Display
 from ansible.plugins.loader import connection_loader, get_shell_plugin
 from ansible.utils.path import unfrackpath
+from ansible.executor.process import controller_queue
+from ansible.worker_utils.message import ActionRequest, TaskOptions
 
 display = Display()
 
@@ -378,5 +382,93 @@ class NetworkConnectionBase(ConnectionBase):
             self._socket_path = socket_path
 
     def _log_messages(self, message):
-        if self.get_option('persistent_log_messages'):
+        if self.get_option('persistent_log_message'):
             self.queue_message('log', message)
+
+
+class AsyncConnectionBase(ConnectionBase, metaclass=abc.ABCMeta):
+    """Base class for async based connections."""
+
+    @property
+    @abc.abstractmethod
+    def async_plugin_name(self) -> str:
+        """The fully qualified name of the async portion of this connection plugin."""
+        # FIXME: couldn't this be automatically derived from the plugin name?
+
+    def exec_command(self, cmd: str, in_data: t.Optional[bytes] = None, sudoable: bool = True):
+        """Run a command on the remote host."""
+        super().exec_command(cmd, in_data=in_data, sudoable=sudoable)
+
+        request = self._generate_async_request(
+            'ansible.worker_utils.action._exec_command_internal',
+            cmd=cmd,
+            in_data=in_data,
+            sudoable=sudoable,
+        )
+
+        resp = controller_queue.dispatch(request)
+
+        return resp.result['rc'], resp.result['stdout'], resp.result['stderr']
+
+    def put_file(self, in_path: str, out_path: str) -> None:
+        """Transfer a file from local to remote."""
+        super().put_file(in_path, out_path)
+
+        request = self._generate_async_request(
+            'ansible.worker_utils.action._put_file_internal',
+            in_path=in_path,
+            out_path=out_path,
+        )
+
+        controller_queue.dispatch(request)
+
+    def fetch_file(self, in_path: str, out_path: str) -> None:
+        """
+        Fetch a file from remote to local.
+        Callers are expected to have pre-created the directory chain for out_path.
+        """
+        super().fetch_file(in_path, out_path)
+
+        request = self._generate_async_request(
+            'ansible.worker_utils.action._fetch_file_internal',
+            in_path=in_path,
+            out_path=out_path,
+        )
+
+        controller_queue.dispatch(request)
+
+    def close(self) -> None:
+        """
+        Terminate the connection.
+        There is nothing to do for async connections.
+        """
+        self._connected = False
+
+    def _connect(self) -> AsyncConnectionBase:
+        """
+        Connect to the host we've been initialized with.
+        This is a no-op for the sync side of async connection plugins.
+        """
+        self._connected = True
+
+        return self
+
+    def _generate_async_request(self, action: str, /, **kwargs: t.Any) -> ActionRequest:
+        """Return an async action request for the given action."""
+        # FIXME: Somehow generate this dynamically like cli.py does.
+        task_options = TaskOptions(
+            plugins={
+                'connection': self.async_plugin_name,
+            },
+            plugin_options={
+                action: {},
+                self.async_plugin_name: self._options,  # pass through the pre-calculated options
+            },
+        )
+
+        return ActionRequest(
+            task_id=uuid.uuid4(),
+            task_options=task_options,
+            action=action,
+            action_args=kwargs,
+        )

@@ -16,7 +16,7 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 
 # Make coding more python3-ish
-from __future__ import (absolute_import, division, print_function)
+from __future__ import (absolute_import, annotations, division, print_function)
 __metaclass__ = type
 
 import cmd
@@ -30,6 +30,7 @@ import threading
 import time
 import traceback
 import typing as t
+import uuid
 
 from collections import deque
 from multiprocessing import Lock
@@ -58,10 +59,16 @@ from ansible.plugins import loader as plugin_loader
 from ansible.template import Templar
 from ansible.utils.display import Display
 from ansible.utils.fqcn import add_internal_fqcns
+from ansible.utils.multiprocessing import context as multiprocessing_context
 from ansible.utils.unsafe_proxy import wrap_var
 from ansible.utils.vars import combine_vars
 from ansible.vars.clean import strip_internal_keys, module_response_deepcopy
-from ansible.worker_utils.message import TaskResult as WorkerTaskResult  # FIXME: name conflict
+from ansible.worker_utils.message import (
+    BaseTask,
+    BaseTaskRequest,
+    ContentDescriptorRequest,
+)
+from ansible.worker_utils.worker_pool import WorkerPool
 
 display = Display()
 
@@ -139,34 +146,7 @@ def results_thread_main(strategy):
                     else:
                         strategy._results.append(result)
             elif isinstance(result, ForkedWorkerRequest):
-                request = result.request
-                try:
-                    worker = next(w for w in strategy._workers if result.worker_id == id(w))
-
-                    worker_result: t.Dict[str, t.Any] = {}
-                    if request.action == 'ansible.worker_utils.action._exec_command_internal':
-                        worker_result = {
-                            'rc': 0,
-                            'stdout': b'me\n',
-                            'stderr': b'',
-                        }
-                    elif request.action == 'ansible.worker_utils.action._fetch_file_internal':
-                        shutil.copyfile(request.action_args['in_path'], request.action_args['out_path'])
-
-                    elif request.action == 'ansible.worker_utils.action._put_file_internal':
-                        shutil.copyfile(request.action_args['in_path'], request.action_args['out_path'])
-
-                    else:
-                        raise Exception(f'unknown action {request.action}')
-                        
-                except Exception as e:
-                    worker._from_controller_queue.put(e)
-
-                else:
-                    worker._from_controller_queue.put(WorkerTaskResult(
-                        task_id=request.task_id,
-                        result=worker_result
-                    ))
+                strategy._async_task_manager.queue(result)
             
             else:
                 display.warning('Received an invalid object (%s) in the result queue: %r' % (type(result), result))
@@ -291,7 +271,7 @@ class StrategyBase:
         self._results_lock = threading.Condition(threading.Lock())
 
         # FIXME: transplant TaskManager here and configure it as needed to pump spawn worker stuff
-
+        self._async_task_manager = TaskManager(self)
 
         # create the result processing thread for reading results in the background
         self._results_thread = threading.Thread(target=results_thread_main, args=(self,))
@@ -366,6 +346,8 @@ class StrategyBase:
         # unreachable during the handler execution phase
         failed_hosts = set(failed_hosts).union(iterator.get_failed_hosts())
         unreachable_hosts = set(unreachable_hosts).union(self._tqm._unreachable_hosts.keys())
+
+        self._async_task_manager.shutdown()
 
         # return the appropriate code, depending on the status hosts after the run
         if not isinstance(result, bool) and result != self._tqm.RUN_OK:
@@ -1418,3 +1400,107 @@ class Debugger(cmd.Cmd):
             self.execute(line)
         except Exception:
             pass
+
+
+# FIXME: Look at making asyncio
+class TaskManager(threading.Thread):
+
+    def __init__(
+        self,
+        strategy: StrategyBase,
+    ) -> None:
+        super().__init__()
+        self._strategy = strategy
+        self._forked_tasks: dict[uuid.UUID, int] = {}
+        self._running_tasks: dict[uuid.UUID, BaseTask] = {}
+        self._result_queue = multiprocessing_context.Queue()
+        self._pools_by_worktype: dict[str, WorkerPool] = {}
+        self._relayed_tasks: dict[uuid.UUID, WorkerPool] = {}
+
+    def run(self) -> None:
+        workers = self._strategy._workers
+
+        while True:
+            result: t.Optional[t.Tuple[str, BaseTask]] = self._result_queue.get(block=True)
+            if not result:
+                break
+
+            pool_type, task = result
+
+            if forked_worker_id := self._forked_tasks.pop(task.task_id, None):
+                # This is a response to a forked worker connection shim request
+                # need to be sent back to that worker.
+                worker = next(w for w in workers if forked_worker_id == id(w))
+                worker._from_controller_queue.put(task)
+
+            elif task_request := self._running_tasks.pop(task.task_id, None):
+                # This is a response to an async action request, needs to be
+                # sent back to the strategy results.
+                # FIXME: Implement this and set on strategy results
+                raise NotImplementedError()
+
+            elif relay_pool := self._relayed_tasks.pop(task.task_id, None):
+                # This is a response to an async action request and needs to be
+                # sent back to the original pool that requested it.
+                relay_pool.queue(task)
+
+            else:
+                # This is a request from an async worker that requests worker
+                # from another pool type. Needs to store the original source and
+                # queue up the work.
+                self._relayed_tasks[task.task_id] = self._pools_by_worktype[pool_type]
+                self.queue(task, track=False)
+
+    def queue(self, task: t.Union[BaseTask, ForkedWorkerRequest], *, track: bool = True) -> None:
+        if not self.is_alive():
+            self.start()
+
+        if isinstance(task, ForkedWorkerRequest):
+            # FIXME: Add very good error handling to ensure any failure is passed back to the forked worker
+            self._forked_tasks[task.request.task_id] = task.worker_id
+            task = task.request
+            track = False
+
+        # FIXME: lazily make a local worker thread
+        pool_type, pool_options = self._get_pool_info_for_task(task)
+        # FIXME: not async or thread safe
+        if not (pool := self._pools_by_worktype.get(pool_type, None)):
+            pool = WorkerPool(pool_type, self._result_queue, **pool_options)
+            self._pools_by_worktype[pool_type] = pool
+
+        pool.queue(task)
+
+        if track:
+            self._running_tasks[task.task_id] = task
+
+    def shutdown(self):
+        for worker in self._pools_by_worktype.values():
+            # FIXME: async and wait for all workers to shutdown, then kill any workers still hanging out
+            worker.stop()
+
+        self._result_queue.put(None)
+
+    @functools.singledispatchmethod
+    def _get_pool_info_for_task(self, task: BaseTask) -> t.Tuple[str, t.Dict[str, t.Any]]:
+        raise NotImplementedError()
+
+    @_get_pool_info_for_task.register
+    def _(self, task: ContentDescriptorRequest) -> t.Tuple[str, t.Dict[str, t.Any]]:
+        pool_type = 'content'
+
+        # non-async cpu-bound worker, one worker per concurrent task needed
+        pool_options = {
+            "max_workers": 10,
+        }
+        return pool_type, pool_options
+
+    @_get_pool_info_for_task.register
+    def _(self, task: BaseTaskRequest) -> t.Tuple[str, t.Dict[str, t.Any]]:
+        pool_type = f"connection-{task.task_options.plugins['connection']}"
+        
+        # async worker, only one worker needed per connection type
+        pool_options = {
+            "max_workers": 1,
+            "supports_concurrent_tasks": True,
+        }
+        return pool_type, pool_options
