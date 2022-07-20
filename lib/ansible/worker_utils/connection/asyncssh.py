@@ -47,11 +47,12 @@ class SSHProcess(AsyncProcess):
 
 
 class SSHConnection(AsyncConnection):
+    # FIXME: bridge this from yaml config
     plugin_options = {
         'inventory_hostname': ['inventory_hostname'],
-        'host': ['ansible_hostname'],
-        'remote_user': ['ansible_user'],
-        'password': ['ansible_password'],
+        'host': ['host'],
+        'remote_user': ['remote_user'],
+        'password': ['password'],
     }
 
     BUFFER_SIZE = 4096

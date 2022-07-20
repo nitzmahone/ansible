@@ -245,12 +245,13 @@ class PSRPProcess(AsyncProcess):
 
 
 class PSRPConnection(AsyncConnection):
+    # FIXME: bridge this from Ansible YAML config
     plugin_options = {
         'inventory_hostname': ['inventory_hostname'],
-        'host': ['ansible_hostname'],
-        'port': ['ansible_port'],
-        'remote_user': ['ansible_user'],
-        'password': ['ansible_password'],
+        'host': ['host'],
+        'port': ['port'],
+        'remote_user': ['remote_user'],
+        'password': ['password'],
     }
 
     def __init__(self) -> None:
@@ -266,8 +267,16 @@ class PSRPConnection(AsyncConnection):
                 scheme='http',
                 username=self.get_option('remote_user', None),
                 password=self.get_option('password', None),
+                verify=False,
             ))
-            await self._runspace.open()
+            try:
+                await self._runspace.open()
+            except Exception as e:
+                x = 5
+
+            x = 5
+
+
 
     async def close(self) -> None:
         if self._runspace:
