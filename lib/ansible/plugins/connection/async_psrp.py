@@ -313,6 +313,9 @@ class Connection(AsyncConnectionBase):
     allow_extras = True
 
     def __init__(self, *args, **kwargs):
+        self.always_pipeline_modules = True
+        self.has_native_async = True
+
         super().__init__(*args, **kwargs)
         self._shell_type = 'powershell'
 
