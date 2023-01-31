@@ -1,0 +1,26 @@
+name: Docs build test
+
+on: 
+  push:
+
+jobs:
+  docs:
+    name: docs build
+    runs-on: ubuntu-22.04
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+
+    - name: python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.11
+
+    - name:
+      run: |
+        cd docs/docsite
+        python3.11 -m ensurepip
+        python3.11 -m pip install -r requirements.txt
+
+        make webdocs PYTHON=python3.11
+
