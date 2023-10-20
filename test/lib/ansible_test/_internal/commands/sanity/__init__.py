@@ -783,7 +783,6 @@ class SanityTest(metaclass=abc.ABCMeta):
         """Return the given list of test targets, filtered to include only those relevant for the test, taking into account the Python version."""
         del args  # args is not used here, but derived classes may make use of it
         del python_version  # python_version is not used here, but derived classes may make use of it
-        del args  # not used here, but derived classes may make use of it
 
         targets = self.filter_targets(targets)
 
