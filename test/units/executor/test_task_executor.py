@@ -24,12 +24,9 @@ from unittest.mock import patch, MagicMock
 from ansible.errors import AnsibleError
 from ansible.executor.task_executor import TaskExecutor, remove_omit
 from ansible.plugins.loader import action_loader, lookup_loader
-from ansible.parsing.yaml.objects import AnsibleUnicode
-from ansible.utils.unsafe_proxy import AnsibleUnsafeText, AnsibleUnsafeBytes
 
 from collections import namedtuple
 from units.mock.loader import DictDataLoader
-
 
 get_with_context_result = namedtuple('get_with_context_result', ['object', 'plugin_load_context'])
 
@@ -106,8 +103,6 @@ class TestTaskExecutor(unittest.TestCase):
         te._run_loop = MagicMock(
             return_value=[
                 {
-                    'unsafe_bytes': AnsibleUnsafeBytes(b'{{ $bar }}'),
-                    'unsafe_text': AnsibleUnsafeText(u'{{ $bar }}'),
                     'bytes': b'bytes',
                     'text': u'text',
                     'int': 1,
@@ -116,8 +111,6 @@ class TestTaskExecutor(unittest.TestCase):
         )
         res = te.run()
         data = res['results'][0]
-        self.assertIsInstance(data['unsafe_bytes'], AnsibleUnsafeText)
-        self.assertIsInstance(data['unsafe_text'], AnsibleUnsafeText)
         self.assertIsInstance(data['bytes'], str)
         self.assertIsInstance(data['text'], str)
         self.assertIsInstance(data['int'], int)
@@ -337,6 +330,7 @@ class TestTaskExecutor(unittest.TestCase):
         # other reason is that if I specify 0 here, the test fails. ;)
         mock_task.async_val = 1
         mock_task.poll = 0
+        mock_task.timeout = None
         mock_task.evaluate_conditional_with_result.return_value = (True, None)
 
         mock_play_context = MagicMock()
@@ -356,6 +350,7 @@ class TestTaskExecutor(unittest.TestCase):
         mock_vm.get_delegated_vars_and_hostname.return_value = {}, None
 
         shared_loader = MagicMock()
+        shared_loader.action_loader.get.return_value = mock_action
         new_stdin = None
         job_vars = dict(omit="XXXXXXXXXXXXXXXXXXX")
 
@@ -380,11 +375,11 @@ class TestTaskExecutor(unittest.TestCase):
         mock_action.run.return_value = dict(ansible_facts=dict())
         res = te._execute()
 
-        mock_task.changed_when = MagicMock(return_value=AnsibleUnicode("1 == 1"))
+        mock_task.changed_when = MagicMock(return_value="1 == 1")
         res = te._execute()
 
         mock_task.changed_when = None
-        mock_task.failed_when = MagicMock(return_value=AnsibleUnicode("1 == 1"))
+        mock_task.failed_when = MagicMock(return_value="1 == 1")
         res = te._execute()
 
         mock_task.failed_when = None

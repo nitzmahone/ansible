@@ -110,6 +110,8 @@ def _get_available_hash_algorithms():
 
 AVAILABLE_HASH_ALGORITHMS = _get_available_hash_algorithms()
 
+from .common.json import AnsibleJSONDecoder
+
 from ansible.module_utils.six.moves.collections_abc import (
     KeysView,
     Mapping, MutableMapping,
@@ -326,7 +328,7 @@ def _load_params():
         _ANSIBLE_ARGS = buffer
 
     try:
-        params = json.loads(buffer.decode('utf-8'))
+        params = json.loads(buffer.decode('utf-8'), cls=AnsibleJSONDecoder)
     except ValueError:
         # This helper is used too early for fail_json to work.
         print('\n{"msg": "Error: Module unable to decode stdin/parameters as valid JSON. Unable to parse what parameters were passed", "failed": true}')
@@ -1380,7 +1382,7 @@ class AnsibleModule(object):
 
     def jsonify(self, data):
         try:
-            return jsonify(data)
+            return jsonify(data, preserve_datatags=True)
         except UnicodeError as e:
             self.fail_json(msg=to_text(e))
 

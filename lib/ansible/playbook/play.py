@@ -99,9 +99,6 @@ class Play(Base, Taggable, CollectionSearch):
         self._action_groups = {}
         self._group_actions = {}
 
-    def __repr__(self):
-        return self.get_name()
-
     @property
     def ROLE_CACHE(self):
         """Backwards compat for custom strategies using ``play.ROLE_CACHE``

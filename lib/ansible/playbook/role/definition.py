@@ -21,8 +21,8 @@ import os
 
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleAssertionError
+from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.six import string_types
-from ansible.parsing.yaml.objects import AnsibleBaseYAMLObject, AnsibleMapping
 from ansible.playbook.attribute import NonInheritableFieldAttribute
 from ansible.playbook.base import Base
 from ansible.playbook.collectionsearch import CollectionSearch
@@ -70,7 +70,7 @@ class RoleDefinition(Base, Conditional, Taggable, CollectionSearch):
         if isinstance(ds, int):
             ds = "%s" % ds
 
-        if not isinstance(ds, dict) and not isinstance(ds, string_types) and not isinstance(ds, AnsibleBaseYAMLObject):
+        if not isinstance(ds, dict) and not isinstance(ds, string_types):
             raise AnsibleAssertionError()
 
         if isinstance(ds, dict):
@@ -79,12 +79,9 @@ class RoleDefinition(Base, Conditional, Taggable, CollectionSearch):
         # save the original ds for use later
         self._ds = ds
 
-        # we create a new data structure here, using the same
-        # object used internally by the YAML parsing code so we
-        # can preserve file:line:column information if it exists
-        new_ds = AnsibleMapping()
-        if isinstance(ds, AnsibleBaseYAMLObject):
-            new_ds.ansible_pos = ds.ansible_pos
+        # the new, cleaned datastructure, which will have legacy items reduced to a standard structure suitable for the
+        # attributes of the task class; copy any tagged data to preserve things like source position
+        new_ds = AnsibleTaggedObject.tag_copy(ds, {})
 
         # first we pull the role name out of the data structure,
         # and then use that to determine the role path (which may

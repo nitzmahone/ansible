@@ -30,11 +30,12 @@ from random import shuffle
 
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleParserError
-from ansible.inventory.data import InventoryData
+from ansible.inventory.data import InventoryData, _InventoryDataWrapper
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.parsing.utils.addresses import parse_address
 from ansible.plugins.loader import inventory_loader
+from ansible.plugins.inventory import BaseInventoryPlugin
 from ansible.utils.helpers import deduplicate_list
 from ansible.utils.path import unfrackpath
 from ansible.utils.display import Display
@@ -196,12 +197,13 @@ class InventoryManager(object):
     def get_host(self, hostname):
         return self._inventory.get_host(hostname)
 
-    def _fetch_inventory_plugins(self):
+    # FIXME: turn this into a generator so we can create the plugins lazily instead of all up front
+    def _fetch_inventory_plugins(self) -> list[BaseInventoryPlugin]:
         ''' sets up loaded inventory plugins for usage '''
 
         display.vvvv('setting up inventory plugins')
 
-        plugins = []
+        plugins: list[BaseInventoryPlugin] = []
         for name in C.INVENTORY_ENABLED:
             plugin = inventory_loader.get(name)
             if plugin:
@@ -276,7 +278,6 @@ class InventoryManager(object):
 
             # try source with each plugin
             for plugin in self._fetch_inventory_plugins():
-
                 plugin_name = to_text(getattr(plugin, '_load_name', getattr(plugin, '_original_path', '')))
                 display.debug(u'Attempting to use plugin %s (%s)' % (plugin_name, plugin._original_path))
 
@@ -288,8 +289,11 @@ class InventoryManager(object):
 
                 if plugin_wants:
                     try:
-                        # FIXME in case plugin fails 1/2 way we have partial inventory
-                        plugin.parse(self._inventory, self._loader, source, cache=cache)
+                        inventory_wrapper = _InventoryDataWrapper(self._inventory, target_plugin=plugin, source_path=source)
+
+                        # FIXME now that we have a wrapper around inventory, we can have it use ChainMaps to preview the in-progress inventory, but be able to
+                        #  roll back partial inventory failures by discarding the outermost layer
+                        plugin.parse(inventory_wrapper, self._loader, source, cache=cache)
                         try:
                             plugin.update_cache_if_changed()
                         except AttributeError:

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import errno
 import fcntl
+import functools
 import os
 import random
 import shlex
@@ -396,6 +397,7 @@ class FileVaultSecret(VaultSecret):
     def load(self):
         self._bytes = self._read_file(self.filename)
 
+    # FIXME: this seems to suffer from inception issues- how are multiple vault passwords handled?
     def _read_file(self, filename):
         """
         Read a vault password from a file or if executable, execute the script and
@@ -1165,6 +1167,7 @@ class VaultAES256:
         return b_derivedkey
 
     @classmethod
+    @functools.cache  # Concurrent first-use by multiple threads will all execute the method body.
     def _gen_key_initctr(cls, b_password, b_salt):
         # 16 for AES 128, 32 for AES256
         key_length = 32

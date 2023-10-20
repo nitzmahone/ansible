@@ -10,13 +10,14 @@ from __future__ import annotations
 from ansible.cli import CLI
 
 import sys
+import typing as t
 
 import argparse
 
 from ansible import constants as C
 from ansible import context
 from ansible.cli.arguments import option_helpers as opt_help
-from ansible.errors import AnsibleError, AnsibleOptionsError
+from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleRuntimeError
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
 from ansible.utils.vars import combine_vars
 from ansible.utils.display import Display
@@ -182,7 +183,6 @@ class InventoryCLI(CLI):
             from ansible.parsing.yaml.dumper import AnsibleDumper
             results = to_text(yaml.dump(stuff, Dumper=AnsibleDumper, default_flow_style=False, allow_unicode=True))
         elif context.CLIARGS['toml']:
-            from ansible.plugins.inventory.toml import toml_dumps
             try:
                 results = toml_dumps(stuff)
             except TypeError as e:
@@ -198,7 +198,7 @@ class InventoryCLI(CLI):
                 )
         else:
             import json
-            from ansible.parsing.ajson import AnsibleJSONEncoder
+            from ansible.module_utils.common.json import AnsibleJSONEncoder
             try:
                 results = json.dumps(stuff, cls=AnsibleJSONEncoder, sort_keys=True, indent=4, preprocess_unsafe=True, ensure_ascii=False)
             except TypeError as e:
@@ -427,6 +427,17 @@ class InventoryCLI(CLI):
         results = format_group(top, available_hosts)
 
         return results
+
+
+def toml_dumps(data: t.Any) -> str:
+    try:
+        from tomli_w import dumps as _tomli_w_dumps
+    except ImportError:
+        pass
+    else:
+        return _tomli_w_dumps(data)
+
+    raise AnsibleRuntimeError('The Python library "tomli-w" is required when using the TOML output format.')
 
 
 def main(args=None):

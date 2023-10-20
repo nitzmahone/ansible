@@ -227,7 +227,7 @@ class TestActionBase(unittest.TestCase):
 
         # test environment with a variable in it
         templar.available_variables = dict(the_var='bar')
-        mock_task.environment = [dict(FOO='{{the_var}}')]
+        mock_task.environment = [dict(FOO=TrustedAsTemplate().tag('{{the_var}}'))]
         env_string = action_base._compute_environment_string()
         self.assertEqual(env_string, "FOO=bar")
 
@@ -849,8 +849,6 @@ class TestActionBaseParseReturnedData(unittest.TestCase):
         res = action_base._parse_returned_data(returned_data)
         self.assertTrue(res['ansible_facts'])
         self.assertIn('ansible_blip', res['ansible_facts'])
-        # TODO: Should this be an AnsibleUnsafe?
-        # self.assertIsInstance(res['ansible_facts'], AnsibleUnsafe)
 
     def test_json_facts_add_host(self):
         action_base = _action_base()
@@ -869,5 +867,3 @@ class TestActionBaseParseReturnedData(unittest.TestCase):
         self.assertTrue(res['ansible_facts'])
         self.assertIn('ansible_blip', res['ansible_facts'])
         self.assertIn('add_host', res)
-        # TODO: Should this be an AnsibleUnsafe?
-        # self.assertIsInstance(res['ansible_facts'], AnsibleUnsafe)

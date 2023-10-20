@@ -52,7 +52,6 @@ from ansible.plugins import loader as plugin_loader
 from ansible.template import Templar
 from ansible.utils.display import Display
 from ansible.utils.fqcn import add_internal_fqcns
-from ansible.utils.unsafe_proxy import wrap_var
 from ansible.utils.sentinel import Sentinel
 from ansible.utils.vars import combine_vars, isidentifier
 from ansible.vars.clean import strip_internal_keys, module_response_deepcopy
@@ -615,7 +614,7 @@ class StrategyBase:
                         self._variable_manager.set_nonpersistent_facts(
                             original_host.name,
                             dict(
-                                ansible_failed_task=wrap_var(original_task.serialize()),
+                                ansible_failed_task=original_task.serialize(),
                                 ansible_failed_result=task_result._result,
                             ),
                         )
@@ -698,7 +697,7 @@ class StrategyBase:
                             all_task_vars = combine_vars(found_task_vars, item_vars)
                         else:
                             all_task_vars = found_task_vars
-                        all_task_vars[original_task.register] = wrap_var(result_item)
+                        all_task_vars[original_task.register] = result_item
                         post_process_whens(result_item, original_task, Templar(self._loader), all_task_vars)
                         if original_task.loop or original_task.loop_with:
                             new_item_result = TaskResult(
@@ -862,7 +861,7 @@ class StrategyBase:
             )
         display.debug("loading included file: %s" % included_file._filename)
         try:
-            data = self._loader.load_from_file(included_file._filename)
+            data = self._loader.load_from_file(included_file._filename, trusted_as_template=True)
             if data is None:
                 return []
             elif not isinstance(data, list):

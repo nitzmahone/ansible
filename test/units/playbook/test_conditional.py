@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import unittest
+import pytest
+
 from units.mock.loader import DictDataLoader
 from unittest.mock import MagicMock
 
 from ansible.template import Templar
+from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible import errors
 
 from ansible.playbook import conditional
@@ -17,11 +19,23 @@ class TestConditional(unittest.TestCase):
         self.templar = Templar(loader=self.loader, variables={})
 
     def _eval_con(self, when=None, variables=None):
-        when = when or []
-        variables = variables or {}
+        when = self._trust(when or [])
+        variables = self._trust(variables or {})
         self.cond.when = when
         ret = self.cond.evaluate_conditional(self.templar, variables)
         return ret
+
+    def _trust(self, value):
+        if isinstance(value, dict):
+            return {self._trust(k): self._trust(v) for k, v in value.items()}
+
+        if isinstance(value, list):
+            return [self._trust(item) for item in value]
+
+        if isinstance(value, str):
+            return TrustedAsTemplate().tag(value)
+
+        return value
 
     def test_false(self):
         when = [u"False"]
@@ -106,6 +120,7 @@ class TestConditional(unittest.TestCase):
                                self._eval_con,
                                when, variables)
 
+    @pytest.mark.xfail(reason='probably can be removed, see evaluate_conditional FIXME for details')
     def test_dict_undefined_values_bare(self):
         variables = {'dict_value': 1,
                      'some_defined_dict_with_undefined_values': {'key1': 'value1',

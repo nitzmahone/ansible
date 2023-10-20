@@ -200,9 +200,9 @@ class Role(Base, Conditional, Taggable, CollectionSearch, Delegatable):
 
             return r
 
-        except RuntimeError:
+        except RuntimeError as re:
             raise AnsibleError("A recursion loop was detected with the roles specified. Make sure child roles do not have dependencies on parent roles",
-                               obj=role_include._ds)
+                               obj=role_include._ds, orig_exc=re)
 
     def _load_role_data(self, role_include, parent_role=None):
         self._role_name = role_include.role
@@ -412,7 +412,7 @@ class Role(Base, Conditional, Taggable, CollectionSearch, Delegatable):
                         raise AnsibleParserError("Failed loading '%s' for role (%s) as it is not inside the expected role path: '%s'" %
                                                  (to_text(found), self._role_name, to_text(file_path)))
 
-                    new_data = self._loader.load_from_file(found)
+                    new_data = self._loader.load_from_file(found, trusted_as_template=True)
                     if new_data:
                         if data is not None and isinstance(new_data, Mapping):
                             data = combine_vars(data, new_data)

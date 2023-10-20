@@ -3,6 +3,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import annotations
+from __future__ import annotations
 
 import copy
 import os
@@ -73,11 +74,12 @@ class DataLoader:
     def set_vault_secrets(self, vault_secrets: list[tuple[str, PromptVaultSecret]] | None) -> None:
         self._vault.secrets = vault_secrets
 
-    def load(self, data: str, file_name: str = '<string>', show_content: bool = True, json_only: bool = False) -> t.Any:
+    # show_content should be inverted and renamed to be "encrypted_source" or something fancier
+    def load(self, data: str, file_name: str = '<string>', show_content: bool = True, json_only: bool = False, trusted_as_template: bool = False) -> t.Any:
         '''Backwards compat for now'''
-        return from_yaml(data, file_name, show_content, self._vault.secrets, json_only=json_only)
+        return from_yaml(data, file_name, show_content, self._vault.secrets, json_only=json_only, trusted_as_template=trusted_as_template)
 
-    def load_from_file(self, file_name: str, cache: bool = True, unsafe: bool = False, json_only: bool = False) -> t.Any:
+    def load_from_file(self, file_name: str, cache: bool = True, unsafe: bool = False, json_only: bool = False, trusted_as_template: bool = False) -> t.Any:
         ''' Loads data from a file, which can contain either JSON or YAML.  '''
 
         file_name = self.path_dwim(file_name)
@@ -92,7 +94,8 @@ class DataLoader:
             (b_file_data, show_content) = self._get_file_contents(file_name)
 
             file_data = to_text(b_file_data, errors='surrogate_or_strict')
-            parsed_data = self.load(data=file_data, file_name=file_name, show_content=show_content, json_only=json_only)
+            parsed_data = self.load(data=file_data, file_name=file_name, show_content=show_content, json_only=json_only,
+                                    trusted_as_template=trusted_as_template)
 
             # cache the file contents for next time
             self._FILE_CACHE[file_name] = parsed_data
@@ -124,18 +127,16 @@ class DataLoader:
         path = self.path_dwim(path)
         return is_executable(path)
 
-    def _decrypt_if_vault_data(self, b_vault_data: bytes, b_file_name: bytes | None = None) -> tuple[bytes, bool]:
+    def _decrypt_if_vault_data(self, b_data: bytes, b_file_name: bytes | None = None) -> tuple[bytes, bool]:
         '''Decrypt b_vault_data if encrypted and return b_data and the show_content flag'''
 
-        if not is_encrypted(b_vault_data):
-            show_content = True
-            return b_vault_data, show_content
+        if encrypted_source := is_encrypted(b_data):
+            # FIXME: YTF are we doing this?
+            b_ciphertext, b_version, cipher_name, vault_id = parse_vaulttext_envelope(b_data)
+            b_data = self._vault.decrypt(b_data, filename=b_file_name)
 
-        b_ciphertext, b_version, cipher_name, vault_id = parse_vaulttext_envelope(b_vault_data)
-        b_data = self._vault.decrypt(b_vault_data, filename=b_file_name)
-
-        show_content = False
-        return b_data, show_content
+        # FIXME: clean this up, invert, use a dataclass, something...
+        return b_data, not encrypted_source
 
     def _get_file_contents(self, file_name: str) -> tuple[bytes, bool]:
         '''

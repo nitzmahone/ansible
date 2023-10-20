@@ -3,7 +3,6 @@
     name:
       - tomli
       - tomli-w
-      - toml
     state: absent
 
 - name: Install toml package
@@ -19,6 +18,11 @@
     that:
       - >
         'foo = "bar"' in toml_in.stdout
+      - '"[somegroup.hosts.something.some_dict]" in toml_in.stdout'
+      - '"some_int = 1" in toml_in.stdout'
+      - '"some_float = 1.1" in toml_in.stdout'
+      - '"some_bool = true" in toml_in.stdout'
+      - '"some_list = [" in toml_in.stdout'
 
 - name: "test option: --toml with valid group name"
   command: ansible-inventory --list --toml -i {{ role_path }}/files/valid_sample.yml

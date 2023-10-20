@@ -145,37 +145,42 @@ from collections.abc import Mapping, Sequence
 from jinja2.exceptions import UndefinedError
 
 from ansible.errors import AnsibleLookupError, AnsibleUndefinedVariable
-from ansible.module_utils.six import string_types
+from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.plugins.lookup import LookupBase
 
 
 def _split_on(terms, spliters=','):
     termlist = []
-    if isinstance(terms, string_types):
+    if isinstance(terms, str):
         termlist = re.split(r'[%s]' % ''.join(map(re.escape, spliters)), terms)
+
+        # FIXME: any shared location to do this kind of thing?
+        # propagate tags from the input term to all output terms
+        termlist = [AnsibleTaggedObject.tag_copy(terms, term) for term in termlist]
+
     else:
         # added since options will already listify
-        for t in terms:
-            termlist.extend(_split_on(t, spliters))
+        for term in terms:
+            termlist.extend(_split_on(term, spliters))
+
     return termlist
 
 
 class LookupModule(LookupBase):
 
-    def _process_terms(self, terms, variables, kwargs):
+    def _process_terms(self, terms, variables, kwargs) -> list[str]:
 
         total_search = []
-        skip = False
 
         # can use a dict instead of list item to pass inline config
         for term in terms:
             if isinstance(term, Mapping):
                 self.set_options(var_options=variables, direct=term)
                 files = self.get_option('files')
-            elif isinstance(term, string_types):
+            elif isinstance(term, str):
                 files = [term]
             elif isinstance(term, Sequence):
-                partial, skip = self._process_terms(term, variables, kwargs)
+                partial = self._process_terms(term, variables, kwargs)
                 total_search.extend(partial)
                 continue
             else:
@@ -183,12 +188,11 @@ class LookupModule(LookupBase):
 
             paths = self.get_option('paths')
 
-            # NOTE: this is used as 'global' but  can be set many times?!?!?
-            skip = self.get_option('skip')
-
             # magic extra splitting to create lists
             filelist = _split_on(files, ',;')
+            filelist = self._template_or_omit_terms(filelist)
             pathlist = _split_on(paths, ',:;')
+            pathlist = self._template_or_omit_terms(pathlist)
 
             # create search structure
             if pathlist:
@@ -199,10 +203,22 @@ class LookupModule(LookupBase):
             elif filelist:
                 # NOTE: this is now 'extend', previously it would clobber all options, but we deemed that a bug
                 total_search.extend(filelist)
-            else:
+            elif isinstance(term, str):
                 total_search.append(term)
 
-        return total_search, skip
+        return total_search
+
+    def _template_or_omit_terms(self, items: list[str]) -> list[str]:
+        results = []
+        for item in items:
+            try:
+                results.append(self._templar.template(item))
+            except (AnsibleUndefinedVariable, UndefinedError):
+                # NOTE: backwards compat ff behaviour is to ignore errors when vars are undefined.
+                #       moved here from task_executor.
+                continue
+
+        return results
 
     def run(self, terms, variables, **kwargs):
 
@@ -210,7 +226,7 @@ class LookupModule(LookupBase):
             self.set_options(var_options=variables, direct=kwargs)
             terms = self.get_option('files')
 
-        total_search, skip = self._process_terms(terms, variables, kwargs)
+        total_search = self._process_terms(terms, variables, kwargs)
 
         # NOTE: during refactor noticed that the 'using a dict' as term
         # is designed to only work with 'one' otherwise inconsistencies will appear.
@@ -219,15 +235,7 @@ class LookupModule(LookupBase):
         # actually search
         subdir = getattr(self, '_subdir', 'files')
 
-        path = None
         for fn in total_search:
-
-            try:
-                fn = self._templar.template(fn)
-            except (AnsibleUndefinedVariable, UndefinedError):
-                # NOTE: backwards compat ff behaviour is to ignore errors when vars are undefined.
-                #       moved here from task_executor.
-                continue
 
             # get subdir if set by task executor, default to files otherwise
             path = self.find_file_in_search_path(variables, subdir, fn, ignore_missing=True)
@@ -235,6 +243,8 @@ class LookupModule(LookupBase):
             # exit if we find one!
             if path is not None:
                 return [path]
+
+        skip = self.get_option('skip')
 
         # if we get here, no file was found
         if skip:

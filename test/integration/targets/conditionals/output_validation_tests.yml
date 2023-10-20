@@ -1,0 +1,298 @@
+# FIXME: de-dupe with tests in play.yml that are not warning/output-dependent
+
+- hosts: localhost
+  gather_facts: no
+  name: tests for indirect conditional templates
+  vars:
+    int_var: 5
+    str_var: hi mom
+    untrusted_template_looking_var: !unsafe '{{ "not " + "a " + "template" }}'
+    list_of_true_expressions:
+    - 1 == 1
+    - '{{ 1 == 1 }}'
+    - "'i am a string constant expression'"
+    - ''
+    - ~
+    - {non_empty: true}
+    list_of_false_expressions:
+    - 1 == 0
+    list_of_false_templates:
+    - '{{ 1 == 0 }}'
+    list_of_falsey_constant_expressions:
+    - "''"
+    list_of_falsey_dict:
+    - {}
+  tasks:
+  - name: assert test for inline list of true template expressions
+    assert:
+      that:
+      - 1 == 1
+      - '{{ 1 == 1 }}'
+      - "'i am a string constant expression'"
+      - ''
+      - ~
+      - {non_empty: true}
+
+  - name: assert test for indirect true expressions
+    assert:
+      that: '{{ list_of_true_expressions }}'
+
+  - name: invoke assert via FQCN
+    ansible.builtin.assert:
+      that: '{{ 1 + 1 == 2}}'
+
+  - name: invoke assert via action keyword
+    action:
+      module: ansible.legacy.assert
+      args:
+        that: '{{ 1 + 1 == 2}}'
+
+  - name: assert true template via kv
+    action: ansible.legacy.assert that='{{ 1 + 1 == 2}}'
+
+  - name: assert false template via kv
+    action: ansible.legacy.assert that='{{ 1 + 1 == 0}}'
+    register: result
+    failed_when: result is success
+
+  - name: assert true template via templated arg dict
+    assert: '{{ my_args }}'
+    vars:
+      my_args:
+        that: 1 == 1
+
+  # FUTURE: this test is really asserting stuff about action arg canonicalization and should be moved $elsewhere
+  #  but for now we want to be able to verify that the warning occurred
+  - name: ensure that actions can accept their entire arg dict as a template (with a warning if INJECT_FACTS_AS_VARS is enabled)
+    debug: '{{ debug_args }}'
+    vars:
+      debug_args:
+        msg: '{{ "hello from an embedded template" }}'
+    register: result
+    failed_when: result.msg != "hello from an embedded template"
+
+  - name: assert false scalar expression via templated dict of task args
+    assert: '{{ my_args }}'
+    vars:
+      my_args:
+        that: 1 == 0
+    register: result
+    failed_when: result is success
+
+  - name: assert list of false scalar expressions via templated dict of task args
+    assert: '{{ my_args }}'
+    vars:
+      my_args:
+        that:
+        - 1 == 0
+    register: result
+    failed_when: result is success
+
+
+# FIXME: this is broken because we'd need an explicit var-as-expression in assert
+#  - name: assert false scalar expression as loop arg
+#    assert:
+#      that: item
+#    loop:
+#    - 1 == 0
+#    register: result
+#    failed_when: result is success
+
+# FIXME: this is broken because we'd need an explicit var-as-expression (though it "works" because the result is truthy)
+  - name: assert list of true expressions as loop arg
+    assert:
+      that: item
+    loop:
+    - [1 == 1]
+
+# FIXME: this is broken because we'd need am explicit var-as-expression in assert
+#  - name: assert list of false expressions as loop arg
+#    assert:
+#      that: item
+#    loop:
+#    - [1 == 0]
+#    register: result
+#    failed_when: result is success
+
+
+# FIXME: this is broken because we'd need a loop var lookup in assert (though it "works" because the result is truthy
+  - name: assert true scalar expression as loop arg
+    assert:
+      that: item
+    loop:
+    - 1 == 1
+
+  - name: assert test for indirect false expression (EXPECTED FAILURE)
+    assert:
+      that: '{{ list_of_false_expressions }}'
+    register: bang
+    failed_when: bang is not failed
+
+  - name: assert test for indirect false template (EXPECTED FAILURE)
+    assert:
+      that: '{{ list_of_false_templates }}'
+    register: bang
+    failed_when: bang is not failed
+
+  - name: assert test for indirect falsey constant expression (EXPECTED FAILURE)
+    assert:
+      that: '{{ list_of_falsey_constant_expressions }}'
+    register: bang
+    failed_when: bang is not failed
+
+  - name: assert test for indirect falsey dict (EXPECTED FAILURE)
+    assert:
+      that: '{{ list_of_falsey_dict }}'
+    register: bang
+    failed_when: bang is not failed
+
+
+- hosts: localhost
+  gather_facts: no
+  name: tests for playbook object conditionals
+  tasks:
+  - name: test false plain boolean conditional expression
+    fail:
+    when: 1 == 0
+
+  - name: test false templated boolean conditional expression
+    fail:
+    when: '{{ 1 == 0 }}'
+
+  - name: test plain false-y non-boolean conditional expression (emits warning)
+    fail:
+    when: "0"
+
+  - name: test templated false-y non-boolean conditional expression (emits warnings)
+    fail:
+    when: '{{ 0 }}'
+
+  - name: test true plain boolean conditional expression
+    debug:
+    register: true_plain
+    when: 1 == 1
+
+  - name: test true templated boolean conditional expression
+    debug:
+    register: true_templated
+    when: '{{ 1 == 1 }}'
+
+  - name: test plain truthy non-boolean conditional expression (emits warning)
+    debug:
+    register: truthy_plain
+    when: "1"
+
+  - name: test templated truthy non-boolean conditional expression (emits warnings)
+    debug:
+    register: truthy_templated
+    when: '{{ 1 }}'
+
+  - name: validate true results
+    assert:
+      that:
+      - true_plain is not skipped
+      - true_templated is not skipped
+      - truthy_plain is not skipped
+      - truthy_templated is not skipped
+
+- hosts: localhost
+  gather_facts: no
+  name: tests for conditionals in actions
+  tasks:
+  - name: smoke-test failed_when before we rely on it
+    debug:
+    failed_when: false
+
+  - name: smoke-test failed_when before we rely on it
+    debug:
+    failed_when: true
+    ignore_errors: true
+    register: result
+
+  - name: assert failed_when behavior
+    assert:
+      that: result is failed
+
+  - name: test false plain boolean conditional expression
+    assert:
+      that: 1 == 0
+    register: result
+    failed_when: result is success
+
+  - name: test false templated boolean conditional expression
+    assert:
+      that: '{{ 1 == 0 }}'
+    register: result
+    failed_when: result is success
+
+  - name: test plain false-y non-boolean conditional expression (emits warning)
+    assert:
+      that: "0"
+    register: result
+    failed_when: result is success
+
+  - name: test templated false-y non-boolean conditional expression (emits warnings)
+    assert:
+      that: '{{ 0 }}'
+    register: result
+    failed_when: result is success
+
+  - name: test true plain boolean conditional expression
+    assert:
+      that: 1 == 1
+
+  - name: test true templated boolean conditional expression
+    assert:
+      that: '{{ 1 == 1 }}'
+
+  - name: test plain truthy non-boolean conditional expression (emits warning)
+    assert:
+      that: "1"
+
+  - name: test templated truthy non-boolean conditional expression (emits warnings)
+    assert:
+      that: '{{ 1 }}'
+
+  # Ideally we'd use failed_when in place of two-tasks w/ assert, but due to an impl-detail (possibly bug), changed/failed_when
+  # are not evaluated if the task failed while evaluating a `when` conditional.
+  - name: untrusted playbook conditionals should hard fail (EXPECTED FAILURE)
+    debug:
+    when: !unsafe true
+    ignore_errors: true
+    register: result
+
+  - name: assert failed as expected
+    assert:
+      that:
+      - result is failed
+      - "'not trusted' is in result.msg"
+
+  - name: untrusted assert conditional list item indirected through template should hard fail (EXPECTED FAILURE)
+    vars:
+      assert_expr_with_untrusted_value:
+      - true
+      - !unsafe true
+    assert:
+      that: '{{ assert_expr_with_untrusted_value }}'
+    ignore_errors: true
+    register: result
+
+  - name: assert failed as expected
+    assert:
+      that:
+      - result is failed
+      - "'not trusted' is in result.msg"
+
+  - name: untrusted assert conditional scalar indirected through template should hard fail (EXPECTED FAILURE)
+    vars:
+      untrusted_assert_expr: !unsafe true
+    assert:
+      that: '{{ untrusted_assert_expr }}'
+    ignore_errors: true
+    register: result
+
+  - name: assert failed as expected
+    assert:
+      that:
+      - result is failed
+      - "'not trusted' is in result.msg"

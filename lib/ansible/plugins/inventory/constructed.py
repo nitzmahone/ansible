@@ -96,10 +96,13 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
 
     NAME = 'constructed'
 
+    trusted_by_default = False  # implicit trust behavior is already added by the YAML parser invoked by the loader
+
     def __init__(self):
 
         super(InventoryModule, self).__init__()
 
+        # FIXME: variables that traverse the fact cache likely lost some tags (eg TrustedAsTemplate); did unsafe preservation work in devel?
         self._cache = FactCache()
 
     def verify_file(self, path):

@@ -1,6 +1,23 @@
 - hosts: localhost
   gather_facts: no
+  vars:
+    debug_me: hi mom
   tasks:
     - name: test item being present in the output
       debug: var=item
       loop: [1, 2, 3]
+
+    - name: ensure that explicitly-tagged unsafe debug var does not template
+      debug:
+        var: !unsafe debug_me
+      register: debug_out_unsafe
+
+    - name: ensure that the same var templates properly when its expression is not marked unsafe
+      debug:
+        var: debug_me
+      register: debug_out_safe
+
+    - assert:
+        that:
+        - debug_out_unsafe.debug_me == 'debug_me'
+        - debug_out_safe.debug_me == 'hi mom'

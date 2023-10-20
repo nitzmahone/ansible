@@ -9,6 +9,7 @@ import codecs
 import datetime
 import json
 
+from ansible.module_utils.common.json import AnsibleJSONEncoder
 from ansible.module_utils.six.moves.collections_abc import Set
 from ansible.module_utils.six import (
     PY3,
@@ -267,14 +268,25 @@ def _json_encode_fallback(obj):
 
 
 def jsonify(data, **kwargs):
-    # After 2.18, we should remove this loop, and hardcode to utf-8 in alignment with requiring utf-8 module responses
-    for encoding in ("utf-8", "latin-1"):
-        try:
-            new_data = container_to_text(data, encoding=encoding)
-        except UnicodeDecodeError:
-            continue
-        return json.dumps(new_data, default=_json_encode_fallback, **kwargs)
-    raise UnicodeError('Invalid unicode encoding encountered')
+    return json.dumps(data, cls=AnsibleJSONEncoder, **kwargs)
+
+    # FIXME: is this still needed? we're actually always encoding twice in py3 because encoding was removed
+    # for encoding in ("utf-8", "latin-1"):
+    #     try:
+    #         #return json.dumps(data, encoding=encoding, default=_json_encode_fallback, **kwargs)
+    #         d = json.dumps(data, encoding=encoding, cls=AnsibleJSONEncoder, **kwargs)
+    #         return d
+    #     # Old systems using old simplejson module does not support encoding keyword.
+    #
+    #     except TypeError:
+    #         try:
+    #             new_data = container_to_text(data, encoding=encoding)
+    #         except UnicodeDecodeError:
+    #             continue
+    #         return json.dumps(new_data, default=_json_encode_fallback, **kwargs)
+    #     except UnicodeDecodeError:
+    #         continue
+    # raise UnicodeError('Invalid unicode encoding encountered')
 
 
 def container_to_bytes(d, encoding='utf-8', errors='surrogate_or_strict'):

@@ -29,14 +29,12 @@ from copy import deepcopy
 
 from ansible import constants as C
 from ansible.module_utils.common.text.converters import to_text
-from ansible.module_utils.six import text_type
-from ansible.parsing.ajson import AnsibleJSONEncoder
+from ansible.module_utils.common.json import AnsibleJSONEncoder
 from ansible.parsing.yaml.dumper import AnsibleDumper
-from ansible.parsing.yaml.objects import AnsibleUnicode
 from ansible.plugins import AnsiblePlugin
+from ansible.module_utils.datatag.access import SensitiveDataMask
 from ansible.utils.color import stringc
 from ansible.utils.display import Display
-from ansible.utils.unsafe_proxy import AnsibleUnsafeText, NativeJinjaUnsafeText
 from ansible.vars.clean import strip_internal_keys, module_response_deepcopy
 
 import yaml
@@ -48,13 +46,13 @@ __all__ = ["CallbackBase"]
 
 
 _DEBUG_ALLOWED_KEYS = frozenset(('msg', 'exception', 'warnings', 'deprecations'))
-_YAML_TEXT_TYPES = (text_type, AnsibleUnicode, AnsibleUnsafeText, NativeJinjaUnsafeText)
 # Characters that libyaml/pyyaml consider breaks
 _YAML_BREAK_CHARS = '\n\x85\u2028\u2029'  # NL, NEL, LS, PS
 # regex representation of libyaml/pyyaml of a space followed by a break character
 _SPACE_BREAK_RE = re.compile(fr' +([{_YAML_BREAK_CHARS}])')
 
 
+# FIXME: implement AnsibleAccessContext support
 class _AnsibleCallbackDumper(AnsibleDumper):
     def __init__(self, lossy=False):
         self._lossy = lossy
@@ -111,7 +109,6 @@ def _munge_data_for_lossy_yaml(scalar):
 
 def _pretty_represent_str(self, data):
     """Uses block style for multi-line strings"""
-    data = text_type(data)
     if _should_use_block(data):
         style = '|'
         if self._lossy:
@@ -125,11 +122,11 @@ def _pretty_represent_str(self, data):
     return node
 
 
-for data_type in _YAML_TEXT_TYPES:
-    _AnsibleCallbackDumper.add_representer(
-        data_type,
-        _pretty_represent_str
-    )
+# FIXME: make sure we don't need support for AnsibleTaggedStr here
+_AnsibleCallbackDumper.add_representer(
+    str,
+    _pretty_represent_str
+)
 
 
 class CallbackBase(AnsiblePlugin):
@@ -244,42 +241,43 @@ class CallbackBase(AnsiblePlugin):
             # that want to further modify the result, or use custom serialization
             return abridged_result
 
-        if result_format == 'json':
-            try:
-                return json.dumps(abridged_result, cls=AnsibleJSONEncoder, indent=indent, ensure_ascii=False, sort_keys=sort_keys)
-            except TypeError:
-                # Python3 bug: throws an exception when keys are non-homogenous types:
-                # https://bugs.python.org/issue25457
-                # sort into an OrderedDict and then json.dumps() that instead
-                if not OrderedDict:
-                    raise
-                return json.dumps(OrderedDict(sorted(abridged_result.items(), key=to_text)),
-                                  cls=AnsibleJSONEncoder, indent=indent,
-                                  ensure_ascii=False, sort_keys=False)
-        elif result_format == 'yaml':
-            # None is a sentinel in this case that indicates default behavior
-            # default behavior for yaml is to prettify results
-            lossy = pretty_results in (None, True)
-            if lossy:
-                # if we already have stdout, we don't need stdout_lines
-                if 'stdout' in abridged_result and 'stdout_lines' in abridged_result:
-                    abridged_result['stdout_lines'] = '<omitted>'
+        with SensitiveDataMask():
+            if result_format == 'json':
+                try:
+                    return json.dumps(abridged_result, cls=AnsibleJSONEncoder, preserve_datatags=False, indent=indent, ensure_ascii=False, sort_keys=sort_keys)
+                except TypeError:
+                    # Python3 bug: throws an exception when keys are non-homogenous types:
+                    # https://bugs.python.org/issue25457
+                    # sort into an OrderedDict and then json.dumps() that instead
+                    if not OrderedDict:
+                        raise
+                    return json.dumps(OrderedDict(sorted(abridged_result.items(), key=to_text)),
+                                      cls=AnsibleJSONEncoder, preserve_datatags=False, indent=indent,
+                                      ensure_ascii=False, sort_keys=False)
+            elif result_format == 'yaml':
+                # None is a sentinel in this case that indicates default behavior
+                # default behavior for yaml is to prettify results
+                lossy = pretty_results in (None, True)
+                if lossy:
+                    # if we already have stdout, we don't need stdout_lines
+                    if 'stdout' in abridged_result and 'stdout_lines' in abridged_result:
+                        abridged_result['stdout_lines'] = '<omitted>'
 
-                # if we already have stderr, we don't need stderr_lines
-                if 'stderr' in abridged_result and 'stderr_lines' in abridged_result:
-                    abridged_result['stderr_lines'] = '<omitted>'
+                    # if we already have stderr, we don't need stderr_lines
+                    if 'stderr' in abridged_result and 'stderr_lines' in abridged_result:
+                        abridged_result['stderr_lines'] = '<omitted>'
 
-            return '\n%s' % textwrap.indent(
-                yaml.dump(
-                    abridged_result,
-                    allow_unicode=True,
-                    Dumper=_AnsibleCallbackDumper(lossy=lossy),
-                    default_flow_style=False,
-                    indent=indent,
-                    # sort_keys=sort_keys  # This requires PyYAML>=5.1
-                ),
-                ' ' * (indent or 4)
-            )
+                return '\n%s' % textwrap.indent(
+                    yaml.dump(
+                        abridged_result,
+                        allow_unicode=True,
+                        Dumper=_AnsibleCallbackDumper(lossy=lossy),
+                        default_flow_style=False,
+                        indent=indent,
+                        # sort_keys=sort_keys  # This requires PyYAML>=5.1
+                    ),
+                    ' ' * (indent or 4)
+                )
 
     def _handle_warnings(self, res):
         ''' display warnings, if enabled and any exist in the result '''

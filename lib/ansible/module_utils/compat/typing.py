@@ -6,6 +6,8 @@ from __future__ import annotations
 # catch *all* exceptions to prevent type annotation support module bugs causing runtime failures
 # (eg, https://github.com/ansible/ansible/issues/77857)
 
+TYPE_CHECKING = False
+
 try:
     from typing_extensions import *
 except Exception:  # pylint: disable=broad-except

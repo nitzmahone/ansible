@@ -164,7 +164,7 @@ class LookupModule(LookupBase):
 
             if result is not Sentinel:
                 if show_origin:
-                    ret.append((result, origin))
+                    ret.append([result, origin])
                 else:
                     ret.append(result)
         return ret

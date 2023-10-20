@@ -215,7 +215,7 @@ def load_list_of_tasks(ds, play, block=None, role=None, task_include=None, use_h
                         else:
                             include_file = loader.path_dwim(include_target)
 
-                    data = loader.load_from_file(include_file)
+                    data = loader.load_from_file(include_file, trusted_as_template=True)
                     if not data:
                         display.warning('file %s is empty and had no tasks to include' % include_file)
                         continue

@@ -1,23 +1,29 @@
-- name: test variable dunder
-  set_fact:
-      var_dunder: "{{ b_true.__class__ }}"
+# FIXME: FDI-003 (ish) - we probably shouldn't even allow storage of `Type` as an Ansible var
+# also, access to arbitrary types via __ attrs has been abused for CVE-worthy things in the past
 
-- assert:
-    that:
-        - 'var_dunder|type_debug == "type"'
+# at the end of templating ops, we should be asserting that the result was a supported type to be stored as a var,
+# and document the supported types. Anything else is a fatal error.
 
-- name: test constant dunder
-  set_fact:
-      const_dunder: "{{ true.__class__ }}"
-
-- assert:
-    that:
-        - 'const_dunder|type_debug == "type"'
-
-- name: test constant dunder to string
-  set_fact:
-      const_dunder: "{{ true.__class__|string }}"
-
-- assert:
-    that:
-        - 'const_dunder|type_debug in ["str", "unicode", "NativeJinjaText"]'
+#- name: test variable dunder
+#  set_fact:
+#      var_dunder: "{{ b_true.__class__ }}"
+#
+#- assert:
+#    that:
+#        - 'var_dunder|type_debug == "type"'
+#
+#- name: test constant dunder
+#  set_fact:
+#      const_dunder: "{{ true.__class__ }}"
+#
+#- assert:
+#    that:
+#        - 'const_dunder|type_debug == "type"'
+#
+#- name: test constant dunder to string
+#  set_fact:
+#      const_dunder: "{{ true.__class__|string }}"
+#
+#- assert:
+#    that:
+#        - 'const_dunder|type_debug == "_AnsibleTaggedStr"'

@@ -128,6 +128,10 @@ class AnsiblePlugin(ABC):
         # FIXME: standardize required check based on config
         pass
 
+    def __repr__(self):
+        load_name = getattr(self, '_load_name', '(unknown)')
+        return f'{type(self).__name__}(plugin_type={self.plugin_type!r}, {load_name=!r})'
+
 
 class AnsibleJinja2Plugin(AnsiblePlugin):
 

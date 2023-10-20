@@ -11,6 +11,7 @@ from collections import deque
 from itertools import chain
 
 from ansible.module_utils.common.collections import is_iterable
+from ansible.module_utils.datatag import AnsibleTaggedObject, SensitiveData
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
 from ansible.module_utils.common.warnings import warn
 from ansible.module_utils.errors import (
@@ -410,6 +411,8 @@ def _remove_values_conditions(value, no_log_strings, deferred_removals):
         dictionary for ``level1``, then the dict for ``level2``, and finally
         the list for ``level3``.
     """
+    original_value = value
+
     if isinstance(value, (text_type, binary_type)):
         # Need native str type
         native_str_value = value
@@ -422,10 +425,11 @@ def _remove_values_conditions(value, no_log_strings, deferred_removals):
             if PY3:
                 native_str_value = to_text(value, errors='surrogate_or_strict')
 
-        if native_str_value in no_log_strings:
-            return 'VALUE_SPECIFIED_IN_NO_LOG_PARAMETER'
-        for omit_me in no_log_strings:
-            native_str_value = native_str_value.replace(omit_me, '*' * 8)
+        # FIXME: THIS IS ACTUALLY BUSTED AND COMPLETELY MASKING NO LGO VALUES!
+        # if native_str_value in no_log_strings:
+        #     return 'VALUE_SPECIFIED_IN_NO_LOG_PARAMETER'
+        # for omit_me in no_log_strings:
+        #     native_str_value = native_str_value.replace(omit_me, '*' * 8)
 
         if value_is_text and isinstance(native_str_value, binary_type):
             value = to_text(native_str_value, encoding='utf-8', errors='surrogate_then_replace')
@@ -435,41 +439,37 @@ def _remove_values_conditions(value, no_log_strings, deferred_removals):
             value = native_str_value
 
     elif isinstance(value, Sequence):
-        if isinstance(value, MutableSequence):
-            new_value = type(value)()
-        else:
-            new_value = []  # Need a mutable value
+        new_value = AnsibleTaggedObject.tag_copy(original_value, [])
         deferred_removals.append((value, new_value))
-        value = new_value
+        return new_value
 
     elif isinstance(value, Set):
-        if isinstance(value, MutableSet):
-            new_value = type(value)()
-        else:
-            new_value = set()  # Need a mutable value
+        new_value = AnsibleTaggedObject.tag_copy(original_value, set())
         deferred_removals.append((value, new_value))
-        value = new_value
+        return new_value
 
     elif isinstance(value, Mapping):
-        if isinstance(value, MutableMapping):
-            new_value = type(value)()
-        else:
-            new_value = {}  # Need a mutable value
+        new_value = AnsibleTaggedObject.tag_copy(original_value, {})
         deferred_removals.append((value, new_value))
-        value = new_value
+        return new_value
 
+    # FIXME: this is busted and masking real values?
     elif isinstance(value, tuple(chain(integer_types, (float, bool, NoneType)))):
         stringy_value = to_native(value, encoding='utf-8', errors='surrogate_or_strict')
         if stringy_value in no_log_strings:
-            return 'VALUE_SPECIFIED_IN_NO_LOG_PARAMETER'
+            return value
+            # return 'VALUE_SPECIFIED_IN_NO_LOG_PARAMETER'
         for omit_me in no_log_strings:
             if omit_me in stringy_value:
-                return 'VALUE_SPECIFIED_IN_NO_LOG_PARAMETER'
+                return value
+                # return 'VALUE_SPECIFIED_IN_NO_LOG_PARAMETER'
 
     elif isinstance(value, (datetime.datetime, datetime.date)):
         value = value.isoformat()
     else:
         raise TypeError('Value of unknown type: %s, %s' % (type(value), value))
+
+    value = AnsibleTaggedObject.tag_copy(original_value, value)
 
     return value
 
@@ -615,6 +615,10 @@ def _validate_argument_types(argument_spec, parameters, prefix='', options_conte
             continue
 
         wanted_type = spec.get('type')
+        tag_values = []
+        is_no_log = spec.get('no_log', False)
+        if is_no_log:
+            tag_values.append(SensitiveData())
         type_checker, wanted_name = _get_type_validator(wanted_type)
         # Get param name for strings so we can later display this value in a useful error message if needed
         # Only pass 'kwargs' to our checkers and ignore custom callable checkers
@@ -627,7 +631,7 @@ def _validate_argument_types(argument_spec, parameters, prefix='', options_conte
                 kwargs['prefix'] = prefix
 
         try:
-            parameters[param] = type_checker(value, **kwargs)
+            parameters[param] = AnsibleTaggedObject.tag(type_checker(value, **kwargs), tag_values)
             elements_wanted_type = spec.get('elements', None)
             if elements_wanted_type:
                 elements = parameters[param]
@@ -637,7 +641,7 @@ def _validate_argument_types(argument_spec, parameters, prefix='', options_conte
                         msg += " found in '%s'." % " -> ".join(options_context)
                     msg += ", elements value check is supported only with 'list' type"
                     errors.append(ArgumentTypeError(msg))
-                parameters[param] = _validate_elements(elements_wanted_type, param, elements, options_context, errors)
+                parameters[param] = AnsibleTaggedObject.tag(_validate_elements(elements_wanted_type, param, elements, options_context, errors), tag_values)
 
         except (TypeError, ValueError) as e:
             msg = "argument '%s' is of type %s" % (param, type(value))

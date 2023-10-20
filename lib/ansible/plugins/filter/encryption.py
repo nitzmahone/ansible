@@ -7,8 +7,8 @@ from jinja2.exceptions import UndefinedError
 
 from ansible.errors import AnsibleFilterError, AnsibleFilterTypeError
 from ansible.module_utils.common.text.converters import to_native, to_bytes
+from ansible.module_utils.datatag import VaultedValue
 from ansible.module_utils.six import string_types, binary_type
-from ansible.parsing.yaml.objects import AnsibleVaultEncryptedUnicode
 from ansible.parsing.vault import is_encrypted, VaultSecret, VaultLib
 from ansible.utils.display import Display
 
@@ -41,7 +41,7 @@ def do_vault(data, secret, salt=None, vault_id='filter_default', wrap_object=Fal
         raise AnsibleFilterError("Unable to encrypt: %s" % to_native(e), orig_exc=e)
 
     if wrap_object:
-        vault = AnsibleVaultEncryptedUnicode(vault)
+        vault = VaultedValue(ciphertext=vault).tag(secret)
     else:
         vault = to_native(vault)
 
@@ -53,7 +53,7 @@ def do_unvault(vault, secret, vault_id='filter_default', vaultid=None):
     if not isinstance(secret, (string_types, binary_type, Undefined)):
         raise AnsibleFilterTypeError("Secret passed is required to be as string, instead we got: %s" % type(secret))
 
-    if not isinstance(vault, (string_types, binary_type, AnsibleVaultEncryptedUnicode, Undefined)):
+    if not isinstance(vault, (string_types, binary_type, Undefined)):
         raise AnsibleFilterTypeError("Vault should be in the form of a string, instead we got: %s" % type(vault))
 
     if vaultid is not None:
@@ -63,13 +63,13 @@ def do_unvault(vault, secret, vault_id='filter_default', vaultid=None):
         else:
             display.warning("Ignoring vaultid as vault_id is already set.")
 
-    data = ''
     vs = VaultSecret(to_bytes(secret))
     vl = VaultLib([(vault_id, vs)])
-    if isinstance(vault, AnsibleVaultEncryptedUnicode):
-        vault.vault = vl
-        data = vault.data
-    elif is_encrypted(vault):
+
+    if vault_tag := VaultedValue.get_tag(vault):
+        vault = vault_tag.ciphertext
+
+    if is_encrypted(vault):
         try:
             data = vl.decrypt(vault)
         except UndefinedError:

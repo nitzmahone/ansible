@@ -17,12 +17,14 @@
 
 from __future__ import annotations
 
+import typing as t
+
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError
 from ansible.module_utils.common.text.converters import to_native
+from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.six import string_types
 from ansible.parsing.mod_args import ModuleArgsParser
-from ansible.parsing.yaml.objects import AnsibleBaseYAMLObject, AnsibleMapping
 from ansible.plugins.loader import lookup_loader
 from ansible.playbook.attribute import NonInheritableFieldAttribute
 from ansible.playbook.base import Base
@@ -78,6 +80,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
     poll = NonInheritableFieldAttribute(isa='int', default=C.DEFAULT_POLL_INTERVAL)
     register = NonInheritableFieldAttribute(isa='string', static=True)
     retries = NonInheritableFieldAttribute(isa='int')  # default is set in TaskExecutor
+    untemplated_args: dict[str, t.Any] = None
     until = NonInheritableFieldAttribute(isa='list', default=list)
 
     # deprecated, used to be loop and loop_args but loop has been repurposed
@@ -130,8 +133,32 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
 
     @staticmethod
     def load(data, block=None, role=None, task_include=None, variable_manager=None, loader=None):
-        t = Task(block=block, role=role, task_include=task_include)
-        return t.load_data(data, variable_manager=variable_manager, loader=loader)
+        task = Task(block=block, role=role, task_include=task_include)
+        return task.load_data(data, variable_manager=variable_manager, loader=loader)
+
+    def _post_validate_args(self, attr, value, templar):
+        # smuggle an untemplated copy of the task args for actions that need more control over the templating of their
+        # input (eg, debug's var/msg, assert's "that" conditional expressions)
+        self.untemplated_args = value
+
+        # now recursively template the args dict
+        args = templar.template(value)
+
+        # FIXME: could we just nuke this entirely and/or wrap it up in ModuleArgsParser or something?
+        if '_variable_params' in args:
+            variable_params = args.pop('_variable_params')
+            if isinstance(variable_params, dict):
+                if C.INJECT_FACTS_AS_VARS:
+                    display.warning("Using a variable for a task's 'args' is unsafe in some situations "
+                                    "(see https://docs.ansible.com/ansible/devel/reference_appendices/faq.html#argsplat-unsafe)")
+                variable_params.update(args)
+                args = variable_params
+            else:
+                # if we didn't get a dict, it means there's garbage remaining after k=v parsing, just give up
+                # see https://github.com/ansible/ansible/issues/79862
+                raise AnsibleError(f"invalid or malformed argument: '{variable_params}'")
+
+        return args
 
     def __repr__(self):
         ''' returns a human-readable representation of the task '''
@@ -162,12 +189,9 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         if not isinstance(ds, dict):
             raise AnsibleAssertionError('ds (%s) should be a dict but was a %s' % (ds, type(ds)))
 
-        # the new, cleaned datastructure, which will have legacy
-        # items reduced to a standard structure suitable for the
-        # attributes of the task class
-        new_ds = AnsibleMapping()
-        if isinstance(ds, AnsibleBaseYAMLObject):
-            new_ds.ansible_pos = ds.ansible_pos
+        # the new, cleaned datastructure, which will have legacy items reduced to a standard structure suitable for the
+        # attributes of the task class; copy any tagged data to preserve things like source position
+        new_ds = AnsibleTaggedObject.tag_copy(ds, {})
 
         # since this affects the task action parsing, we have to resolve in preprocess instead of in typical validator
         default_collection = AnsibleCollectionConfig.default_collection

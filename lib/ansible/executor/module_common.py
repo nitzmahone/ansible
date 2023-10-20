@@ -1136,7 +1136,7 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
             raise AnsibleError(f'Cannot create zipfile due to pre-1980 configured date: {date_string}')
         params = dict(ANSIBLE_MODULE_ARGS=module_args,)
         try:
-            python_repred_params = repr(json.dumps(params, cls=AnsibleJSONEncoder, vault_to_text=True))
+            python_repred_params = repr(json.dumps(params, cls=AnsibleJSONEncoder, vault_to_text=True, preserve_datatags=True))
         except TypeError as e:
             raise AnsibleError("Unable to pass options to module, they must be JSON serializable: %s" % to_native(e))
 

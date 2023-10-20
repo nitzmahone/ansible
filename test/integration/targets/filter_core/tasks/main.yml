@@ -106,8 +106,8 @@
 - name: Test hash filter
   assert:
     that:
-      - '"{{ "hash" | hash("sha1") }}" == "2346ad27d7568ba9896f1b7da6b5991251debdf2"'
-      - '"{{ "café" | hash("sha1") }}" == "f424452a9673918c6f09b0cdd35b20be8e6ae7d7"'
+      - '"hash" | hash("sha1") == "2346ad27d7568ba9896f1b7da6b5991251debdf2"'
+      - '"café" | hash("sha1") == "f424452a9673918c6f09b0cdd35b20be8e6ae7d7"'
 
 - name: Test unsupported hash type
   debug:
@@ -262,7 +262,7 @@
 
     - assert:
         that:
-          - "result.msg.startswith('The task includes an option with an undefined variable')"
+          - result.msg.startswith('The task includes an option with an undefined variable')
 
     - set_fact:
         combined: "{{ foo | combine({'key2': {'nested': [undef_variable]}})}}"
@@ -271,7 +271,7 @@
 
     - assert:
         that:
-          - "result.msg.startswith('The task includes an option with an undefined variable')"
+          - result.msg.startswith('The task includes an option with an undefined variable')
 
 - name: regex_search
   set_fact:
@@ -519,7 +519,7 @@
 - name: Verify mandatory
   assert:
     that:
-      - '{{mandatory_demo|mandatory}} == 123'
+      - 'mandatory_demo|mandatory == 123'
       - mandatory_1 is failed
       - "mandatory_1.msg == \"Mandatory variable 'hey'  not defined.\""
       - mandatory_2 is failed

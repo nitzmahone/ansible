@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from ansible import constants as C
+from ansible.module_utils.datatag import NotATemplate
 from ansible.parsing.dataloader import DataLoader
 from ansible.vars.clean import module_response_deepcopy, strip_internal_keys
 
@@ -36,6 +37,14 @@ class TaskResult:
             self._result = return_data.copy()
         else:
             self._result = DataLoader().load(return_data)
+
+        # FIXME: do this inline and on everything (or more things)?
+        if msg := self._result.get('msg'):
+            # FIXME: FDI013
+            if isinstance(msg, str):
+                msg = NotATemplate().tag(msg)
+
+            self._result['msg'] = msg
 
         if task_fields is None:
             self._task_fields = dict()

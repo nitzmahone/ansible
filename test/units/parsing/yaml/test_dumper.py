@@ -17,19 +17,19 @@
 from __future__ import annotations
 
 import io
+import pytest
 
 from jinja2.exceptions import UndefinedError
 
 import unittest
+from ansible.module_utils.datatag import SensitiveData
 from ansible.parsing import vault
 from ansible.parsing.yaml import dumper, objects
 from ansible.parsing.yaml.loader import AnsibleLoader
 from ansible.template import AnsibleUndefined
-from ansible.utils.unsafe_proxy import AnsibleUnsafeText, AnsibleUnsafeBytes
 
 from units.mock.yaml_helper import YamlTestUtils
 from units.mock.vault_helper import TextVaultSecret
-from ansible.vars.manager import VarsWithSources
 
 
 class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
@@ -50,6 +50,7 @@ class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
     def _loader(self, stream):
         return AnsibleLoader(stream, vault_secrets=self.vault.secrets)
 
+    @pytest.mark.xfail(reason="FDI005")
     def test_ansible_vault_encrypted_unicode(self):
         plaintext = 'This is a string we are going to encrypt.'
         avu = objects.AnsibleVaultEncryptedUnicode.from_plaintext(plaintext, vault=self.vault,
@@ -65,7 +66,7 @@ class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
 
     def test_bytes(self):
         b_text = u'tréma'.encode('utf-8')
-        unsafe_object = AnsibleUnsafeBytes(b_text)
+        unsafe_object = SensitiveData().tag(b_text)
         yaml_out = self._dump_string(unsafe_object, dumper=self.dumper)
 
         stream = self._build_stream(yaml_out)
@@ -79,7 +80,7 @@ class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
 
     def test_unicode(self):
         u_text = u'nöel'
-        unsafe_object = AnsibleUnsafeText(u_text)
+        unsafe_object = SensitiveData().tag(u_text)
         yaml_out = self._dump_string(unsafe_object, dumper=self.dumper)
 
         stream = self._build_stream(yaml_out)
@@ -88,9 +89,6 @@ class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
         data_from_yaml = loader.get_single_data()
 
         self.assertEqual(u_text, data_from_yaml)
-
-    def test_vars_with_sources(self):
-        self._dump_string(VarsWithSources(), dumper=self.dumper)
 
     def test_undefined(self):
         undefined_object = AnsibleUndefined()

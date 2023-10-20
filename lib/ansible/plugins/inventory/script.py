@@ -250,6 +250,7 @@ class InventoryModule(BaseInventoryPlugin):
             # if called with --host for backwards compat with 1.2 and earlier.
             for (group, gdata) in processed.items():
                 if group == '_meta':
+                    # FIXME: add support for a new template_trust declaration in _meta and let the script plugin's trusted_by_default impl consult it
                     if 'hostvars' in gdata:
                         data_from_meta = gdata['hostvars']
                 else:

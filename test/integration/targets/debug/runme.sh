@@ -2,6 +2,8 @@
 
 set -eux
 
+set -o pipefail
+
 trap 'rm -f out' EXIT
 
 ansible-playbook main.yml -i ../../inventory | tee out

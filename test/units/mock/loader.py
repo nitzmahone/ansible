@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import os
+import typing as t
 
 from ansible.parsing.dataloader import DataLoader
 from ansible.module_utils.common.text.converters import to_bytes, to_text
@@ -35,11 +36,11 @@ class DictDataLoader(DataLoader):
         self._build_known_directories()
         self._vault_secrets = None
 
-    def load_from_file(self, path, cache=True, unsafe=False):
+    def load_from_file(self, file_name: str, cache: bool = True, unsafe: bool = False, json_only: bool = False, trusted_as_template: bool = False) -> t.Any:
         data = None
-        path = to_text(path)
+        path = to_text(file_name)
         if path in self._file_mapping:
-            data = self.load(self._file_mapping[path], path)
+            data = self.load(self._file_mapping[path], path, json_only=json_only, trusted_as_template=trusted_as_template)
         return data
 
     # TODO: the real _get_file_contents returns a bytestring, so we actually convert the

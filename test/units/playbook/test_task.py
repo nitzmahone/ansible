@@ -19,9 +19,9 @@ from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
+from ansible.module_utils.datatag import AnsibleSourcePosition
 from ansible.playbook.task import Task
 from ansible.plugins.loader import init_plugin_loader
-from ansible.parsing.yaml import objects
 from ansible import errors
 
 
@@ -74,8 +74,7 @@ class TestTask(unittest.TestCase):
     @patch.object(errors.AnsibleError, '_get_error_lines_from_file')
     def test_load_task_kv_form_error_36848(self, mock_get_err_lines):
         init_plugin_loader()
-        ds = objects.AnsibleMapping(kv_bad_args_ds)
-        ds.ansible_pos = ('test_task_faux_playbook.yml', 1, 1)
+        ds = AnsibleSourcePosition(src='test_task_faux_playbook.yml', line=1, col=1).tag(kv_bad_args_ds.copy())
         mock_get_err_lines.return_value = (kv_bad_args_str, '')
 
         with self.assertRaises(errors.AnsibleParserError) as cm:

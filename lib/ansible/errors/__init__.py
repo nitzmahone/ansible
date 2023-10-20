@@ -33,6 +33,7 @@ from ansible.errors.yaml_strings import (
     YAML_AND_SHORTHAND_ERROR,
 )
 from ansible.module_utils.common.text.converters import to_native, to_text
+from ansible.module_utils.datatag import AnsibleSourcePosition
 
 
 class AnsibleError(Exception):
@@ -46,8 +47,7 @@ class AnsibleError(Exception):
 
         raise AnsibleError('some message here', obj=obj, show_content=True)
 
-    Where "obj" is some subclass of ansible.parsing.yaml.objects.AnsibleBaseYAMLObject,
-    which should be returned by the DataLoader() class.
+    Where "obj" may be tagged with AnsibleSourcePosition to provide context for error messages.
     '''
 
     def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=False, orig_exc=None):
@@ -61,12 +61,8 @@ class AnsibleError(Exception):
 
     @property
     def message(self):
-        # we import this here to prevent an import loop problem,
-        # since the objects code also imports ansible.errors
-        from ansible.parsing.yaml.objects import AnsibleBaseYAMLObject
-
         message = [self._message]
-        if isinstance(self.obj, AnsibleBaseYAMLObject):
+        if AnsibleSourcePosition.is_tagged_on(self.obj):
             extended_error = self._get_extended_error()
             if extended_error and not self._suppress_extended_error:
                 message.append(
@@ -120,7 +116,7 @@ class AnsibleError(Exception):
 
         return (target_line, prev_line)
 
-    def _get_extended_error(self):
+    def _get_extended_error(self):  # type: () -> str
         '''
         Given an object reporting the location of the exception in a file, return
         detailed information regarding it including:
@@ -135,10 +131,10 @@ class AnsibleError(Exception):
         error_message = ''
 
         try:
-            (src_file, line_number, col_number) = self.obj.ansible_pos
-            error_message += YAML_POSITION_DETAILS % (src_file, line_number, col_number)
-            if src_file not in ('<string>', '<unicode>') and self._show_content:
-                (target_line, prev_line) = self._get_error_lines_from_file(src_file, line_number - 1)
+            source_position = AnsibleSourcePosition.get_tag(self.obj)
+            error_message += YAML_POSITION_DETAILS % (source_position.src, source_position.line, source_position.col)
+            if source_position.src not in ('<string>', '<unicode>') and self._show_content:
+                (target_line, prev_line) = self._get_error_lines_from_file(source_position.src, source_position.line - 1)
                 target_line = to_text(target_line)
                 prev_line = to_text(prev_line)
                 if target_line:
@@ -149,11 +145,11 @@ class AnsibleError(Exception):
                     if re.search(r'\w+(\s+)?=(\s+)?[\w/-]+', prev_line):
                         error_position = prev_line.rstrip().find('=')
                         arrow_line = (" " * error_position) + "^ here"
-                        error_message = YAML_POSITION_DETAILS % (src_file, line_number - 1, error_position + 1)
+                        error_message = YAML_POSITION_DETAILS % (source_position.src, source_position.line - 1, error_position + 1)
                         error_message += "\nThe offending line appears to be:\n\n%s\n%s\n\n" % (prev_line.rstrip(), arrow_line)
                         error_message += YAML_AND_SHORTHAND_ERROR
                     else:
-                        arrow_line = (" " * (col_number - 1)) + "^ here"
+                        arrow_line = (" " * (source_position.col - 1)) + "^ here"
                         error_message += "\nThe offending line appears to be:\n\n%s\n%s\n%s\n" % (prev_line.rstrip(), target_line.rstrip(), arrow_line)
 
                     # TODO: There may be cases where there is a valid tab in a line that has other errors.
@@ -169,8 +165,8 @@ class AnsibleError(Exception):
                     # check for common unquoted colon mistakes
                     elif (len(target_line) and
                             len(target_line) > 1 and
-                            len(target_line) > col_number and
-                            target_line[col_number] == ":" and
+                            len(target_line) > source_position.col and
+                            target_line[source_position.col] == ":" and
                             target_line.count(':') > 1):
                         error_message += YAML_COMMON_UNQUOTED_COLON_ERROR
                     # otherwise, check for some common quoting mistakes
@@ -377,3 +373,11 @@ class AnsibleFilterTypeError(AnsibleTemplateError, TypeError):
 class AnsiblePluginNotFound(AnsiblePluginError):
     ''' Indicates we did not find an Ansible plugin '''
     pass
+
+
+class AnsibleConditionalError(AnsibleRuntimeError):
+    """Errors related to failed conditional expression evaluation."""
+
+
+class AnsibleVariableTypeError(AnsibleRuntimeError):
+    """An error due to attempted storage of an unsupported variable type."""

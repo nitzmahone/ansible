@@ -20,10 +20,10 @@ from __future__ import annotations
 import unittest
 
 from ansible.errors import AnsibleParserError, AnsibleAssertionError
+from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.playbook.attribute import FieldAttribute, NonInheritableFieldAttribute
 from ansible.template import Templar
 from ansible.playbook import base
-from ansible.utils.unsafe_proxy import AnsibleUnsafeText
 
 from units.mock.loader import DictDataLoader
 
@@ -596,11 +596,11 @@ class TestBaseSubClass(TestBase):
         bsc = self._base_validate(ds)
         self.assertEqual(bsc.test_attr_method_missing, a_string)
 
-    def test_get_validated_value_string_rewrap_unsafe(self):
+    def test_get_validated_value_string_preserve_tags(self):
         attribute = FieldAttribute(isa='string')
-        value = AnsibleUnsafeText(u'bar')
+        value = TrustedAsTemplate().tag('bar')
         templar = Templar(None)
         bsc = self.ClassUnderTest()
         result = bsc.get_validated_value('foo', attribute, value, templar)
-        self.assertIsInstance(result, AnsibleUnsafeText)
-        self.assertEqual(result, AnsibleUnsafeText(u'bar'))
+        assert TrustedAsTemplate.is_tagged_on(result)
+        assert result == 'bar'

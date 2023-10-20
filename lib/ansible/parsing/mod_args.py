@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ansible.constants as C
 from ansible.errors import AnsibleParserError, AnsibleError, AnsibleAssertionError
+from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_text
 from ansible.parsing.splitter import parse_kv, split_args
@@ -119,7 +120,7 @@ class ModuleArgsParser:
 
         self.resolved_action = None
 
-    def _split_module_string(self, module_string):
+    def _split_module_string(self, module_string: str) -> tuple[str, str]:
         '''
         when module names are expressed like:
         action: copy src=a dest=b
@@ -129,9 +130,11 @@ class ModuleArgsParser:
 
         tokens = split_args(module_string)
         if len(tokens) > 1:
-            return (tokens[0].strip(), " ".join(tokens[1:]))
+            result = (tokens[0].strip(), " ".join(tokens[1:]))
         else:
-            return (tokens[0].strip(), "")
+            result = (tokens[0].strip(), "")
+
+        return AnsibleTaggedObject.tag_copy(module_string, result[0]), AnsibleTaggedObject.tag_copy(module_string, result[1])
 
     def _normalize_parameters(self, thing, action=None, additional_args=None):
         '''

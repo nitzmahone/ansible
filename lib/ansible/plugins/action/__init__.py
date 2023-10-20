@@ -26,11 +26,11 @@ from ansible.module_utils.errors import UnsupportedError
 from ansible.module_utils.json_utils import _filter_non_json_lines
 from ansible.module_utils.six import binary_type, string_types, text_type
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
-from ansible.parsing.utils.jsonify import jsonify
+from ansible.module_utils.common.json import AnsibleJSONEncoder, AnsibleJSONDecoder
 from ansible.release import __version__
+from ansible.template import Templar
 from ansible.utils.collection_loader import resource_from_fqcr
 from ansible.utils.display import Display
-from ansible.utils.unsafe_proxy import wrap_var, AnsibleUnsafeText
 from ansible.vars.clean import remove_internal_keys
 from ansible.utils.plugin_docs import get_versioned_doclink
 
@@ -68,7 +68,7 @@ class ActionBase(ABC):
     _supports_check_mode = True
     _supports_async = False
 
-    def __init__(self, task, connection, play_context, loader, templar, shared_loader_obj):
+    def __init__(self, task, connection, play_context, loader, templar: Templar, shared_loader_obj):
         self._task = task
         self._connection = connection
         self._play_context = play_context
@@ -80,8 +80,7 @@ class ActionBase(ABC):
         # interpreter discovery state
         self._discovered_interpreter_key = None
         self._discovered_interpreter = False
-        self._discovery_deprecation_warnings = []
-        self._discovery_warnings = []
+        self._discovery_warnings: list[str] = []
         self._used_interpreter = None
 
         # Backwards compat: self._display isn't really needed, just import the global display and use that.
@@ -305,11 +304,8 @@ class ActionBase(ABC):
                                                                             **become_kwargs)
                 break
             except InterpreterDiscoveryRequiredError as idre:
-                self._discovered_interpreter = AnsibleUnsafeText(discover_interpreter(
-                    action=self,
-                    interpreter_name=idre.interpreter_name,
-                    discovery_mode=idre.discovery_mode,
-                    task_vars=use_vars))
+                self._discovered_interpreter = discover_interpreter(action=self, interpreter_name=idre.interpreter_name,
+                                                                    discovery_mode=idre.discovery_mode, task_vars=use_vars)
 
                 # update the local task_vars with the discovered interpreter (which might be None);
                 # we'll propagate back to the controller in the task result
@@ -564,7 +560,7 @@ class ActionBase(ABC):
         '''
 
         if isinstance(data, dict):
-            data = jsonify(data)
+            data = json.dumps(data, cls=AnsibleJSONEncoder, preserve_datatags=True)
 
         afd, afile = tempfile.mkstemp(dir=C.DEFAULT_LOCAL_TMP)
         afo = os.fdopen(afd, 'wb')
@@ -1204,15 +1200,6 @@ class ActionBase(ABC):
                 data['warnings'] = []
             data['warnings'].extend(self._discovery_warnings)
 
-        if self._discovery_deprecation_warnings:
-            if data.get('deprecations') is None:
-                data['deprecations'] = []
-            data['deprecations'].extend(self._discovery_deprecation_warnings)
-
-        # mark the entire module results untrusted as a template right here, since the current action could
-        # possibly template one of these values.
-        data = wrap_var(data)
-
         display.debug("done with _execute_module (%s, %s)" % (module_name, module_args))
         return data
 
@@ -1222,7 +1209,7 @@ class ActionBase(ABC):
             for w in warnings:
                 display.warning(w)
 
-            data = json.loads(filtered_output)
+            data = json.loads(filtered_output, cls=AnsibleJSONDecoder)
 
             if C.MODULE_STRICT_UTF8_RESPONSE and not data.pop('_ansible_trusted_utf8', None):
                 try:

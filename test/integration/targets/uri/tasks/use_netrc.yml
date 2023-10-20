@@ -41,7 +41,7 @@
     that:
     - response.status == 200
     - response.json.token == 'foobar'
-    - response.url == 'https://{{ httpbin_host }}/bearer'
+    - response.url == 'https://' + httpbin_host + '/bearer'
     fail_msg: "Was expecting successful Bearer authentication, but received: {{ response }}"
     success_msg: "Bearer authentication successfull when netrc is ignored."
 

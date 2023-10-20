@@ -12,13 +12,14 @@ import subprocess
 import sys
 import termios
 import traceback
+import datetime
 
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleConnectionFailure, AnsibleActionFail, AnsibleActionSkip
 from ansible.executor.task_result import TaskResult
 from ansible.executor.module_common import get_action_args_with_defaults
+from ansible.module_utils.datatag import AnsibleTaggedObject, Deprecated
 from ansible.module_utils.parsing.convert_bool import boolean
-from ansible.module_utils.six import binary_type
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.connection import write_to_file_descriptor
 from ansible.playbook.conditional import Conditional
@@ -28,7 +29,6 @@ from ansible.plugins.loader import become_loader, cliconf_loader, connection_loa
 from ansible.template import Templar
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.listify import listify_lookup_plugin_terms
-from ansible.utils.unsafe_proxy import to_unsafe_text, wrap_var
 from ansible.vars.clean import namespace_facts, clean_facts
 from ansible.utils.display import Display
 from ansible.utils.vars import combine_vars, isidentifier
@@ -58,14 +58,15 @@ def remove_omit(task_args, omit_token):
     if not isinstance(task_args, dict):
         return task_args
 
-    new_args = {}
+    # FIXME: sneaky copy- we're propagating tags, but can we do this more cheaply?
+    new_args = AnsibleTaggedObject.tag_copy(task_args, {})
     for i in task_args.items():
         if i[1] == omit_token:
             continue
         elif isinstance(i[1], dict):
             new_args[i[0]] = remove_omit(i[1], omit_token)
         elif isinstance(i[1], list):
-            new_args[i[0]] = [remove_omit(v, omit_token) for v in i[1]]
+            new_args[i[0]] = AnsibleTaggedObject.tag_copy(i[1], (remove_omit(v, omit_token) for v in i[1]), value_type=list)
         else:
             new_args[i[0]] = i[1]
 
@@ -169,8 +170,8 @@ class TaskExecutor:
                 res['changed'] = False
 
             def _clean_res(res, errors='surrogate_or_strict'):
-                if isinstance(res, binary_type):
-                    return to_unsafe_text(res, errors=errors)
+                if isinstance(res, bytes):
+                    return to_text(res, errors=errors)
                 elif isinstance(res, dict):
                     for k in res:
                         try:
@@ -190,13 +191,14 @@ class TaskExecutor:
                 return res
 
             display.debug("dumping result to json")
+            # FIXME: is this still necessary, or can we merge this with any of the other numerous recursive traversals we do?
             res = _clean_res(res)
             display.debug("done dumping result, returning")
             return res
         except AnsibleError as e:
-            return dict(failed=True, msg=wrap_var(to_text(e, nonstring='simplerepr')), _ansible_no_log=self._play_context.no_log)
+            return dict(failed=True, msg=to_text(e, nonstring='simplerepr'), _ansible_no_log=self._play_context.no_log)
         except Exception as e:
-            return dict(failed=True, msg=wrap_var('Unexpected failure during module execution: %s' % (to_native(e, nonstring='simplerepr'))),
+            return dict(failed=True, msg='Unexpected failure during module execution: %s' % (to_native(e, nonstring='simplerepr')),
                         exception=to_text(traceback.format_exc()), stdout='', _ansible_no_log=self._play_context.no_log)
         finally:
             try:
@@ -224,8 +226,7 @@ class TaskExecutor:
         if self._task.loop_with:
             if self._task.loop_with in self._shared_loader_obj.lookup_loader:
 
-                # TODO: hardcoded so it fails for non first_found lookups, but this should be generalized for those that don't do their own templating
-                # lookup prop/attribute?
+                # FIXME: allow lookups to opt-in to accepting inputs with undefined templating failures instead of hardcoding here
                 fail = bool(self._task.loop_with != 'first_found')
                 loop_terms = listify_lookup_plugin_terms(terms=self._task.loop, templar=templar, fail_on_undefined=fail, convert_bare=False)
 
@@ -239,7 +240,7 @@ class TaskExecutor:
                 setattr(mylookup, '_subdir', subdir + 's')
 
                 # run lookup
-                items = wrap_var(mylookup.run(terms=loop_terms, variables=self._job_vars, wantlist=True))
+                items = mylookup.run(terms=loop_terms, variables=self._job_vars, wantlist=True)
             else:
                 raise AnsibleError("Unexpected failure in finding the lookup named '%s' in the available lookup plugins" % self._task.loop_with)
 
@@ -270,8 +271,9 @@ class TaskExecutor:
         loop_pause = self._task.loop_control.pause
         extended = self._task.loop_control.extended
         extended_allitems = self._task.loop_control.extended_allitems
+
         # ensure we always have a label
-        label = self._task.loop_control.label or '{{' + loop_var + '}}'
+        label = self._task.loop_control.label or templar.variable_name_as_template(loop_var)
 
         if loop_var in task_vars:
             display.warning(u"%s: The loop variable '%s' is already in use. "
@@ -527,18 +529,6 @@ class TaskExecutor:
             raise
         except Exception:
             return dict(changed=False, failed=True, _ansible_no_log=no_log, exception=to_text(traceback.format_exc()))
-        if '_variable_params' in self._task.args:
-            variable_params = self._task.args.pop('_variable_params')
-            if isinstance(variable_params, dict):
-                if C.INJECT_FACTS_AS_VARS:
-                    display.warning("Using a variable for a task's 'args' is unsafe in some situations "
-                                    "(see https://docs.ansible.com/ansible/devel/reference_appendices/faq.html#argsplat-unsafe)")
-                variable_params.update(self._task.args)
-                self._task.args = variable_params
-            else:
-                # if we didn't get a dict, it means there's garbage remaining after k=v parsing, just give up
-                # see https://github.com/ansible/ansible/issues/79862
-                raise AnsibleError(f"invalid or malformed argument: '{variable_params}'")
 
         # update no_log to task value, now that we have it templated
         no_log = self._task.no_log
@@ -651,9 +641,6 @@ class TaskExecutor:
             # preserve no log
             result["_ansible_no_log"] = no_log
 
-            if self._task.action not in C._ACTION_WITH_CLEAN_FACTS:
-                result = wrap_var(result)
-
             # update the local copy of vars with the registered value, if specified,
             # or any facts which may have been generated by the module execution
             if self._task.register:
@@ -711,10 +698,13 @@ class TaskExecutor:
                         vars_copy.update(result['ansible_facts'])
                 else:
                     # TODO: cleaning of facts should eventually become part of taskresults instead of vars
-                    af = wrap_var(result['ansible_facts'])
+                    af = result['ansible_facts']
                     vars_copy['ansible_facts'] = combine_vars(vars_copy.get('ansible_facts', {}), namespace_facts(af))
                     if C.INJECT_FACTS_AS_VARS:
-                        vars_copy.update(clean_facts(af))
+                        # FIXME: get proper values here once Deprecated is a dataclass and supports optional values
+                        d = Deprecated(msg='top-level facts are deprecated', removal_date=datetime.date(2023, 1, 2), removal_version='2.99')
+                        cleaned_toplevel = {k: d.tag(v) for k, v in clean_facts(af).items()}
+                        vars_copy.update(cleaned_toplevel)
 
             # set the failed property if it was missing.
             if 'failed' not in result:
@@ -731,9 +721,6 @@ class TaskExecutor:
             # set the changed property if it was missing.
             if 'changed' not in result:
                 result['changed'] = False
-
-            if self._task.action not in C._ACTION_WITH_CLEAN_FACTS:
-                result = wrap_var(result)
 
             # re-update the local copy of vars with the registered value, if specified,
             # or any facts which may have been generated by the module execution
@@ -783,9 +770,6 @@ class TaskExecutor:
                 result['attempts'] = retries - 1
                 result['failed'] = True
 
-        if self._task.action not in C._ACTION_WITH_CLEAN_FACTS:
-            result = wrap_var(result)
-
         # do the final update of the local variables here, for both registered
         # values and any facts which may have been created
         if self._task.register:
@@ -796,10 +780,11 @@ class TaskExecutor:
                 variables.update(result['ansible_facts'])
             else:
                 # TODO: cleaning of facts should eventually become part of taskresults instead of vars
-                af = wrap_var(result['ansible_facts'])
+                af = result['ansible_facts']
                 variables['ansible_facts'] = combine_vars(variables.get('ansible_facts', {}), namespace_facts(af))
                 if C.INJECT_FACTS_AS_VARS:
-                    variables.update(clean_facts(af))
+                    # FIXME: why is this happening twice, esp since we're post-fork and these will be discarded?
+                    variables.update(cleaned_toplevel)
 
         # save the notification target in the result, if it was specified, as
         # this task may be running in a loop in which case the notification

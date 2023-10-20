@@ -19,13 +19,13 @@ from __future__ import annotations
 
 import yaml
 
-from ansible.module_utils.six import text_type, binary_type
+# FIXME: consider using AnsibleSerializable to register known types automatically?
+from ansible.module_utils.datatag import AnsibleTaggedObject
+from ansible.module_utils.datatag.access import AnsibleAccessContext
+from ansible.module_utils.six import text_type
 from ansible.module_utils.common.yaml import SafeDumper
-from ansible.parsing.yaml.objects import AnsibleUnicode, AnsibleSequence, AnsibleMapping, AnsibleVaultEncryptedUnicode
-from ansible.utils.unsafe_proxy import AnsibleUnsafeText, AnsibleUnsafeBytes, NativeJinjaUnsafeText, NativeJinjaText
 from ansible.template import AnsibleUndefined
 from ansible.vars.hostvars import HostVars, HostVarsVars
-from ansible.vars.manager import VarsWithSources
 
 
 class AnsibleDumper(SafeDumper):
@@ -44,12 +44,17 @@ def represent_vault_encrypted_unicode(self, data):
     return self.represent_scalar(u'!vault', data._ciphertext.decode(), style='|')
 
 
+def represent_ansible_tagged_object(self, data):
+    data = AnsibleAccessContext.current().access(data)
+    # access might change it to a non-tagged type, account for that...
+    if isinstance(data, AnsibleTaggedObject):
+        return self.represent_data(data.native_copy())
+
+    return self.represent_data(data)
+
+
 def represent_unicode(self, data):
     return yaml.representer.SafeRepresenter.represent_str(self, text_type(data))
-
-
-def represent_binary(self, data):
-    return yaml.representer.SafeRepresenter.represent_binary(self, binary_type(data))
 
 
 def represent_undefined(self, data):
@@ -58,21 +63,6 @@ def represent_undefined(self, data):
     # This happens because Jinja sets __bool__ on StrictUndefined
     return bool(data)
 
-
-AnsibleDumper.add_representer(
-    AnsibleUnicode,
-    represent_unicode,
-)
-
-AnsibleDumper.add_representer(
-    AnsibleUnsafeText,
-    represent_unicode,
-)
-
-AnsibleDumper.add_representer(
-    AnsibleUnsafeBytes,
-    represent_binary,
-)
 
 AnsibleDumper.add_representer(
     HostVars,
@@ -84,37 +74,12 @@ AnsibleDumper.add_representer(
     represent_hostvars,
 )
 
-AnsibleDumper.add_representer(
-    VarsWithSources,
-    represent_hostvars,
-)
-
-AnsibleDumper.add_representer(
-    AnsibleSequence,
-    yaml.representer.SafeRepresenter.represent_list,
-)
-
-AnsibleDumper.add_representer(
-    AnsibleMapping,
-    yaml.representer.SafeRepresenter.represent_dict,
-)
-
-AnsibleDumper.add_representer(
-    AnsibleVaultEncryptedUnicode,
-    represent_vault_encrypted_unicode,
-)
+# FIXME: special-case dumper support for VaultedValue-tagged objects?
 
 AnsibleDumper.add_representer(
     AnsibleUndefined,
     represent_undefined,
 )
 
-AnsibleDumper.add_representer(
-    NativeJinjaUnsafeText,
-    represent_unicode,
-)
-
-AnsibleDumper.add_representer(
-    NativeJinjaText,
-    represent_unicode,
-)
+# FIXME: do we actually need knobs to allow re-serialization of !!unsafe or !!vault?
+AnsibleDumper.add_multi_representer(AnsibleTaggedObject, represent_ansible_tagged_object)

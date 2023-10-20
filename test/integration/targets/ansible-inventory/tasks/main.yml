@@ -133,10 +133,6 @@
 - include_tasks: toml.yml
   loop:
     -
-      - toml<0.10.0
-    -
-      - toml
-    -
       - tomli
       - tomli-w
     -

@@ -16,6 +16,7 @@ from jinja2.exceptions import UndefinedError
 from ansible import constants as C
 from ansible import context
 from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError
+from ansible.module_utils.datatag import AnsibleSourcePosition
 from ansible.module_utils.six import string_types
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.common.text.converters import to_text, to_native
@@ -753,17 +754,23 @@ class Base(FieldAttributeBase):
     # used to hold sudo/su stuff
     DEPRECATED_ATTRIBUTES = []  # type: list[str]
 
-    def get_path(self):
+    def get_path(self) -> str:
         ''' return the absolute path of the playbook object and its line number '''
 
-        path = ""
+        tag: AnsibleSourcePosition | None = None
         try:
-            path = "%s:%s" % (self._ds._data_source, self._ds._line_number)
+            tag = AnsibleSourcePosition.get_tag(self._ds)
         except AttributeError:
             try:
-                path = "%s:%s" % (self._parent._play._ds._data_source, self._parent._play._ds._line_number)
+                tag = AnsibleSourcePosition.get_tag(self._parent._play._ds)
             except AttributeError:
                 pass
+
+        if tag:
+            path = "%s:%s" % (tag.src, tag.line)
+        else:
+            path = ""
+
         return path
 
     def get_dep_chain(self):

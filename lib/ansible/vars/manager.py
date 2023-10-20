@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import datetime
 import os
 import sys
 
@@ -32,13 +33,13 @@ from ansible.inventory.host import Host
 from ansible.inventory.helpers import sort_groups, get_group_vars
 from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.six import text_type, string_types
+from ansible.module_utils.datatag import Deprecated, NotATemplate
 from ansible.plugins.loader import lookup_loader
 from ansible.vars.fact_cache import FactCache
 from ansible.template import Templar
 from ansible.utils.display import Display
 from ansible.utils.listify import listify_lookup_plugin_terms
 from ansible.utils.vars import combine_vars, load_extra_vars, load_options_vars
-from ansible.utils.unsafe_proxy import wrap_var
 from ansible.vars.clean import namespace_facts, clean_facts
 from ansible.vars.plugins import get_vars_from_inventory_sources, get_vars_from_path
 
@@ -176,19 +177,11 @@ class VariableManager:
 
         _vars_sources = {}
 
+        # FIXME: this no longer has any effect and can be switched back to regular combine
         def _combine_and_track(data, new_data, source):
-            '''
-            Wrapper function to update var sources dict and call combine_vars()
-
-            See notes in the VarsWithSources docstring for caveats and limitations of the source tracking
-            '''
             if new_data == {}:
                 return data
 
-            if C.DEFAULT_DEBUG:
-                # Populate var sources dict
-                for key in new_data:
-                    _vars_sources[key] = source
             return combine_vars(data, new_data)
 
         # default for all cases
@@ -304,15 +297,19 @@ class VariableManager:
             # finally, the facts caches for this host, if it exists
             # TODO: cleaning of facts should eventually become part of taskresults instead of vars
             try:
-                facts = wrap_var(self._fact_cache.get(host.name, {}))
+                facts = self._fact_cache.get(host.name, {})
                 all_vars |= namespace_facts(facts)
 
                 # push facts to main namespace
                 if C.INJECT_FACTS_AS_VARS:
-                    all_vars = _combine_and_track(all_vars, wrap_var(clean_facts(facts)), "facts")
+                    # FIXME: pick a proper date and/or version
+                    d = Deprecated(msg='top-level facts are deprecated', removal_date=datetime.date(2023, 1, 2),
+                                   removal_version='2.99')
+                    deprecated_facts_vars = {k: d.tag(v) for k, v in clean_facts(facts).items()}
+                    all_vars = _combine_and_track(all_vars, deprecated_facts_vars, "facts")
                 else:
                     # always 'promote' ansible_local
-                    all_vars = _combine_and_track(all_vars, wrap_var({'ansible_local': facts.get('ansible_local', {})}), "facts")
+                    all_vars = _combine_and_track(all_vars, {'ansible_local': facts.get('ansible_local', {})}, "facts")
             except KeyError:
                 pass
 
@@ -353,7 +350,7 @@ class VariableManager:
                             try:
                                 play_search_stack = play.get_search_path()
                                 found_file = real_file = self._loader.path_dwim_relative_stack(play_search_stack, 'vars', vars_file)
-                                data = preprocess_vars(self._loader.load_from_file(found_file, unsafe=True, cache=False))
+                                data = preprocess_vars(self._loader.load_from_file(found_file, unsafe=True, cache=False, trusted_as_template=True))
                                 if data is not None:
                                     for item in data:
                                         all_vars = _combine_and_track(all_vars, item, "play vars_files from '%s'" % vars_file)
@@ -436,11 +433,7 @@ class VariableManager:
             all_vars['ansible_delegated_vars'], all_vars['_ansible_loop_cache'] = self._get_delegated_vars(play, task, all_vars)
 
         display.debug("done with get_vars()")
-        if C.DEFAULT_DEBUG:
-            # Use VarsWithSources wrapper class to display var sources
-            return VarsWithSources.new_vars_with_sources(all_vars, _vars_sources)
-        else:
-            return all_vars
+        return all_vars
 
     def _get_magic_variables(self, play, host, task, include_hostvars, _hosts=None, _hosts_all=None):
         '''
@@ -507,6 +500,11 @@ class VariableManager:
         # Set options vars
         for option, option_value in self._options_vars.items():
             variables[option] = option_value
+
+        # everything template-able in `variables` should already have been templated by this point, or all accessible future copies of it
+        # will be (eg, `ansible_play_name`); mark them all NotATemplate to bail out of recursive templating as early as possible
+        nat = NotATemplate()
+        variables = {k: nat.tag(v) for k, v in variables.items()}
 
         if self._hostvars is not None and include_hostvars:
             variables['hostvars'] = self._hostvars
@@ -606,7 +604,7 @@ class VariableManager:
                             break
                     setattr(mylookup, '_subdir', subdir + 's')
 
-                    items = wrap_var(mylookup.run(terms=loop_terms, variables=vars_copy))
+                    items = mylookup.run(terms=loop_terms, variables=vars_copy)
 
                 except AnsibleTemplateError:
                     # This task will be skipped later due to this, so we just setup
@@ -741,55 +739,6 @@ class VariableManager:
             self._vars_cache[host] = combine_vars(self._vars_cache[host], {varname: value})
         else:
             self._vars_cache[host][varname] = value
-
-
-class VarsWithSources(MutableMapping):
-    '''
-    Dict-like class for vars that also provides source information for each var
-
-    This class can only store the source for top-level vars. It does no tracking
-    on its own, just shows a debug message with the information that it is provided
-    when a particular var is accessed.
-    '''
-    def __init__(self, *args, **kwargs):
-        ''' Dict-compatible constructor '''
-        self.data = dict(*args, **kwargs)
-        self.sources = {}
-
-    @classmethod
-    def new_vars_with_sources(cls, data, sources):
-        ''' Alternate constructor method to instantiate class with sources '''
-        v = cls(data)
-        v.sources = sources
-        return v
-
-    def get_source(self, key):
-        return self.sources.get(key, None)
-
-    def __getitem__(self, key):
-        val = self.data[key]
-        # See notes in the VarsWithSources docstring for caveats and limitations of the source tracking
-        display.debug("variable '%s' from source: %s" % (key, self.sources.get(key, "unknown")))
-        return val
-
-    def __setitem__(self, key, value):
-        self.data[key] = value
-
-    def __delitem__(self, key):
-        del self.data[key]
-
-    def __iter__(self):
-        return iter(self.data)
-
-    def __len__(self):
-        return len(self.data)
-
-    # Prevent duplicate debug messages by defining our own __contains__ pointing at the underlying dict
-    def __contains__(self, key):
-        return self.data.__contains__(key)
-
-    def copy(self):
-        return VarsWithSources.new_vars_with_sources(self.data.copy(), self.sources.copy())
 
     def __or__(self, other):
         if isinstance(other, MutableMapping):

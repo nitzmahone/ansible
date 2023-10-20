@@ -21,7 +21,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import mock_open, patch
 from ansible.errors import AnsibleError
-from ansible.parsing.yaml.objects import AnsibleBaseYAMLObject
+from ansible.module_utils.datatag import AnsibleSourcePosition
 
 
 class TestErrors(unittest.TestCase):
@@ -29,8 +29,6 @@ class TestErrors(unittest.TestCase):
     def setUp(self):
         self.message = 'This is the error message'
         self.unicode_message = 'This is an error with \xf0\x9f\x98\xa8 in it'
-
-        self.obj = AnsibleBaseYAMLObject()
 
     def test_basic_error(self):
         e = AnsibleError(self.message)
@@ -54,11 +52,11 @@ class TestErrors(unittest.TestCase):
         _get_error_lines_from_file() returns (target_line, prev_line)
         '''
 
-        self.obj.ansible_pos = ('foo.yml', 2, 1)
+        obj = AnsibleSourcePosition(src='foo.yml', line=2, col=1).tag("")
 
         mock_method.return_value = ['    line: foo\n', '- lineinfile: line=foo path=bar\n']
 
-        e = AnsibleError(self.message, self.obj)
+        e = AnsibleError(self.message, obj)
         self.assertEqual(
             e.message,
             ("This is the error message\n\nThe error appears to be in 'foo.yml': line 1, column 19, but may\nbe elsewhere in the "
@@ -69,10 +67,10 @@ class TestErrors(unittest.TestCase):
 
     @patch.object(AnsibleError, '_get_error_lines_from_file')
     def test_error_with_object(self, mock_method):
-        self.obj.ansible_pos = ('foo.yml', 1, 1)
+        obj = AnsibleSourcePosition(src='foo.yml', line=1, col=1).tag("")
 
         mock_method.return_value = ('this is line 1\n', '')
-        e = AnsibleError(self.message, self.obj)
+        e = AnsibleError(self.message, obj)
 
         self.assertEqual(
             e.message,
@@ -86,8 +84,8 @@ class TestErrors(unittest.TestCase):
 
         with patch('builtins.open', m):
             # this line will be found in the file
-            self.obj.ansible_pos = ('foo.yml', 1, 1)
-            e = AnsibleError(self.message, self.obj)
+            obj = AnsibleSourcePosition(src='foo.yml', line=1, col=1).tag("")
+            e = AnsibleError(self.message, obj)
             self.assertEqual(
                 e.message,
                 ("This is the error message\n\nThe error appears to be in 'foo.yml': line 1, column 1, but may\nbe elsewhere in the file depending on "
@@ -96,8 +94,8 @@ class TestErrors(unittest.TestCase):
 
             with patch('ansible.errors.to_text', side_effect=IndexError('Raised intentionally')):
                 # raise an IndexError
-                self.obj.ansible_pos = ('foo.yml', 2, 1)
-                e = AnsibleError(self.message, self.obj)
+                obj = AnsibleSourcePosition(src='foo.yml', line=2, col=1).tag("")
+                e = AnsibleError(self.message, obj)
                 self.assertEqual(
                     e.message,
                     ("This is the error message\n\nThe error appears to be in 'foo.yml': line 2, column 1, but may\nbe elsewhere in the file depending on "
@@ -109,8 +107,8 @@ class TestErrors(unittest.TestCase):
 
         with patch('builtins.open', m):
             # this line will be found in the file
-            self.obj.ansible_pos = ('foo.yml', 1, 1)
-            e = AnsibleError(self.unicode_message, self.obj)
+            obj = AnsibleSourcePosition(src='foo.yml', line=1, col=1).tag("")
+            e = AnsibleError(self.unicode_message, obj)
             self.assertEqual(
                 e.message,
                 ("This is an error with \xf0\x9f\x98\xa8 in it\n\nThe error appears to be in 'foo.yml': line 1, column 1, but may\nbe elsewhere in the "
@@ -125,8 +123,8 @@ class TestErrors(unittest.TestCase):
         with patch('builtins.open', m):
             # If the error occurs in the last line of the file, use the correct index to get the line
             # and avoid the IndexError
-            self.obj.ansible_pos = ('foo.yml', 4, 1)
-            e = AnsibleError(self.message, self.obj)
+            obj = AnsibleSourcePosition(src='foo.yml', line=4, col=1).tag("")
+            e = AnsibleError(self.message, obj)
             self.assertEqual(
                 e.message,
                 ("This is the error message\n\nThe error appears to be in 'foo.yml': line 4, column 1, but may\nbe elsewhere in the file depending on "
@@ -139,8 +137,8 @@ class TestErrors(unittest.TestCase):
         m.return_value.readlines.return_value = ['this is line 1\n', 'this is line 2\n', 'this is line 3\n', '  \n', '   \n', ' ']
 
         with patch('builtins.open', m):
-            self.obj.ansible_pos = ('foo.yml', 5, 1)
-            e = AnsibleError(self.message, self.obj)
+            obj = AnsibleSourcePosition(src='foo.yml', line=5, col=1).tag("")
+            e = AnsibleError(self.message, obj)
             self.assertEqual(
                 e.message,
                 ("This is the error message\n\nThe error appears to be in 'foo.yml': line 5, column 1, but may\nbe elsewhere in the file depending on "

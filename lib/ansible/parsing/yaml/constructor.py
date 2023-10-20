@@ -21,29 +21,32 @@ from yaml.constructor import SafeConstructor, ConstructorError
 from yaml.nodes import MappingNode
 
 from ansible import constants as C
-from ansible.module_utils.common.text.converters import to_bytes, to_native
-from ansible.parsing.yaml.objects import AnsibleMapping, AnsibleSequence, AnsibleUnicode, AnsibleVaultEncryptedUnicode
+from ansible.module_utils.common.text.converters import to_native, to_text
+from ansible.module_utils.datatag import (AnsibleSourcePosition, AnsibleTaggedObject, SensitiveData, UndecryptableVaultedValue,
+                                          TrustedAsTemplate, NotATemplate, VaultedValue)
 from ansible.parsing.vault import VaultLib
 from ansible.utils.display import Display
-from ansible.utils.unsafe_proxy import wrap_var
 
 display = Display()
 
 
 class AnsibleConstructor(SafeConstructor):
-    def __init__(self, file_name=None, vault_secrets=None):
+    def __init__(self, file_name=None, vault_secrets=None, trusted_as_template=False):
         self._ansible_file_name = file_name
         super(AnsibleConstructor, self).__init__()
         self._vaults = {}
         self.vault_secrets = vault_secrets or []
         self._vaults['default'] = VaultLib(secrets=self.vault_secrets)
+        self._trusted_as_template = trusted_as_template
+
+        # volatile state var used during recursive construction of a value tagged unsafe
+        self._unsafe_depth = 0
 
     def construct_yaml_map(self, node):
-        data = AnsibleMapping()
+        data = self._node_position_info(node).tag({})  # always an ordered dictionary on py3.7+
         yield data
         value = self.construct_mapping(node)
         data.update(value)
-        data.ansible_pos = self._node_position_info(node)
 
     def construct_mapping(self, node, deep=False):
         # Most of this is from yaml.constructor.SafeConstructor.  We replicate
@@ -54,10 +57,7 @@ class AnsibleConstructor(SafeConstructor):
                                    "expected a mapping node, but found %s" % node.id,
                                    node.start_mark)
         self.flatten_mapping(node)
-        mapping = AnsibleMapping()
-
-        # Add our extra information to the returned value
-        mapping.ansible_pos = self._node_position_info(node)
+        mapping = self._node_position_info(node).tag({})
 
         for key_node, value_node in node.value:
             key = self.construct_object(key_node, deep=deep)
@@ -68,8 +68,9 @@ class AnsibleConstructor(SafeConstructor):
                                        "found unacceptable key (%s)" % exc, key_node.start_mark)
 
             if key in mapping:
-                msg = (u'While constructing a mapping from {1}, line {2}, column {3}, found a duplicate dict key ({0}).'
-                       u' Using last defined value only.'.format(key, *mapping.ansible_pos))
+                pos = AnsibleSourcePosition.get_tag(mapping)
+                msg = (f'While constructing a mapping from {pos.src}, line {pos.line}, column {pos.col}, found a '
+                       f'duplicate dict key ({key}). Using last defined value only.')
                 if C.DUPLICATE_YAML_DICT_KEY == 'warn':
                     display.warning(msg)
                 elif C.DUPLICATE_YAML_DICT_KEY == 'error':
@@ -86,37 +87,71 @@ class AnsibleConstructor(SafeConstructor):
 
         return mapping
 
+    def construct_yaml_int(self, node):
+        value = super().construct_yaml_int(node)
+        return self._node_position_info(node).tag(value)
+
+    def construct_yaml_float(self, node):
+        value = super().construct_yaml_float(node)
+        return self._node_position_info(node).tag(value)
+
+    def construct_yaml_timestamp(self, node):
+        value = super().construct_yaml_timestamp(node)
+        return self._node_position_info(node).tag(value)
+
     def construct_yaml_str(self, node):
         # Override the default string handling function
         # to always return unicode objects
-        value = self.construct_scalar(node)
-        ret = AnsibleUnicode(value)
+        # FIXME: is this still necessary under Py3?
+        value = to_text(self.construct_scalar(node))
 
-        ret.ansible_pos = self._node_position_info(node)
+        # FIXME: factor out this shared code among the various constructor methods
+        tags = [self._node_position_info(node)]
 
-        return ret
+        if self._unsafe_depth:
+            tags.append(NotATemplate())
+        elif self._trusted_as_template:
+            tags.append(TrustedAsTemplate())
+
+        # FIXME: optimize this to support non-conditional list construction and a shared instance of TrustedAsTemplate
+        return AnsibleTaggedObject.tag(value, tags)
 
     def construct_vault_encrypted_unicode(self, node):
-        value = self.construct_scalar(node)
-        b_ciphertext_data = to_bytes(value)
-        # could pass in a key id here to choose the vault to associate with
-        # TODO/FIXME: plugin vault selector
+        ciphertext = self.construct_scalar(node)
+
+        # FIXME: ffs, vault-id support was never implemented for these- try all with secrets iteratively?
         vault = self._vaults['default']
         if vault.secrets is None:
+            # FIXME: do we want to conditionally fail on the absence of a special control context (eg, set by ansible-inventory), or ?
             raise ConstructorError(context=None, context_mark=None,
                                    problem="found !vault but no vault password provided",
                                    problem_mark=node.start_mark,
                                    note=None)
-        ret = AnsibleVaultEncryptedUnicode(b_ciphertext_data)
-        ret.vault = vault
-        ret.ansible_pos = self._node_position_info(node)
-        return ret
+
+        # always include the source position, and tag ciphertext so we can round-trip re-serialize
+        tags = [self._node_position_info(node), VaultedValue(ciphertext=ciphertext)]
+
+        if self._unsafe_depth:
+            tags.append(NotATemplate())
+        elif self._trusted_as_template:
+            tags.append(TrustedAsTemplate())
+
+        # FIXME: check the vault ID upfront?
+
+        try:
+            value = to_text(vault.decrypt(ciphertext))
+            tags.append(SensitiveData())  # always tag anything that was previously encrypted as SensitiveData
+        except Exception as ex:
+            value = ciphertext
+            tags.append(UndecryptableVaultedValue())  # specially tag things we aren't able to decrypt (cheaper than a flag in VaultedValue)
+
+        value = AnsibleTaggedObject.tag(value, tags)
+        return value
 
     def construct_yaml_seq(self, node):
-        data = AnsibleSequence()
+        data = self._node_position_info(node).tag([])
         yield data
         data.extend(self.construct_sequence(node))
-        data.ansible_pos = self._node_position_info(node)
 
     def construct_yaml_unsafe(self, node):
         try:
@@ -126,9 +161,18 @@ class AnsibleConstructor(SafeConstructor):
         except AttributeError:
             constructor = self.construct_object
 
-        value = constructor(node)
+        self._unsafe_depth += 1
 
-        return wrap_var(value)
+        try:
+            if node.id == 'scalar':
+                result = constructor(node)
+            else:
+                # non-deferred construction of hierarchical nodes so our stateful unsafe propagation behavior works
+                result = constructor(node, deep=True)
+        finally:
+            self._unsafe_depth -= 1
+
+        return result
 
     def _node_position_info(self, node):
         # the line number where the previous token has ended (plus empty lines)
@@ -142,7 +186,7 @@ class AnsibleConstructor(SafeConstructor):
         # '<string>') to the actual filename we read in
         datasource = self._ansible_file_name or node.start_mark.name
 
-        return (datasource, line, column)
+        return AnsibleSourcePosition(src=datasource, line=line, col=column)
 
 
 AnsibleConstructor.add_constructor(
@@ -156,6 +200,19 @@ AnsibleConstructor.add_constructor(
 AnsibleConstructor.add_constructor(
     u'tag:yaml.org,2002:str',
     AnsibleConstructor.construct_yaml_str)
+
+# FIXME: do we actually want to tag int/float/etc?
+AnsibleConstructor.add_constructor(
+    'tag:yaml.org,2002:int',
+    AnsibleConstructor.construct_yaml_int)
+
+AnsibleConstructor.add_constructor(
+    'tag:yaml.org,2002:float',
+    AnsibleConstructor.construct_yaml_float)
+
+AnsibleConstructor.add_constructor(
+    'tag:yaml.org,2002:timestamp',
+    AnsibleConstructor.construct_yaml_timestamp)
 
 AnsibleConstructor.add_constructor(
     u'tag:yaml.org,2002:python/unicode',
@@ -173,4 +230,5 @@ AnsibleConstructor.add_constructor(
     u'!vault',
     AnsibleConstructor.construct_vault_encrypted_unicode)
 
-AnsibleConstructor.add_constructor(u'!vault-encrypted', AnsibleConstructor.construct_vault_encrypted_unicode)
+# FIXME: did we ever need this?
+# AnsibleConstructor.add_constructor(u'!vault-encrypted', AnsibleConstructor.construct_vault_encrypted_unicode)

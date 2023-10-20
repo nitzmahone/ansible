@@ -22,6 +22,7 @@ from ansible import constants as C
 from ansible.config.manager import ensure_type
 from ansible.errors import AnsibleError, AnsibleFileNotFound, AnsibleAction, AnsibleActionFail
 from ansible.module_utils.common.text.converters import to_bytes, to_text, to_native
+from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.six import string_types
 from ansible.plugins.action import ActionBase
@@ -109,7 +110,7 @@ class ActionModule(ActionBase):
             try:
                 with open(b_tmp_source, 'rb') as f:
                     try:
-                        template_data = to_text(f.read(), errors='surrogate_or_strict')
+                        template_data = TrustedAsTemplate().tag(to_text(f.read(), errors='surrogate_or_strict'))
                     except UnicodeError:
                         raise AnsibleActionFail("Template source files must be utf-8 encoded")
 
@@ -127,9 +128,6 @@ class ActionModule(ActionBase):
 
                 # add ansible 'template' vars
                 temp_vars = task_vars.copy()
-                # NOTE in the case of ANSIBLE_DEBUG=1 task_vars is VarsWithSources(MutableMapping)
-                # so | operator cannot be used as it can be used only on dicts
-                # https://peps.python.org/pep-0584/#what-about-mapping-and-mutablemapping
                 temp_vars.update(generate_ansible_template_vars(self._task.args.get('src', None), source, dest))
 
                 # force templar to use AnsibleEnvironment to prevent issues with native types
@@ -148,7 +146,8 @@ class ActionModule(ActionBase):
                     trim_blocks=trim_blocks,
                     lstrip_blocks=lstrip_blocks
                 )
-                resultant = templar.do_template(template_data, preserve_trailing_newlines=True, escape_backslashes=False, overrides=overrides)
+
+                resultant = templar.template(template_data, preserve_trailing_newlines=True, escape_backslashes=False, overrides=overrides)
             except AnsibleAction:
                 raise
             except Exception as e:

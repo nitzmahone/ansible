@@ -77,7 +77,6 @@ lib/ansible/module_utils/six/__init__.py pylint:trailing-comma-tuple
 lib/ansible/module_utils/six/__init__.py pylint:unidiomatic-typecheck
 lib/ansible/module_utils/six/__init__.py replace-urlopen
 lib/ansible/module_utils/urls.py replace-urlopen
-lib/ansible/parsing/yaml/objects.py pylint:arguments-renamed
 lib/ansible/playbook/collectionsearch.py required-and-default-attributes  # https://github.com/ansible/ansible/issues/61460
 lib/ansible/playbook/role/include.py pylint:arguments-renamed
 lib/ansible/plugins/action/normal.py action-plugin-docs # default action plugin for modules without a dedicated action plugin
@@ -87,6 +86,11 @@ lib/ansible/plugins/inventory/advanced_host_list.py pylint:arguments-renamed
 lib/ansible/plugins/inventory/host_list.py pylint:arguments-renamed
 lib/ansible/utils/collection_loader/_collection_finder.py pylint:deprecated-class
 lib/ansible/utils/collection_loader/_collection_meta.py pylint:deprecated-class
+lib/ansible/utils/_wrapt.py mypy-3.10!skip # vendored code
+lib/ansible/utils/_wrapt.py mypy-3.11!skip # vendored code
+lib/ansible/utils/_wrapt.py mypy-3.12!skip # vendored code
+lib/ansible/utils/_wrapt.py pep8!skip # vendored code
+lib/ansible/utils/_wrapt.py pylint!skip # vendored code
 test/integration/targets/ansible-test-sanity/ansible_collections/ns/col/tests/integration/targets/hello/files/bad.py pylint:ansible-bad-function # ignore, required for testing
 test/integration/targets/ansible-test-sanity/ansible_collections/ns/col/tests/integration/targets/hello/files/bad.py pylint:ansible-bad-import-from # ignore, required for testing
 test/integration/targets/ansible-test-sanity/ansible_collections/ns/col/tests/integration/targets/hello/files/bad.py pylint:ansible-bad-import # ignore, required for testing
@@ -183,6 +187,7 @@ hacking/ticket_stubs/guide_newbie_about_gh_and_contributing_to_ansible.md pymark
 hacking/ticket_stubs/no_thanks.md pymarkdown:line-length
 hacking/ticket_stubs/no_thanks.md pymarkdown:no-bare-urls
 hacking/ticket_stubs/pr_duplicate.md pymarkdown:no-bare-urls
+lib/ansible/module_utils/datatag/__init__.py empty-init  # FIXME: fix this or fix the test
 hacking/ticket_stubs/pr_merged.md pymarkdown:no-bare-urls
 hacking/ticket_stubs/proposal.md pymarkdown:no-bare-urls
 hacking/ticket_stubs/question_not_bug.md pymarkdown:no-bare-urls
@@ -196,5 +201,6 @@ README.md pymarkdown:line-length
 test/integration/targets/ansible-vault/invalid_format/README.md pymarkdown:no-bare-urls
 test/support/README.md pymarkdown:no-bare-urls
 test/units/cli/test_data/role_skeleton/README.md pymarkdown:line-length
+lib/ansible/cli/doc.py pylint:ansible-deprecated-version
 test/integration/targets/find/files/hello_world.gbk no-smart-quotes
 test/integration/targets/find/files/hello_world.gbk no-unwanted-characters

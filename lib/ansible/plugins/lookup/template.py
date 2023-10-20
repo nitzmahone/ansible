@@ -37,7 +37,7 @@ DOCUMENTATION = """
             - Has no effect if global jinja2_native is False.
             - This offers more flexibility than the template module which does not use Jinja2 native types at all.
             - Mutually exclusive with the convert_data option.
-        default: False
+        default: True
         version_added: '2.11'
         type: bool
       template_vars:
@@ -89,9 +89,9 @@ import ansible.constants as C
 from ansible.errors import AnsibleError
 from ansible.plugins.lookup import LookupBase
 from ansible.module_utils.common.text.converters import to_text
+from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.template import generate_ansible_template_vars, AnsibleEnvironment
 from ansible.utils.display import Display
-from ansible.utils.native_jinja import NativeJinjaText
 
 
 display = Display()
@@ -126,7 +126,7 @@ class LookupModule(LookupBase):
             display.vvvv("File lookup using %s as file" % lookupfile)
             if lookupfile:
                 b_template_data, show_data = self._loader._get_file_contents(lookupfile)
-                template_data = to_text(b_template_data, errors='surrogate_or_strict')
+                template_data = TrustedAsTemplate().tag(to_text(b_template_data, errors='surrogate_or_strict'))
 
                 # set jinja2 internal search path for includes
                 searchpath = variables.get('ansible_search_path', [])
@@ -145,6 +145,7 @@ class LookupModule(LookupBase):
                 # plus some added by ansible (e.g., template_{path,mtime}),
                 # plus anything passed to the lookup with the template_vars=
                 # argument.
+                # FIXME: why isn't this a chainmap with a sacrificial bottom layer?
                 vars = deepcopy(variables)
                 vars.update(generate_ansible_template_vars(term, lookupfile))
                 vars.update(lookup_template_vars)
@@ -159,11 +160,6 @@ class LookupModule(LookupBase):
                     res = templar.template(template_data, preserve_trailing_newlines=True,
                                            convert_data=convert_data_p, escape_backslashes=False,
                                            overrides=overrides)
-
-                if (C.DEFAULT_JINJA2_NATIVE and not jinja2_native) or not convert_data_p:
-                    # jinja2_native is true globally but off for the lookup, we need this text
-                    # not to be processed by literal_eval anywhere in Ansible
-                    res = NativeJinjaText(res)
 
                 ret.append(res)
             else:

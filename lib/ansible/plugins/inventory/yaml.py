@@ -81,6 +81,8 @@ class InventoryModule(BaseFileInventoryPlugin):
 
     NAME = 'yaml'
 
+    trusted_by_default = False  # implicit trust behavior is already added by the YAML parser invoked by the loader
+
     def __init__(self):
 
         super(InventoryModule, self).__init__()
@@ -101,7 +103,7 @@ class InventoryModule(BaseFileInventoryPlugin):
         self.set_options()
 
         try:
-            data = self.loader.load_from_file(path, cache=False)
+            data = self.loader.load_from_file(path, cache=False, trusted_as_template=True)
         except Exception as e:
             raise AnsibleParserError(e)
 

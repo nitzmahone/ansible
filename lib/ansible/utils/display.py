@@ -49,11 +49,11 @@ from struct import unpack, pack
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleAssertionError, AnsiblePromptInterrupt, AnsiblePromptNoninteractive
 from ansible.module_utils.common.text.converters import to_bytes, to_text
+from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.module_utils.six import text_type
 from ansible.utils.color import stringc
 from ansible.utils.multiprocessing import context as multiprocessing_context
 from ansible.utils.singleton import Singleton
-from ansible.utils.unsafe_proxy import wrap_var
 
 if t.TYPE_CHECKING:
     # avoid circular import at runtime
@@ -297,6 +297,7 @@ class Display(metaclass=Singleton):
         self.noncow = C.ANSIBLE_COW_SELECTION
 
         self.set_cowsay_info()
+        self._wrap_stderr = C.WRAP_STDERR
 
         if self.b_cowsay:
             try:
@@ -534,26 +535,33 @@ class Display(metaclass=Singleton):
         if removed:
             raise AnsibleError(message_text)
 
-        wrapped = textwrap.wrap(message_text, self.columns, drop_whitespace=False)
-        message_text = "\n".join(wrapped) + "\n"
+        if message_text in self._deprecations:
+            return
 
-        if message_text not in self._deprecations:
-            self.display(message_text.strip(), color=C.COLOR_DEPRECATE, stderr=True)
-            self._deprecations[message_text] = 1
+        self._deprecations[message_text] = 1
+
+        if self._wrap_stderr:
+            wrapped = textwrap.wrap(message_text, self.columns, drop_whitespace=False)
+            message_text = "\n".join(wrapped) + "\n"
+
+        self.display(message_text.strip(), color=C.COLOR_DEPRECATE, stderr=True)
 
     @proxy_display
     def warning(self, msg: str, formatted: bool = False) -> None:
+        if msg in self._warns:
+            return
+
+        self._warns[msg] = 1
 
         if not formatted:
             new_msg = "[WARNING]: %s" % msg
-            wrapped = textwrap.wrap(new_msg, self.columns)
-            new_msg = "\n".join(wrapped) + "\n"
+            if self._wrap_stderr:
+                wrapped = textwrap.wrap(new_msg, self.columns)
+                new_msg = "\n".join(wrapped) + "\n"
         else:
             new_msg = "\n[WARNING]: \n%s" % msg
 
-        if new_msg not in self._warns:
-            self.display(new_msg, color=C.COLOR_WARN, stderr=True)
-            self._warns[new_msg] = 1
+        self.display(new_msg, color=C.COLOR_WARN, stderr=True)
 
     def system_warning(self, msg: str) -> None:
         if C.SYSTEM_WARNINGS:
@@ -600,15 +608,19 @@ class Display(metaclass=Singleton):
         self.display(u"%s\n" % to_text(out), color=color)
 
     def error(self, msg: str, wrap_text: bool = True) -> None:
+        if msg in self._errors:
+            return
+
         if wrap_text:
             new_msg = u"\n[ERROR]: %s" % msg
-            wrapped = textwrap.wrap(new_msg, self.columns)
-            new_msg = u"\n".join(wrapped) + u"\n"
+            if self._wrap_stderr:
+                wrapped = textwrap.wrap(new_msg, self.columns)
+                new_msg = u"\n".join(wrapped) + u"\n"
         else:
             new_msg = u"ERROR! %s" % msg
-        if new_msg not in self._errors:
-            self.display(new_msg, color=C.COLOR_ERROR, stderr=True)
-            self._errors[new_msg] = 1
+
+        self.display(new_msg, color=C.COLOR_ERROR, stderr=True)
+        self._errors[msg] = 1
 
     @staticmethod
     def prompt(msg: str, private: bool = False) -> str:
@@ -666,8 +678,9 @@ class Display(metaclass=Singleton):
         # handle utf-8 chars
         result = to_text(result, errors='surrogate_or_strict')
 
-        if unsafe:
-            result = wrap_var(result)
+        if not unsafe:
+            # to maintain backward compatibility, assume these values are safe to template
+            result = TrustedAsTemplate().tag(result)
         return result
 
     def _set_column_width(self) -> None:

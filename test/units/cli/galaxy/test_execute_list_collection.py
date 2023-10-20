@@ -212,7 +212,7 @@ def test_execute_list_collection_no_valid_paths(mocker, capsys, tmp_path_factory
     out, err = capsys.readouterr()
 
     assert '[WARNING]: - the configured path' in err
-    assert 'exists, but it\nis not a directory.' in err
+    assert 'exists, but it is not a directory.' in err
 
 
 def test_execute_list_collection_one_invalid_path(mocker, capsys, mock_from_path, tmp_path_factory):

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import typing as t
 
-from ansible.errors import AnsibleError, AnsibleUndefinedVariable
+from ansible.errors import AnsibleError
 from ansible.module_utils.common.text.converters import to_native
 from ansible.playbook.attribute import FieldAttribute
 from ansible.template import Templar
@@ -64,6 +64,7 @@ class Conditional:
         that was false.
         """
         for conditional in self.when:
+            # FIXME: WHY?! maybe defaults from playbook conditionals?
             if conditional is None or conditional == "":
                 res = True
             elif isinstance(conditional, bool):
@@ -84,30 +85,7 @@ class Conditional:
         return True, None
 
     def _check_conditional(self, conditional: str, templar: Templar, all_vars: dict[str, t.Any]) -> bool:
-        original = conditional
-        templar.available_variables = all_vars
-        try:
-            if templar.is_template(conditional):
-                display.warning(
-                    "conditional statements should not include jinja2 "
-                    "templating delimiters such as {{ }} or {%% %%}. "
-                    "Found: %s" % conditional
-                )
-                conditional = templar.template(conditional)
-                if isinstance(conditional, bool):
-                    return conditional
-                elif conditional == "":
-                    return False
+        # ensure we have a "known state" templar config (eg, no overridden junk)
+        conditional_templar = Templar(templar._loader, all_vars)
 
-            # If the result of the first-pass template render (to resolve inline templates) is marked unsafe,
-            # explicitly disable lookups on the final pass to prevent evaluation of untrusted content in the
-            # constructed template.
-            disable_lookups = hasattr(conditional, '__UNSAFE__')
-
-            # NOTE The spaces around True and False are intentional to short-circuit literal_eval for
-            #      jinja2_native=False and avoid its expensive calls.
-            return templar.template(
-                "{%% if %s %%} True {%% else %%} False {%% endif %%}" % conditional,
-                disable_lookups=disable_lookups).strip() == "True"
-        except AnsibleUndefinedVariable as e:
-            raise AnsibleUndefinedVariable("error while evaluating conditional (%s): %s" % (original, e))
+        return conditional_templar.evaluate_conditional(conditional)

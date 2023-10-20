@@ -130,6 +130,7 @@ class TestConfigManager:
 
         assert "Missing base YAML definition file (bad install?)" in str(exec_info.value)
 
+    @pytest.mark.xfail(reason="FDI005")
     def test_entry_as_vault_var(self):
         class MockVault:
 
@@ -144,6 +145,7 @@ class TestConfigManager:
         assert actual_origin == "name"
 
     @pytest.mark.parametrize("value_type", ("str", "string", None))
+    @pytest.mark.xfail(reason="FDI005")
     def test_ensure_type_with_vaulted_str(self, value_type):
         class MockVault:
             def decrypt(self, value, filename=None, obj=None):

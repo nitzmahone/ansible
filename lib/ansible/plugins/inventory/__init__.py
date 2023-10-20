@@ -17,23 +17,30 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import os
 import string
+import typing as t
 
 from collections.abc import Mapping
 
 from ansible.errors import AnsibleError, AnsibleParserError
 from ansible.inventory.group import to_safe_group_name as original_safe
 from ansible.parsing.utils.addresses import parse_address
+from ansible.parsing.dataloader import DataLoader
 from ansible.plugins import AnsiblePlugin
 from ansible.plugins.cache import CachePluginAdjudicator as CacheObject
 from ansible.module_utils.common.text.converters import to_bytes, to_native
-from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.six import string_types
-from ansible.template import Templar
+from ansible.template import Templar, _repr_from
 from ansible.utils.display import Display
 from ansible.utils.vars import combine_vars, load_extra_vars
+from ansible.utils.datatag import AnsibleVariableVisitor
+from ansible.module_utils.datatag import TrustedAsTemplate
+
+if t.TYPE_CHECKING:
+    from ansible.inventory.data import InventoryData
 
 display = Display()
 
@@ -145,8 +152,13 @@ def get_cache_plugin(plugin_name, **kwargs):
     return cache
 
 
-class BaseInventoryPlugin(AnsiblePlugin):
-    """ Parses an Inventory Source"""
+class _BaseInventoryPlugin(AnsiblePlugin):
+    """
+    Internal base implementation for inventory plugins.
+
+    Do not inherit from this directly, use one of its public subclasses instead.
+    Used to introduce an extra layer in the class hierarchy to allow Constructed to subclass this while remaining a mixin for existing inventory plugins.
+    """
 
     TYPE = 'generator'
 
@@ -158,14 +170,41 @@ class BaseInventoryPlugin(AnsiblePlugin):
 
     def __init__(self):
 
-        super(BaseInventoryPlugin, self).__init__()
+        super().__init__()
 
         self._options = {}
-        self.inventory = None
         self.display = display
-        self._vars = {}
 
-    def parse(self, inventory, loader, path, cache=True):
+        # These attributes are set by the parse() method on this (base) class.
+        self.loader: DataLoader | None = None
+        self.inventory: InventoryData | None = None
+        self._vars: dict[str, t.Any] | None = None
+
+    @functools.cached_property
+    def templar(self) -> Templar:
+        if self.trusted_by_default:
+            return _AutoTrustInputTemplar(loader=self.loader)
+
+        # FIXME: implement an optional "strict" mode that always uses the AnsibleVariableVisitor to check for unsupported types
+
+        return Templar(loader=self.loader)
+
+    @functools.cached_property
+    def trusted_by_default(self) -> bool | None:
+        """
+        Whether to trust templates by default.
+
+        If set to False, only trusted templates will be processed.
+        If set to None (the default), a deprecation warning will be issued.
+        Any other value is treated as True.
+
+        Most subclasses should override this with an attribute, which will disable the deprecation warning.
+        """
+        display.deprecated(f'Inventory plugin {self} did not set the `trusted_by_default` attribute. Assuming all input is trusted.', version='2.21')
+
+        return None
+
+    def parse(self, inventory: InventoryData, loader: DataLoader, path: str, cache: bool = True) -> None:
         ''' Populates inventory from the given data. Raises an error on any parse failure
             :arg inventory: a copy of the previously accumulated inventory data,
                  to be updated with any new data this plugin provides.
@@ -178,10 +217,8 @@ class BaseInventoryPlugin(AnsiblePlugin):
             :arg cache: a boolean that indicates if the plugin should use the cache or not
                  you can ignore if this plugin does not implement caching.
         '''
-
         self.loader = loader
         self.inventory = inventory
-        self.templar = Templar(loader=loader)
         self._vars = load_extra_vars(loader)
 
     def verify_file(self, path):
@@ -214,11 +251,10 @@ class BaseInventoryPlugin(AnsiblePlugin):
             :arg path: path to common yaml format config file for this plugin
         '''
 
-        config = {}
         try:
             # avoid loader cache so meta: refresh_inventory can pick up config changes
             # if we read more than once, fs cache should be good enough
-            config = self.loader.load_from_file(path, cache=False)
+            config = self.loader.load_from_file(path, cache=False, trusted_as_template=True)
         except Exception as e:
             raise AnsibleParserError(to_native(e))
 
@@ -279,7 +315,11 @@ class BaseInventoryPlugin(AnsiblePlugin):
         return (hostnames, port)
 
 
-class BaseFileInventoryPlugin(BaseInventoryPlugin):
+class BaseInventoryPlugin(_BaseInventoryPlugin):
+    """ Parses an Inventory Source """
+
+
+class BaseFileInventoryPlugin(_BaseInventoryPlugin):
     """ Parses a File based Inventory Source"""
 
     TYPE = 'storage'
@@ -329,24 +369,20 @@ class Cacheable(object):
         self._cache.set_cache()
 
 
-class Constructable(object):
-
+class Constructable(_BaseInventoryPlugin):
     def _compose(self, template, variables, disable_lookups=True):
         ''' helper method for plugins to compose variables for Ansible based on jinja2 expression and inventory vars'''
-        t = self.templar
-
         try:
             use_extra = self.get_option('use_extra_vars')
         except Exception:
             use_extra = False
 
         if use_extra:
-            t.available_variables = combine_vars(variables, self._vars)
+            self.templar.available_variables = combine_vars(variables, self._vars)
         else:
-            t.available_variables = variables
+            self.templar.available_variables = variables
 
-        return t.template('%s%s%s' % (t.environment.variable_start_string, template, t.environment.variable_end_string),
-                          disable_lookups=disable_lookups)
+        return self.templar.evaluate_expression(template, disable_lookups=disable_lookups)
 
     def _set_composite_vars(self, compose, variables, host, strict=False):
         ''' loops over compose entries to create vars for hosts '''
@@ -368,10 +404,10 @@ class Constructable(object):
                 variables = combine_vars(variables, self.inventory.get_host(host).get_vars())
             self.templar.available_variables = variables
             for group_name in groups:
-                conditional = "{%% if %s %%} True {%% else %%} False {%% endif %%}" % groups[group_name]
+                conditional = groups[group_name]
                 group_name = self._sanitize_group_name(group_name)
                 try:
-                    result = boolean(self.templar.template(conditional))
+                    result = self.templar.evaluate_conditional(conditional, allow_inline_template=False)
                 except Exception as e:
                     if strict:
                         raise AnsibleParserError("Could not add host %s to group %s: %s" % (host, group_name, to_native(e)))
@@ -459,3 +495,20 @@ class Constructable(object):
                             raise AnsibleParserError("No key or key resulted empty for %s in host %s, invalid entry" % (keyed.get('key'), host))
                 else:
                     raise AnsibleParserError("Invalid keyed group entry, it must be a dictionary: %s " % keyed)
+
+
+class _AutoTrustInputTemplar(Templar):
+    """Compatibility wrapper around Templar that automatically trusts templates passed directly to some templating methods."""
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        self._visitor = AnsibleVariableVisitor(trusted_as_template=True)
+
+    def template(self, variable: t.Any, *args, **kwargs) -> t.Any:
+        return super().template(self._visitor.visit(variable), *args, **kwargs)
+
+    def evaluate_expression(self, expression: str, *args, **kwargs) -> t.Any:
+        return super().evaluate_expression(self._visitor.visit(expression), *args, **kwargs)
+
+    def evaluate_conditional(self, conditional: str, *args, **kwargs) -> bool:
+        return super().evaluate_conditional(self._visitor.visit(conditional), *args, **kwargs)

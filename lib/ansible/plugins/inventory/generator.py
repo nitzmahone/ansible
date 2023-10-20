@@ -84,6 +84,8 @@ class InventoryModule(BaseInventoryPlugin):
 
     NAME = 'generator'
 
+    trusted_by_default = False  # implicit trust behavior is already added by the YAML parser invoked by the loader
+
     def __init__(self):
 
         super(InventoryModule, self).__init__()
@@ -101,6 +103,7 @@ class InventoryModule(BaseInventoryPlugin):
 
     def template(self, pattern, variables):
         self.templar.available_variables = variables
+        # FIXME: FDI036
         return self.templar.do_template(pattern)
 
     def add_parents(self, inventory, child, parents, template_vars):

@@ -6,9 +6,6 @@ from collections import ChainMap
 
 from jinja2.utils import missing
 
-from ansible.errors import AnsibleError, AnsibleUndefinedVariable
-from ansible.module_utils.common.text.converters import to_native
-
 
 __all__ = ['AnsibleJ2Vars']
 
@@ -34,31 +31,32 @@ class AnsibleJ2Vars(ChainMap):
             globals,
         )
 
-    def __getitem__(self, varname):
-        variable = super().__getitem__(varname)
+    def __getitem__(self, key):
+        return self._templar.environment._proxy_or_render_template(super().__getitem__(key), key)
 
-        from ansible.vars.hostvars import HostVars
-        if (varname == "vars" and isinstance(variable, dict)) or isinstance(variable, HostVars) or hasattr(variable, '__UNSAFE__'):
-            return variable
+        # # defer recursive templating of complex types
+        # if not isinstance(variable, str):
+        #     return variable
 
-        try:
-            return self._templar.template(variable)
-        except AnsibleUndefinedVariable as e:
-            # Instead of failing here prematurely, return an Undefined
-            # object which fails only after its first usage allowing us to
-            # do lazy evaluation and passing it into filters/tests that
-            # operate on such objects.
-            return self._templar.environment.undefined(
-                hint=f"{variable}: {e.message}",
-                name=varname,
-                exc=AnsibleUndefinedVariable,
-            )
-        except Exception as e:
-            msg = getattr(e, 'message', None) or to_native(e)
-            raise AnsibleError(
-                f"An unhandled exception occurred while templating '{to_native(variable)}'. "
-                f"Error was a {type(e)}, original message: {msg}"
-            )
+        # # FIXME: share this code with deferred template resolution
+        # try:
+        #     return self._templar.template(variable)
+        # except AnsibleUndefinedVariable as e:
+        #     # Instead of failing here prematurely, return an Undefined
+        #     # object which fails only after its first usage allowing us to
+        #     # do lazy evaluation and passing it into filters/tests that
+        #     # operate on such objects.
+        #     return self._templar.environment.undefined(
+        #         hint=f"{variable}: {e.message}",
+        #         name=varname,
+        #         exc=AnsibleUndefinedVariable,
+        #     )
+        # except Exception as e:
+        #     msg = getattr(e, 'message', None) or to_native(e)
+        #     raise AnsibleError(
+        #         f"An unhandled exception occurred while templating '{to_native(variable)}'. "
+        #         f"Error was a {type(e)}, original message: {msg}"
+        #     )
 
     def add_locals(self, locals):
         """If locals are provided, create a copy of self containing those

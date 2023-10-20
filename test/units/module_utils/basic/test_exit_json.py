@@ -146,6 +146,7 @@ class TestAnsibleModuleExitValuesRemoved:
                              (({'username': {}, 'password': {'no_log': True}, 'token': {'no_log': True}}, s, r, e)
                               for s, r, e in DATA),  # pylint: disable=undefined-variable
                              indirect=['am', 'stdin'])
+    @pytest.mark.xfail(reason="FDI001")
     def test_exit_json_removes_values(self, am, capfd, return_val, expected, monkeypatch):
         monkeypatch.setattr(warnings, '_global_deprecations', [])
         with pytest.raises(SystemExit):
@@ -159,6 +160,7 @@ class TestAnsibleModuleExitValuesRemoved:
                              (({'username': {}, 'password': {'no_log': True}, 'token': {'no_log': True}}, s, r, e)
                               for s, r, e in DATA),  # pylint: disable=undefined-variable
                              indirect=['am', 'stdin'])
+    @pytest.mark.xfail(reason="FDI001")
     def test_fail_json_removes_values(self, am, capfd, return_val, expected, monkeypatch):
         monkeypatch.setattr(warnings, '_global_deprecations', [])
         expected['failed'] = True

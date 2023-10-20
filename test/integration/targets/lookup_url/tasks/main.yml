@@ -1,6 +1,6 @@
 - name: Test that retrieving a url works
   set_fact:
-    web_data: "{{ lookup('url', 'https://' ~ httpbin_host ~ '/get?one') }}"
+    web_data: "{{ lookup('url', 'https://' ~ httpbin_host ~ '/get?one') | from_json }}"
 
 - name: Assert that the url was retrieved
   assert:

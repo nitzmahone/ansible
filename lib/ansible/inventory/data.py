@@ -24,10 +24,14 @@ from ansible import constants as C
 from ansible.errors import AnsibleError
 from ansible.inventory.group import Group
 from ansible.inventory.host import Host
+from ansible.module_utils.datatag import (AnsibleSourcePosition)
 from ansible.module_utils.six import string_types
+from ansible.plugins.inventory import BaseInventoryPlugin
+from ansible.utils._wrapt import ObjectProxy
 from ansible.utils.display import Display
 from ansible.utils.vars import combine_vars
 from ansible.utils.path import basedir
+from ansible.utils.datatag import AnsibleVariableVisitor
 
 display = Display()
 
@@ -280,3 +284,21 @@ class InventoryData(object):
                 self._groups_dict_cache[group_name] = [h.name for h in group.get_hosts()]
 
         return self._groups_dict_cache
+
+
+# FIXME: bikeshed- InventoryDataAPIWrapper, or ?
+class _InventoryDataWrapper(ObjectProxy):
+    _target_plugin = None
+
+    def __init__(self, referent: InventoryData, target_plugin: BaseInventoryPlugin, source_path: str):
+        super().__init__(referent)
+        self._target_plugin = target_plugin
+        # fallback source position to ensure that vars are tagged with at least the file they came from
+        self._default_source_position_tag = AnsibleSourcePosition(src=source_path)
+        self._inspector = AnsibleVariableVisitor(
+            trusted_as_template=self._target_plugin.trusted_by_default is not False,
+            source_position=self._default_source_position_tag,
+        )
+
+    def set_variable(self, entity, varname, value):
+        return self.__wrapped__.set_variable(entity, varname, self._inspector.visit(value))

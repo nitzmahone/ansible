@@ -26,6 +26,7 @@ from ansible.module_utils.compat.version import LooseVersion, StrictVersion
 
 from ansible import errors
 from ansible.module_utils.common.text.converters import to_native, to_text
+from ansible.module_utils.datatag import VaultedValue
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.utils.display import Display
 from ansible.utils.version import SemanticVersion
@@ -140,7 +141,7 @@ def vault_encrypted(value):
 
     .. versionadded:: 2.10
     """
-    return getattr(value, '__ENCRYPTED__', False) and value.is_encrypted()
+    return VaultedValue.is_tagged_on(value)
 
 
 def match(value, pattern='', ignorecase=False, multiline=False):

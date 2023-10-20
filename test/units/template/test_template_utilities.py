@@ -106,10 +106,7 @@ class TestCountNewlines(unittest.TestCase):
         self.assertEqual(_count_newlines_from_end(u'The quick brown fox jumped over the lazy dog' + u'\n' * 1000), 1000)
 
 
-class TestAnsibleUndefined(unittest.TestCase):
-    def test_getattr(self):
-        val = AnsibleUndefined()
+def test_ansible_undefined_getattr_self() -> None:
+    value = AnsibleUndefined()
 
-        self.assertIs(getattr(val, 'foo'), val)
-
-        self.assertRaises(AttributeError, getattr, val, '__UNSAFE__')
+    assert getattr(value, 'foo') is value

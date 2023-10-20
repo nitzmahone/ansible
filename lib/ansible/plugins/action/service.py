@@ -48,9 +48,10 @@ class ActionModule(ActionBase):
         if module == 'auto':
             try:
                 if self._task.delegate_to:  # if we delegate, we should use delegated host's facts
-                    module = self._templar.template("{{hostvars['%s']['ansible_facts']['service_mgr']}}" % self._task.delegate_to)
+                    module = self._templar.template_literal_expression("hostvars[__delegate_to]['ansible_facts']['service_mgr']",
+                                                                       var_overrides=dict(__delegate_to=self._task.delegate_to))
                 else:
-                    module = self._templar.template('{{ansible_facts.service_mgr}}')
+                    module = self._templar.resolve_variable_expression('ansible_facts.service_mgr')
             except Exception:
                 pass  # could not get it from template!
 

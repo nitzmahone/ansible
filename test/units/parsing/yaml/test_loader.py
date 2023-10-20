@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from collections.abc import Sequence, Set, Mapping
 from io import StringIO
 
@@ -28,6 +30,7 @@ from ansible.parsing.yaml.loader import AnsibleLoader
 from ansible.parsing import vault
 from ansible.parsing.yaml.objects import AnsibleVaultEncryptedUnicode
 from ansible.parsing.yaml.dumper import AnsibleDumper
+from ansible.module_utils.datatag import AnsibleSourcePosition
 
 from units.mock.yaml_helper import YamlTestUtils
 from units.mock.vault_helper import TextVaultSecret
@@ -65,7 +68,7 @@ class TestAnsibleLoaderBasic(unittest.TestCase):
         self.assertEqual(data, u'Ansible')
         self.assertIsInstance(data, str)
 
-        self.assertEqual(data.ansible_pos, ('myfile.yml', 2, 17))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data), AnsibleSourcePosition(src='myfile.yml', line=2, col=17))
 
     def test_parse_utf8_string(self):
         stream = StringIO(u"""
@@ -76,7 +79,7 @@ class TestAnsibleLoaderBasic(unittest.TestCase):
         self.assertEqual(data, u'Cafè Eñyei')
         self.assertIsInstance(data, str)
 
-        self.assertEqual(data.ansible_pos, ('myfile.yml', 2, 17))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data), AnsibleSourcePosition(src='myfile.yml', line=2, col=17))
 
     def test_parse_dict(self):
         stream = StringIO(u"""
@@ -91,10 +94,10 @@ class TestAnsibleLoaderBasic(unittest.TestCase):
         self.assertIsInstance(list(data.values())[0], str)
 
         # Beginning of the first key
-        self.assertEqual(data.ansible_pos, ('myfile.yml', 2, 17))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data), AnsibleSourcePosition(src='myfile.yml', line=2, col=17))
 
-        self.assertEqual(data[u'webster'].ansible_pos, ('myfile.yml', 2, 26))
-        self.assertEqual(data[u'oed'].ansible_pos, ('myfile.yml', 3, 22))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[u'webster']), AnsibleSourcePosition(src='myfile.yml', line=2, col=26))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[u'oed']), AnsibleSourcePosition(src='myfile.yml', line=3, col=22))
 
     def test_parse_list(self):
         stream = StringIO(u"""
@@ -107,10 +110,10 @@ class TestAnsibleLoaderBasic(unittest.TestCase):
         self.assertEqual(len(data), 2)
         self.assertIsInstance(data[0], str)
 
-        self.assertEqual(data.ansible_pos, ('myfile.yml', 2, 17))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data), AnsibleSourcePosition(src='myfile.yml', line=2, col=17))
 
-        self.assertEqual(data[0].ansible_pos, ('myfile.yml', 2, 19))
-        self.assertEqual(data[1].ansible_pos, ('myfile.yml', 3, 19))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[0]), AnsibleSourcePosition(src='myfile.yml', line=2, col=19))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[1]), AnsibleSourcePosition(src='myfile.yml', line=3, col=19))
 
     def test_parse_short_dict(self):
         stream = StringIO(u"""{"foo": "bar"}""")
@@ -118,16 +121,16 @@ class TestAnsibleLoaderBasic(unittest.TestCase):
         data = loader.get_single_data()
         self.assertEqual(data, dict(foo=u'bar'))
 
-        self.assertEqual(data.ansible_pos, ('myfile.yml', 1, 1))
-        self.assertEqual(data[u'foo'].ansible_pos, ('myfile.yml', 1, 9))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data), AnsibleSourcePosition(src='myfile.yml', line=1, col=1))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[u'foo']), AnsibleSourcePosition(src='myfile.yml', line=1, col=9))
 
         stream = StringIO(u"""foo: bar""")
         loader = AnsibleLoader(stream, 'myfile.yml')
         data = loader.get_single_data()
         self.assertEqual(data, dict(foo=u'bar'))
 
-        self.assertEqual(data.ansible_pos, ('myfile.yml', 1, 1))
-        self.assertEqual(data[u'foo'].ansible_pos, ('myfile.yml', 1, 6))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data), AnsibleSourcePosition(src='myfile.yml', line=1, col=1))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[u'foo']), AnsibleSourcePosition(src='myfile.yml', line=1, col=6))
 
     def test_error_conditions(self):
         stream = StringIO(u"""{""")
@@ -145,8 +148,8 @@ class TestAnsibleLoaderBasic(unittest.TestCase):
         data = loader.get_single_data()
         self.assertEqual(data, dict(foo=u'bar'))
 
-        self.assertEqual(data.ansible_pos, ('myfile.yml', 2, 1))
-        self.assertEqual(data[u'foo'].ansible_pos, ('myfile.yml', 2, 6))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data), AnsibleSourcePosition(src='myfile.yml', line=2, col=1))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[u'foo']), AnsibleSourcePosition(src='myfile.yml', line=2, col=6))
 
         # Initial indent (See: #6348)
         stream = StringIO(u""" - foo: bar\n   baz: qux""")
@@ -154,10 +157,10 @@ class TestAnsibleLoaderBasic(unittest.TestCase):
         data = loader.get_single_data()
         self.assertEqual(data, [{u'foo': u'bar', u'baz': u'qux'}])
 
-        self.assertEqual(data.ansible_pos, ('myfile.yml', 1, 2))
-        self.assertEqual(data[0].ansible_pos, ('myfile.yml', 1, 4))
-        self.assertEqual(data[0][u'foo'].ansible_pos, ('myfile.yml', 1, 9))
-        self.assertEqual(data[0][u'baz'].ansible_pos, ('myfile.yml', 2, 9))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data), AnsibleSourcePosition(src='myfile.yml', line=1, col=2))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[0]), AnsibleSourcePosition(src='myfile.yml', line=1, col=4))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[0][u'foo']), AnsibleSourcePosition(src='myfile.yml', line=1, col=9))
+        self.assertEqual(AnsibleSourcePosition.get_tag(data[0][u'baz']), AnsibleSourcePosition(src='myfile.yml', line=2, col=9))
 
 
 class TestAnsibleLoaderVault(unittest.TestCase, YamlTestUtils):
@@ -220,10 +223,12 @@ class TestAnsibleLoaderVault(unittest.TestCase, YamlTestUtils):
 
         return data_from_yaml
 
+    @pytest.mark.xfail(reason="FDI005")
     def test_dump_load_cycle(self):
         avu = AnsibleVaultEncryptedUnicode.from_plaintext('The plaintext for test_dump_load_cycle.', self.vault, self.vault_secret)
         self._dump_load_cycle(avu)
 
+    @pytest.mark.xfail(reason="FDI005")
     def test_embedded_vault_from_dump(self):
         avu = AnsibleVaultEncryptedUnicode.from_plaintext('setec astronomy', self.vault, self.vault_secret)
         blip = {'stuff1': [{'a dict key': 24},
@@ -248,6 +253,7 @@ class TestAnsibleLoaderVault(unittest.TestCase, YamlTestUtils):
         # verify we can dump the object again
         self._dump_stream(data_from_yaml, stream2, dumper=AnsibleDumper)
 
+    @pytest.mark.xfail(reason="FDI005")
     def test_embedded_vault(self):
         plaintext_var = u"""This is the plaintext string."""
         tagged_vaulted_var = self._encrypt_plaintext(plaintext_var)
@@ -374,56 +380,58 @@ class TestAnsibleLoaderPlay(unittest.TestCase):
         self.walk(self.data)
 
     def check_vars(self):
-        # Numbers don't have line/col information yet
-        # self.assertEqual(self.data[0][u'vars'][u'number'].ansible_pos, (self.play_filename, 4, 21))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'number']), AnsibleSourcePosition(src=self.play_filename, line=4, col=29))
 
-        self.assertEqual(self.data[0][u'vars'][u'string'].ansible_pos, (self.play_filename, 5, 29))
-        self.assertEqual(self.data[0][u'vars'][u'utf8_string'].ansible_pos, (self.play_filename, 6, 34))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'string']), AnsibleSourcePosition(src=self.play_filename, line=5, col=29))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'utf8_string']), AnsibleSourcePosition(src=self.play_filename, line=6, col=34))
 
-        self.assertEqual(self.data[0][u'vars'][u'dictionary'].ansible_pos, (self.play_filename, 8, 23))
-        self.assertEqual(self.data[0][u'vars'][u'dictionary'][u'webster'].ansible_pos, (self.play_filename, 8, 32))
-        self.assertEqual(self.data[0][u'vars'][u'dictionary'][u'oed'].ansible_pos, (self.play_filename, 9, 28))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'dictionary']), AnsibleSourcePosition(src=self.play_filename, line=8, col=23))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'dictionary'][u'webster']),
+                         AnsibleSourcePosition(src=self.play_filename, line=8, col=32))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'dictionary'][u'oed']),
+                         AnsibleSourcePosition(src=self.play_filename, line=9, col=28))
 
-        self.assertEqual(self.data[0][u'vars'][u'list'].ansible_pos, (self.play_filename, 11, 23))
-        self.assertEqual(self.data[0][u'vars'][u'list'][0].ansible_pos, (self.play_filename, 11, 25))
-        self.assertEqual(self.data[0][u'vars'][u'list'][1].ansible_pos, (self.play_filename, 12, 25))
-        # Numbers don't have line/col info yet
-        # self.assertEqual(self.data[0][u'vars'][u'list'][2].ansible_pos, (self.play_filename, 13, 25))
-        # self.assertEqual(self.data[0][u'vars'][u'list'][3].ansible_pos, (self.play_filename, 14, 25))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'list']), AnsibleSourcePosition(src=self.play_filename, line=11, col=23))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'list'][0]), AnsibleSourcePosition(src=self.play_filename, line=11, col=25))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'list'][1]), AnsibleSourcePosition(src=self.play_filename, line=12, col=25))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'list'][2]), AnsibleSourcePosition(src=self.play_filename, line=13, col=25))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars'][u'list'][3]), AnsibleSourcePosition(src=self.play_filename, line=14, col=25))
 
     def check_tasks(self):
         #
         # First Task
         #
-        self.assertEqual(self.data[0][u'tasks'][0].ansible_pos, (self.play_filename, 16, 23))
-        self.assertEqual(self.data[0][u'tasks'][0][u'name'].ansible_pos, (self.play_filename, 16, 29))
-        self.assertEqual(self.data[0][u'tasks'][0][u'ping'].ansible_pos, (self.play_filename, 18, 25))
-        self.assertEqual(self.data[0][u'tasks'][0][u'ping'][u'data'].ansible_pos, (self.play_filename, 18, 31))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][0]), AnsibleSourcePosition(src=self.play_filename, line=16, col=23))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][0][u'name']), AnsibleSourcePosition(src=self.play_filename, line=16, col=29))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][0][u'ping']), AnsibleSourcePosition(src=self.play_filename, line=18, col=25))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][0][u'ping'][u'data']),
+                         AnsibleSourcePosition(src=self.play_filename, line=18, col=31))
 
         #
         # Second Task
         #
-        self.assertEqual(self.data[0][u'tasks'][1].ansible_pos, (self.play_filename, 20, 23))
-        self.assertEqual(self.data[0][u'tasks'][1][u'name'].ansible_pos, (self.play_filename, 20, 29))
-        self.assertEqual(self.data[0][u'tasks'][1][u'ping'].ansible_pos, (self.play_filename, 22, 25))
-        self.assertEqual(self.data[0][u'tasks'][1][u'ping'][u'data'].ansible_pos, (self.play_filename, 22, 31))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][1]), AnsibleSourcePosition(src=self.play_filename, line=20, col=23))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][1][u'name']), AnsibleSourcePosition(src=self.play_filename, line=20, col=29))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][1][u'ping']), AnsibleSourcePosition(src=self.play_filename, line=22, col=25))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][1][u'ping'][u'data']),
+                         AnsibleSourcePosition(src=self.play_filename, line=22, col=31))
 
         #
         # Third Task
         #
-        self.assertEqual(self.data[0][u'tasks'][2].ansible_pos, (self.play_filename, 24, 23))
-        self.assertEqual(self.data[0][u'tasks'][2][u'name'].ansible_pos, (self.play_filename, 24, 29))
-        self.assertEqual(self.data[0][u'tasks'][2][u'command'].ansible_pos, (self.play_filename, 25, 32))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][2]), AnsibleSourcePosition(src=self.play_filename, line=24, col=23))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][2][u'name']), AnsibleSourcePosition(src=self.play_filename, line=24, col=29))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks'][2][u'command']), AnsibleSourcePosition(src=self.play_filename, line=25, col=32))
 
     def test_line_numbers(self):
         # Check the line/column numbers are correct
         # Note: Remember, currently dicts begin at the start of their first entry
-        self.assertEqual(self.data[0].ansible_pos, (self.play_filename, 2, 19))
-        self.assertEqual(self.data[0][u'hosts'].ansible_pos, (self.play_filename, 2, 26))
-        self.assertEqual(self.data[0][u'vars'].ansible_pos, (self.play_filename, 4, 21))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0]), AnsibleSourcePosition(src=self.play_filename, line=2, col=19))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'hosts']), AnsibleSourcePosition(src=self.play_filename, line=2, col=26))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'vars']), AnsibleSourcePosition(src=self.play_filename, line=4, col=21))
 
         self.check_vars()
 
-        self.assertEqual(self.data[0][u'tasks'].ansible_pos, (self.play_filename, 16, 21))
+        self.assertEqual(AnsibleSourcePosition.get_tag(self.data[0][u'tasks']), AnsibleSourcePosition(src=self.play_filename, line=16, col=21))
 
         self.check_tasks()

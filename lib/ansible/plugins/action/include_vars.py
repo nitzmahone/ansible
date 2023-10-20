@@ -9,6 +9,7 @@ import pathlib
 
 import ansible.constants as C
 from ansible.errors import AnsibleError
+from ansible.module_utils.datatag import AnsibleSourcePosition
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.plugins.action import ActionBase
@@ -168,9 +169,9 @@ class ActionModule(ActionBase):
                 )
                 self.source_dir = path_to_use
         else:
-            if hasattr(self._task._ds, '_data_source'):
+            if tag := AnsibleSourcePosition.get_tag(self._task._ds):
                 current_dir = (
-                    "/".join(self._task._ds._data_source.split('/')[:-1])
+                    "/".join(tag.src.split('/')[:-1])
                 )
                 self.source_dir = path.join(current_dir, self.source_dir)
 
@@ -238,7 +239,7 @@ class ActionModule(ActionBase):
             data = to_text(b_data, errors='surrogate_or_strict')
 
             self.show_content = show_content
-            data = self._loader.load(data, file_name=filename, show_content=show_content)
+            data = self._loader.load(data, file_name=filename, show_content=show_content, trusted_as_template=True)
             if not data:
                 data = dict()
             if not isinstance(data, dict):

@@ -1,0 +1,28 @@
+- hosts: localhost
+  vars:
+    super_secret: '{{ "this is secret" | no_log }}'
+
+  gather_facts: no
+
+  tasks:
+  - name: use a var-only sensitive value, note that it's still available to us
+    ping:
+      data: '{{ super_secret }}'
+    register: ping_result
+
+  - assert:
+      that:
+      - ping_result.ping == 'this is secret'
+      - ping_result.ping is tagged_with('SensitiveData')
+      - ping_result.ping is not tagged_with('TrustedAsTemplate')
+
+  - name: use a composite sensitive value, note that it's still available to us
+    ping:
+      data: 'before {{ super_secret }} after'
+    register: ping_result
+
+  - assert:
+      that:
+      - ping_result.ping == 'before this is secret after'
+      - ping_result.ping is tagged_with('SensitiveData')
+      - ping_result.ping is not tagged_with('TrustedAsTemplate')

@@ -613,7 +613,7 @@ def main():
             elif port:
                 alt_connect_timeout = math.ceil(_timedelta_total_seconds(end - utcnow()))
                 try:
-                    s = socket.create_connection((host, port), min(connect_timeout, alt_connect_timeout))
+                    s = socket.create_connection((host, int(port)), min(connect_timeout, alt_connect_timeout))
                 except Exception:
                     # Failed to connect by connect_timeout. wait and try again
                     pass

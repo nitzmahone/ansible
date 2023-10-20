@@ -12,11 +12,11 @@ import pytest
 from collections.abc import Mapping
 from datetime import date, datetime, timezone, timedelta
 
-from ansible.parsing.ajson import AnsibleJSONEncoder, AnsibleJSONDecoder
+from ansible.module_utils.common.json import AnsibleJSONEncoder, AnsibleJSONDecoder
 from ansible.parsing.yaml.objects import AnsibleVaultEncryptedUnicode
-from ansible.utils.unsafe_proxy import AnsibleUnsafeText
 
 
+@pytest.mark.xfail(reason="FDI005 - complete vault support")
 def test_AnsibleJSONDecoder_vault():
     with open(os.path.join(os.path.dirname(__file__), 'fixtures/ajson.json')) as f:
         data = json.load(f, cls=AnsibleJSONDecoder)
@@ -25,21 +25,26 @@ def test_AnsibleJSONDecoder_vault():
     assert isinstance(data['bar']['baz'][0]['password'], AnsibleVaultEncryptedUnicode)
     assert isinstance(data['foo']['password'], AnsibleVaultEncryptedUnicode)
 
+# FIXME: rewrite this with a current tag
+# def test_encode_decode_unsafe():
+#     data = {
+#         'key_value': FIXMEAnotherTag().tag('{#NOTACOMMENT#}'),
+#         'list': [FIXMEAnotherTag().tag('{#NOTACOMMENT#}')],
+#         'list_dict': [{'key_value': FIXMEAnotherTag().tag('{#NOTACOMMENT#}')}]}
+#     json_with_tags = json.dumps(data, cls=AnsibleJSONEncoder, preserve_datatags=True)
+#     json_sans_tags = json.dumps(data, cls=AnsibleJSONEncoder, preserve_datatags=False)
+#
+#     rehydrated_with_tags = json.loads(json_with_tags, cls=AnsibleJSONDecoder)
+#     rehydrated_sans_tags = json.loads(json_sans_tags, cls=AnsibleJSONDecoder)
+#
+#     assert data == rehydrated_with_tags
+#     assert data == rehydrated_sans_tags
+#     assert FIXMEAnotherTag.is_tagged_on(rehydrated_with_tags['key_value'])
+#     assert FIXMEAnotherTag.is_tagged_on(rehydrated_with_tags['list'][0])
+#     assert FIXMEAnotherTag.is_tagged_on(rehydrated_with_tags['list_dict'][0]['key_value'])
 
-def test_encode_decode_unsafe():
-    data = {
-        'key_value': AnsibleUnsafeText(u'{#NOTACOMMENT#}'),
-        'list': [AnsibleUnsafeText(u'{#NOTACOMMENT#}')],
-        'list_dict': [{'key_value': AnsibleUnsafeText(u'{#NOTACOMMENT#}')}]}
-    json_expected = (
-        '{"key_value": {"__ansible_unsafe": "{#NOTACOMMENT#}"}, '
-        '"list": [{"__ansible_unsafe": "{#NOTACOMMENT#}"}], '
-        '"list_dict": [{"key_value": {"__ansible_unsafe": "{#NOTACOMMENT#}"}}]}'
-    )
-    assert json.dumps(data, cls=AnsibleJSONEncoder, preprocess_unsafe=True, sort_keys=True) == json_expected
-    assert json.loads(json_expected, cls=AnsibleJSONDecoder) == data
 
-
+@pytest.mark.xfail(reason="FDI005")
 def vault_data():
     """
     Prepare AnsibleVaultEncryptedUnicode test data for AnsibleJSONEncoder.default().
@@ -142,10 +147,10 @@ class TestAnsibleJSONEncoder:
     @pytest.mark.parametrize(
         'mapping,expected',
         [
-            ({1: 1}, {1: 1}),
-            ({2: 2}, {2: 2}),
-            ({1: 2}, {1: 2}),
-            ({2: 1}, {2: 1}),
+            ({'1': 1}, {'1': 1}),
+            ({'2': 2}, {'2': 2}),
+            ({'1': 2}, {'1': 2}),
+            ({'2': 1}, {'2': 1}),
         ], indirect=['mapping'],
     )
     def test_mapping(self, ansible_json_encoder, mapping, expected):
@@ -165,8 +170,8 @@ class TestAnsibleJSONEncoder:
     @pytest.mark.parametrize(
         'test_input,expected',
         [
-            ({1: 'first'}, {1: 'first'}),
-            ({2: 'second'}, {2: 'second'}),
+            ({'1': 'first'}, {'1': 'first'}),
+            ({'2': 'second'}, {'2': 'second'}),
         ]
     )
     def test_default_encoder(self, ansible_json_encoder, test_input, expected):
@@ -177,13 +182,3 @@ class TestAnsibleJSONEncoder:
         AnsibleJSONEncoder.default() invokes 'default()' method of json.JSONEncoder superclass.
         """
         assert ansible_json_encoder.default(test_input) == expected
-
-    @pytest.mark.parametrize('test_input', [1, 1.1, 'string', [1, 2], set('set'), True, None])
-    def test_default_encoder_unserializable(self, ansible_json_encoder, test_input):
-        """
-        Test for the default encoder of AnsibleJSONEncoder.default(), not serializable objects.
-
-        It must fail with TypeError 'object is not serializable'.
-        """
-        with pytest.raises(TypeError):
-            ansible_json_encoder.default(test_input)

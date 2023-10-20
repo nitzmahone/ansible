@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from ansible.template import Templar
+from ansible.template import Templar, TemplateContext
 from ansible.template.vars import AnsibleJ2Vars
 
 
@@ -26,7 +26,10 @@ def test_globals_empty():
 
 
 def test_globals():
-    res = dict(AnsibleJ2Vars(Templar(None), {'foo': 'bar', 'blip': [1, 2, 3]}))
-    assert isinstance(res, dict)
-    assert 'foo' in res
-    assert res['foo'] == 'bar'
+    templar = Templar(None)
+
+    with TemplateContext(template_value="", templar=templar):
+        res = dict(AnsibleJ2Vars(templar, {'foo': 'bar', 'blip': [1, 2, 3]}))
+        assert isinstance(res, dict)
+        assert 'foo' in res
+        assert res['foo'] == 'bar'
