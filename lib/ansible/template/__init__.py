@@ -1198,8 +1198,6 @@ class Templar:
                 return result
 
             elif is_sequence(variable):
-                # FIXME: propagate input container tags
-                # FIXME: FDI031 handle taggability of container proxy values here
                 tagged_list = AnsibleTaggedObject.tag_copy(
                     variable,
                     (self._template_recursive(
@@ -1213,8 +1211,6 @@ class Templar:
                 )
                 return tagged_list
             elif isinstance(variable, Mapping):
-                # propagate outer container tags to the possibly-templated copy we're making
-                # FIXME: FDI031 handle taggability of container proxy values here
                 tagged_dict = AnsibleTaggedObject.tag_copy(
                     variable,
                     ((k, self._template_recursive(
