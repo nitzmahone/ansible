@@ -33,11 +33,10 @@ from ansible.plugins import AnsiblePlugin
 from ansible.plugins.cache import CachePluginAdjudicator as CacheObject
 from ansible.module_utils.common.text.converters import to_bytes, to_native
 from ansible.module_utils.six import string_types
-from ansible.template import Templar, _repr_from
+from ansible.template import Templar
 from ansible.utils.display import Display
 from ansible.utils.vars import combine_vars, load_extra_vars
 from ansible.utils.datatag import AnsibleVariableVisitor
-from ansible.module_utils.datatag import TrustedAsTemplate
 
 if t.TYPE_CHECKING:
     from ansible.inventory.data import InventoryData

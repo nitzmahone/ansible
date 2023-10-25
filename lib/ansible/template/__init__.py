@@ -60,7 +60,7 @@ from ansible.errors import (
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
 from ansible.module_utils.common.collections import is_sequence
-from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, SensitiveData, TrustedAsTemplate, NotATemplate
+from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, SensitiveData, TrustedAsTemplate, NotATemplate, _AnsibleTaggedVaultBomb, _VaultBomb
 from ansible.plugins.loader import filter_loader, lookup_loader, test_loader
 from ansible.template.template import AnsibleJ2Template
 from ansible.template.vars import AnsibleJ2Vars
@@ -77,6 +77,7 @@ from ansible.module_utils.datatag import (
 from ansible.module_utils.datatag.access import (
     AmbientContextBase,
     AnsibleAccessContext,
+    DetonateVaultBombsTripwire,
     POORLY_NAMED_SENTINEL,
     SensitiveDataAccessTripwire,
     UndecryptableAccessTripwire,
@@ -667,6 +668,13 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
     # FIXME: fully implement iteration support
     # FIXME: do we need to implement templated key support?
 
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        # delegate to the base class __repr__ impl
+        return dict.__repr__(dict(self.items()))
+
     def items(self):
         for key, value in super().items():
             # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
@@ -695,6 +703,13 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
         for value in super().__iter__():
             yield self._templar.environment._proxy_or_render_template(value)
 
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        # delegate to the base class __repr__ impl
+        return list.__repr__(list(self.__iter__()))
+
     def native_copy(self) -> list:
         return list(list.__iter__(self))
 
@@ -718,6 +733,13 @@ class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
         for value in super().__iter__():
             yield self._templar.environment._proxy_or_render_template(value)
 
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        # delegate to the base class __repr__ impl
+        return tuple.__repr__(tuple(self.__iter__()))
+
     def native_copy(self) -> tuple:
         return tuple(tuple.__iter__(self))
 
@@ -733,6 +755,13 @@ class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
     def __iter__(self):
         for value in super().__iter__():
             yield self._templar.environment._proxy_or_render_template(value)
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        # delegate to the base class __repr__ impl
+        return set.__repr__(set(self.__iter__()))
 
     def native_copy(self) -> set:
         return set(set.__iter__(self))
@@ -1077,20 +1106,20 @@ class Templar:
             # we need to do one last recursive template pass over the resulting container (since we're not doing it on Jinja resolve anymore). This will
             # ensure that we never allow containers with untemplated strings to escape the template system, and that any
             # embedded Undefined values we encounter will raise AnsibleUndefinedError if fail_on_undefined is set (FIXME once we actually do that).
-            if not TemplateContext.current() and not isinstance(result, str) and isinstance(result, (Mapping, Sequence)):
-                # data is our only positional arg, everything else is kwargs-only
-                result = self._template_recursive(result, **template_kwargs)
-                # FIXME: why does this break (debug the else cases)?
-                # if isinstance(variable, str):
-                #     result = self._template_recursive(result, **template_kwargs)
-                # else:
-                #     pass
+            if not TemplateContext.current():
+                if not isinstance(result, str) and isinstance(result, (Mapping, Sequence)):
+                    # data is our only positional arg, everything else is kwargs-only
+                    with DetonateVaultBombsTripwire():
+                        result = self._template_recursive(result, **template_kwargs)
+                    # FIXME: why does this break (debug the else cases)?
+                    # if isinstance(variable, str):
+                    #     result = self._template_recursive(result, **template_kwargs)
+                    # else:
+                    #     pass
 
-        if undecryptable.is_tripped:
-            # FIXME: proper error type?
-            # FIXME: include template source and/or stack detail
-            # FIXME: proper error message; currently placeholder for `ansible-vault` integration test compatibility
-            raise AnsibleError("failed to decrypt one or more values: {0}".format(undecryptable.undecryptable_values))
+                if undecryptable.is_tripped:
+                    # we encountered at least one UndecryptableVaultedValue; raise an error if any remain in the result
+                    self._detonate_vault_bombs(result)
 
         # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
         for deprecation_template, deprecation in deprecated.deprecated_access:
@@ -1457,12 +1486,25 @@ class Templar:
             # display.warning(f'skipped untrusted template {data=}')
             from traceback import format_stack
 
+            # FIXME: make traceback optional
             tb = "\n".join(format_stack())
             display.warning(f'skipped untrusted template {_repr_from(data)}; execution stack:\n{tb}')
 
             return False
 
         return True
+
+
+    def _detonate_vault_bombs(self, value: t.Any) -> None:
+        if type(value) is _AnsibleTaggedVaultBomb:
+            value.detonate()
+        elif is_sequence(value):
+            for x in value:
+                self._detonate_vault_bombs(x)
+        elif isinstance(value, Mapping):
+            # FIXME: any worry about keys?
+            for x in value.values():
+                self._detonate_vault_bombs(x)
 
     def do_template(self, data, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None, overrides=None, disable_lookups=False,
                     convert_data=False):

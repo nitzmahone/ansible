@@ -765,6 +765,66 @@ class _AnsibleTaggedTuple(tuple, AnsibleTaggedObject):
         return super()._copy_collection()
 
 
+# FIXME: rename
+class _VaultBombPoorlyNamedTag(AnsibleSingletonTagBase):
+    __slots__ = _NO_INSTANCE_STORAGE
+
+
+# FIXME: rehome this to controller-only?
+class UndecryptableVaultError(Exception):
+    pass
+
+
+# FIXME: rehome this to controller-only?
+class _VaultBomb:
+    __slots__ = tuple(('_value',))
+
+    def __init__(self, value: str) -> None:
+        self._value = value
+
+    @staticmethod
+    def arm(value: str) -> _VaultBomb:
+        # sample the tag so we can preserve the ciphertext on the wrapped string
+        uvv_tag = UndecryptableVaultedValue.get_tag(value)
+
+        if not uvv_tag or not isinstance(value, str):
+            raise ValueError('only strings tagged with UndecryptableVaultedValue can be armed')
+
+        wrapped = AnsibleTaggedObject.tag_copy(value, _VaultBomb(uvv_tag.tag(str(value))))
+        wrapped = AnsibleTaggedObject.untag(wrapped, UndecryptableVaultedValue)
+        wrapped = AnsibleTaggedObject.tag(wrapped, _VaultBombPoorlyNamedTag())
+        return wrapped
+
+    def disarm(self) -> str:
+        unwrapped = AnsibleTaggedObject.tag_copy(self, self._value)
+        unwrapped = _VaultBombPoorlyNamedTag.untag(unwrapped)
+        return unwrapped
+
+    def detonate(self, *args, **kwargs) -> None:
+        msg = "attempt to use undecryptable variable"
+        source_pos = AnsibleSourcePosition.get_tag(self)
+        if source_pos:
+            msg = f'{msg} from {str(source_pos)!r}'
+        raise UndecryptableVaultError(msg)
+
+
+# FIXME: rehome this to controller-only?
+class _AnsibleTaggedVaultBomb(_VaultBomb, AnsibleTaggedObject):
+    __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
+
+    @classmethod
+    def _instance_factory(cls, value: t.Any, tags_mapping: _AnsibleTagsMapping) -> AnsibleTaggedObject:
+        instance = cls(value._value if isinstance(value, _VaultBomb) else value)
+        instance._ansible_tags_mapping = tags_mapping
+        return instance
+
+    # explicitly set __getattr__ and most methods inherited from "object" to detonate on access
+    # FIXME: __setattr__ needs to be there at least for __init__
+    # FIXME: unit test to verify that we're getting all possible object-inherited methods (eg, new Python versions sometimes add new ones)
+    __delattr__ = __eq__ = __format__ = __ge__ = __getattr__ = __getstate__ = __gt__ = __hash__ = __iter__ = __le__ = __lt__ = __ne__ = __reduce__ = \
+        __reduce_ex__ = __repr__ = __sizeof__ = __str__ = _VaultBomb.detonate
+
+
 # This set gets augmented with additional types when some controller-only types are imported.
 # While we could proxy or subclass builtin singletons, they're idiomatically compared with "is" reference
 # equality, which we can't customize.

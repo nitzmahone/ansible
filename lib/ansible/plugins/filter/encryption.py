@@ -7,6 +7,7 @@ from jinja2.exceptions import UndefinedError
 
 from ansible.errors import AnsibleFilterError, AnsibleFilterTypeError
 from ansible.module_utils.common.text.converters import to_native, to_bytes
+from ansible.module_utils.datatag.access import _VaultBomb
 from ansible.module_utils.datatag import VaultedValue
 from ansible.module_utils.six import string_types, binary_type
 from ansible.parsing.vault import is_encrypted, VaultSecret, VaultLib
@@ -49,6 +50,8 @@ def do_vault(data, secret, salt=None, vault_id='filter_default', wrap_object=Fal
 
 
 def do_unvault(vault, secret, vault_id='filter_default', vaultid=None):
+    if isinstance(vault, _VaultBomb):
+        vault = vault.disarm()
 
     if not isinstance(secret, (string_types, binary_type, Undefined)):
         raise AnsibleFilterTypeError("Secret passed is required to be as string, instead we got: %s" % type(secret))

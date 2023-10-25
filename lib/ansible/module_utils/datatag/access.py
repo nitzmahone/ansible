@@ -11,6 +11,8 @@ from . import (
     AnsibleTaggedObject,
     SensitiveData,
     UndecryptableVaultedValue,
+    _VaultBomb,
+    _VaultBombPoorlyNamedTag
 )
 
 POORLY_NAMED_SENTINEL = object()
@@ -114,6 +116,7 @@ class AnsibleAccessContext:
             if ctx._tag_type_interest.intersection(tagtypes):  # this context is interested in one or more of our tags
                 # FIXME: come up with a cheaper better way to only keep the innermost mutation
                 # noinspection PyProtectedMember
+                # FIXME: FDI037 - should we be chaining "res", passing original "o", or both?
                 res = ctx._notify(o)
                 if res is not POORLY_NAMED_SENTINEL and isinstance(ctx, _MutatingAccessContextBase) and value is POORLY_NAMED_SENTINEL:
                     value = res
@@ -131,12 +134,12 @@ class UndecryptableAccessTripwire(_MutatingAccessContextBase):
 
     def __init__(self):
         self._tripped = False
-        self._undecryptable_values = []
 
     def _notify(self, o: t.Any) -> t.Any:
+        # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
         if UndecryptableVaultedValue.is_tagged_on(o):
             self._tripped = True
-            self._undecryptable_values.append(o)
+            return _VaultBomb.arm(o)
             # FIXME: return a bogus temp value, or just the normal undecrypted string?
 
         return POORLY_NAMED_SENTINEL
@@ -145,9 +148,18 @@ class UndecryptableAccessTripwire(_MutatingAccessContextBase):
     def is_tripped(self) -> bool:
         return self._tripped
 
-    @property
-    def undecryptable_values(self):
-        return self._undecryptable_values
+
+# FIXME: maybe move to another file?
+class DetonateVaultBombsTripwire(_MutatingAccessContextBase):
+    _tag_type_interest = frozenset([_VaultBombPoorlyNamedTag])
+
+    def _notify(self, o: t.Any) -> t.Any:
+        # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
+        if isinstance(o, _VaultBomb):
+            # FIXME: use central error forensics and a type
+            o.detonate()
+
+        return POORLY_NAMED_SENTINEL
 
 
 class SensitiveDataAccessTripwire(_NotifiableAccessContextBase):
@@ -157,6 +169,7 @@ class SensitiveDataAccessTripwire(_NotifiableAccessContextBase):
         self._tripped = False
 
     def _notify(self, o: t.Any) -> t.Any:
+        # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
         if SensitiveData.is_tagged_on(o):
             self._tripped = True
 
@@ -174,6 +187,7 @@ class SensitiveDataMask(_MutatingAccessContextBase):
         self._mask_message = mask_message
 
     def _notify(self, o: t.Any) -> t.Any:
+        # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
         if SensitiveData.is_tagged_on(o):
             return self._mask_message
 
