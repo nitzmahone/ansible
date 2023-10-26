@@ -98,7 +98,6 @@ class _AnsibleTaggedVaultBomb(_VaultBomb, AnsibleTaggedObject):
         # deferred imperative customization, invoked by AnsibleTaggedObject
         # explicitly set __getattr__ and most methods inherited from "object" to detonate on access
         # FIXME: __setattr__ needs to be there at least for __init__
-        # FIXME: unit test to verify that we're getting all possible object-inherited methods (eg, new Python versions sometimes add new ones)
         for name in cls._detonate_methods:
             setattr(cls, name, cls.detonate)
 
