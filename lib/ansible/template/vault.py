@@ -68,23 +68,34 @@ class _AnsibleTaggedVaultBomb(_VaultBomb, AnsibleTaggedObject):
     __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
 
     _detonate_methods = (
+        # Intercept `str` dunder methods.
+        # This ensures any attempted usage as a `str` will detonate.
+        '__add__',
+        '__contains__',
         '__delattr__',
         '__eq__',
         '__format__',
         '__ge__',
-        '__getattr__',
+        '__getitem__',
         '__getstate__',
         '__gt__',
         '__hash__',
         '__iter__',
         '__le__',
+        '__len__',
         '__lt__',
+        '__mod__',
+        '__mul__',
         '__ne__',
         '__reduce__',
         '__reduce_ex__',
         '__repr__',
+        '__rmod__',
+        '__rmul__',
         '__sizeof__',
         '__str__',
+        # Ensure that attempted usage of any undefined method will also detonate.
+        '__getattr__',
     )
 
     @classmethod
@@ -96,7 +107,6 @@ class _AnsibleTaggedVaultBomb(_VaultBomb, AnsibleTaggedObject):
     @classmethod
     def _init_class(cls):
         # deferred imperative customization, invoked by AnsibleTaggedObject
-        # explicitly set __getattr__ and most methods inherited from "object" to detonate on access
         # FIXME: __setattr__ needs to be there at least for __init__
         for name in cls._detonate_methods:
             setattr(cls, name, cls.detonate)
