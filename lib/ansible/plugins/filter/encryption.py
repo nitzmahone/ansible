@@ -7,10 +7,10 @@ from jinja2.exceptions import UndefinedError
 
 from ansible.errors import AnsibleFilterError, AnsibleFilterTypeError
 from ansible.module_utils.common.text.converters import to_native, to_bytes
-from ansible.module_utils.datatag.access import _VaultBomb
 from ansible.module_utils.datatag import VaultedValue
 from ansible.module_utils.six import string_types, binary_type
 from ansible.parsing.vault import is_encrypted, VaultSecret, VaultLib
+from ansible.template.vault import _VaultBomb
 from ansible.utils.display import Display
 
 display = Display()

@@ -60,10 +60,11 @@ from ansible.errors import (
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
 from ansible.module_utils.common.collections import is_sequence
-from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, SensitiveData, TrustedAsTemplate, NotATemplate, _AnsibleTaggedVaultBomb
+from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, SensitiveData, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import filter_loader, lookup_loader, test_loader
 from ansible.template.template import AnsibleJ2Template
 from ansible.template.vars import AnsibleJ2Vars
+from ansible.template.vault import _AnsibleTaggedVaultBomb, DetonateVaultBombsTripwire, UndecryptableAccessTripwire
 from ansible.module_utils.datatag import (
     Deprecated,
     _AnsibleTaggedDict,
@@ -77,10 +78,8 @@ from ansible.module_utils.datatag import (
 from ansible.module_utils.datatag.access import (
     AmbientContextBase,
     AnsibleAccessContext,
-    DetonateVaultBombsTripwire,
     POORLY_NAMED_SENTINEL,
     SensitiveDataAccessTripwire,
-    UndecryptableAccessTripwire,
     _NotifiableAccessContextBase,
 )
 

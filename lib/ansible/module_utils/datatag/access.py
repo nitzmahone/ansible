@@ -10,9 +10,6 @@ from . import (
     AnsibleDatatagBase,
     AnsibleTaggedObject,
     SensitiveData,
-    UndecryptableVaultedValue,
-    _VaultBomb,
-    _VaultBombPoorlyNamedTag
 )
 
 POORLY_NAMED_SENTINEL = object()
@@ -126,40 +123,6 @@ class AnsibleAccessContext:
             value = o
 
         return value
-
-
-# tracks undecryptable values encountered while templating
-class UndecryptableAccessTripwire(_MutatingAccessContextBase):
-    _tag_type_interest = frozenset([UndecryptableVaultedValue])
-
-    def __init__(self):
-        self._tripped = False
-
-    def _notify(self, o: t.Any) -> t.Any:
-        # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
-        if UndecryptableVaultedValue.is_tagged_on(o):
-            self._tripped = True
-            return _VaultBomb.arm(o)
-            # FIXME: return a bogus temp value, or just the normal undecrypted string?
-
-        return POORLY_NAMED_SENTINEL
-
-    @property
-    def is_tripped(self) -> bool:
-        return self._tripped
-
-
-# FIXME: maybe move to another file?
-class DetonateVaultBombsTripwire(_MutatingAccessContextBase):
-    _tag_type_interest = frozenset([_VaultBombPoorlyNamedTag])
-
-    def _notify(self, o: t.Any) -> t.Any:
-        # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
-        if isinstance(o, _VaultBomb):
-            # FIXME: use central error forensics and a type
-            o.detonate()
-
-        return POORLY_NAMED_SENTINEL
 
 
 class SensitiveDataAccessTripwire(_NotifiableAccessContextBase):
