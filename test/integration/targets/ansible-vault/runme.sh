@@ -571,7 +571,7 @@ ansible-playbook symlink.yml "$@" --vault-password-file symlink/get-password-sym
 
 ### NEGATIVE TESTS
 
-ER='failed to decrypt'
+ER='attempt to use undecryptable variable'
 #### no secrets
 # 'real script'
 ansible-playbook realpath.yml "$@" 2>&1 |grep "${ER}"
@@ -579,7 +579,7 @@ ansible-playbook realpath.yml "$@" 2>&1 |grep "${ER}"
 # using symlink
 ansible-playbook symlink.yml "$@" 2>&1 |grep "${ER}"
 
-ER='failed to decrypt'
+ER='attempt to use undecryptable variable'
 ### wrong secrets
 # 'real script'
 ansible-playbook realpath.yml "$@" --vault-password-file symlink/get-password-symlink 2>&1 |grep "${ER}"
