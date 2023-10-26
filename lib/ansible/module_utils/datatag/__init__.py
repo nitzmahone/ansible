@@ -812,17 +812,40 @@ class _VaultBomb:
 class _AnsibleTaggedVaultBomb(_VaultBomb, AnsibleTaggedObject):
     __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
 
+    _detonate_methods = (
+        '__delattr__',
+        '__eq__',
+        '__format__',
+        '__ge__',
+        '__getattr__',
+        '__getstate__',
+        '__gt__',
+        '__hash__',
+        '__iter__',
+        '__le__',
+        '__lt__',
+        '__ne__',
+        '__reduce__',
+        '__reduce_ex__',
+        '__repr__',
+        '__sizeof__',
+        '__str__',
+    )
+
     @classmethod
     def _instance_factory(cls, value: t.Any, tags_mapping: _AnsibleTagsMapping) -> AnsibleTaggedObject:
         instance = cls(value._value if isinstance(value, _VaultBomb) else value)
         instance._ansible_tags_mapping = tags_mapping
         return instance
 
-    # explicitly set __getattr__ and most methods inherited from "object" to detonate on access
-    # FIXME: __setattr__ needs to be there at least for __init__
-    # FIXME: unit test to verify that we're getting all possible object-inherited methods (eg, new Python versions sometimes add new ones)
-    __delattr__ = __eq__ = __format__ = __ge__ = __getattr__ = __getstate__ = __gt__ = __hash__ = __iter__ = __le__ = __lt__ = __ne__ = __reduce__ = \
-        __reduce_ex__ = __repr__ = __sizeof__ = __str__ = _VaultBomb.detonate
+    @classmethod
+    def _init_class(cls):
+        # deferred imperative customization, invoked by AnsibleTaggedObject
+        # explicitly set __getattr__ and most methods inherited from "object" to detonate on access
+        # FIXME: __setattr__ needs to be there at least for __init__
+        # FIXME: unit test to verify that we're getting all possible object-inherited methods (eg, new Python versions sometimes add new ones)
+        for name in cls._detonate_methods:
+            setattr(cls, name, cls.detonate)
 
 
 # This set gets augmented with additional types when some controller-only types are imported.

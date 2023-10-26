@@ -60,7 +60,7 @@ from ansible.errors import (
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
 from ansible.module_utils.common.collections import is_sequence
-from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, SensitiveData, TrustedAsTemplate, NotATemplate, _AnsibleTaggedVaultBomb, _VaultBomb
+from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, SensitiveData, TrustedAsTemplate, NotATemplate, _AnsibleTaggedVaultBomb
 from ansible.plugins.loader import filter_loader, lookup_loader, test_loader
 from ansible.template.template import AnsibleJ2Template
 from ansible.template.vars import AnsibleJ2Vars
@@ -1489,7 +1489,6 @@ class Templar:
             return False
 
         return True
-
 
     def _detonate_vault_bombs(self, value: t.Any) -> None:
         if type(value) is _AnsibleTaggedVaultBomb:
