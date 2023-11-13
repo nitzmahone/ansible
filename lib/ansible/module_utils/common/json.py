@@ -25,6 +25,8 @@ class AnsibleJSONEncoder(json.JSONEncoder):
     _wrap_container_types = (list, set, tuple, dict)
 
     class _WrappedValue:
+        __slots__ = tuple(('wrapped',))
+
         def __init__(self, wrapped):
             self.wrapped = wrapped
 
@@ -47,7 +49,7 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         # of sub-values, for containers) in a non-serializable wrapper (_WrappedValue). The wrapper forces the values back
         # through this method on future iterations; without this, or a pre-flight copy, objects that are subclasses of
         # native types get short-circuited through their default representation by the serializer.
-        if isinstance(o, _WrappedValue):
+        if type(o) is _WrappedValue:
             o = o.wrapped
         # managed access; allows external access audit and/or replacement of values
         o = AnsibleAccessContext.current().access(o)
