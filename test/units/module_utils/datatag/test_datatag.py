@@ -216,6 +216,7 @@ def test_instance_copy_roundtrip(serializable_instance: CopyProtocol):
 
 @pytest.mark.parametrize("taggable_instance", taggable_instances, ids=[type(instance).__name__ for instance in taggable_instances])
 def test_repr(taggable_instance) -> None:
+    """Ensure the repr() of tagged instance is identical to the repr() returned by the underlying native Python type."""
     tagged_instance = NotATemplate().tag(taggable_instance)
 
     assert repr(tagged_instance) == repr(taggable_instance)
@@ -223,6 +224,7 @@ def test_repr(taggable_instance) -> None:
 
 @pytest.mark.parametrize("taggable_instance", taggable_instances, ids=[type(instance).__name__ for instance in taggable_instances])
 def test_str(taggable_instance) -> None:
+    """Ensure the str() of tagged instance is identical to the str() returned by the underlying native Python type."""
     tagged_instance = NotATemplate().tag(taggable_instance)
 
     assert str(tagged_instance) == str(taggable_instance)
@@ -230,6 +232,7 @@ def test_str(taggable_instance) -> None:
 
 @pytest.mark.parametrize("taggable_instance", taggable_instances, ids=[type(instance).__name__ for instance in taggable_instances])
 def test_untag(taggable_instance):
+    """Ensure tagging and then untagging a taggable instance returns new instances as appropriate, with the correct tags and type."""
     tagged_instance = SensitiveData().tag(NotATemplate().tag(taggable_instance))
 
     one_less_tag = NotATemplate.untag(tagged_instance)
@@ -251,6 +254,7 @@ def test_untag(taggable_instance):
 
 @pytest.mark.parametrize("serializable_type", serializable_types, ids=[instance_type.__name__ for instance_type in serializable_types])
 def test_slots(serializable_type: type) -> None:
+    """Ensure __slots__ are properly defined on all serializable types."""
     if serializable_type in (AnsibleSerializable, AnsibleDatatagBase, AnsibleSingletonTagBase, AnsibleTaggedObject):
         expect_slots = True  # non-dataclass base types have no attributes, but still use slots
     elif issubclass(serializable_type, AnsibleSingletonTagBase):
@@ -423,6 +427,7 @@ def value_and_types_ids() -> list[str]:
 
 @pytest.mark.parametrize("value, value_type, type_under_test", values_and_types(), ids=value_and_types_ids())
 def test_tag(value: t.Any, value_type: t.Optional[type], type_under_test: type) -> None:
+    """Ensure tagging a value returns the correct type and tags."""
     tag = SensitiveData()
 
     result = AnsibleTaggedObject.tag(value, tags=tag, value_type=value_type)
@@ -433,6 +438,7 @@ def test_tag(value: t.Any, value_type: t.Optional[type], type_under_test: type) 
 
 @pytest.mark.parametrize("value, value_type, type_under_test", values_and_types(), ids=value_and_types_ids())
 def test_tag_copy(value: t.Any, value_type: t.Optional[type], type_under_test: type) -> None:
+    """Ensure copying tags returns the correct type and tags."""
     tag = SensitiveData()
     src = tag.tag("sensitive")
 
