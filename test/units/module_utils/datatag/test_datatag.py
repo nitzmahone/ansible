@@ -97,15 +97,18 @@ datatag_instances = [
     VaultedValue(ciphertext="hi mom I'm a secret"),
 ]
 
-taggable_instances = [
-    b'hi mom',
+taggable_container_instances = [
     dict(hi="mom"),
-    42.0,
-    42,
     ['hi', 'mom'],
     {'hi mom'},  # kept as a single item set to allow repr() testing without worrying about non-deterministic order of set items
-    "hi mom",
     ("hi", "mom",),
+]
+
+taggable_instances = taggable_container_instances + [
+    b'hi mom',
+    42.0,
+    42,
+    "hi mom",
     datetime.datetime(2023, 9, 15, 21, 5, 30, 1900, datetime.timezone.utc),
     datetime.date(2023, 9, 15),
     datetime.time(21, 5, 30, 1900),
