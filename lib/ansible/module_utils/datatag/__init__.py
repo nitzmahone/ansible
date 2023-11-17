@@ -186,6 +186,13 @@ Also used as a sentinel to cheaply determine that a type is not tagged by using 
 """
 
 
+# FIXME: This should probably reside elsewhere.
+def is_non_scalar_collection_type(value: type) -> bool:
+    """Returns True if the value is a non-scalar collection type, otherwise returns False."""
+    # FIXME: this includes _AnsibleTaggedVaultBomb and thus _VaultBomb
+    return issubclass(value, Collection) and not issubclass(value, str) and not issubclass(value, bytes)
+
+
 def _try_get_internal_tags_mapping(value: t.Any) -> _AnsibleTagsMapping:
     """Return the internal tag mapping of the given value, or a sentinel value if it is not tagged."""
     # noinspection PyBroadException
@@ -311,6 +318,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
     native_type: type
 
     _tagged_type_map: t.Dict[type, t.Type['AnsibleTaggedObject']] = {}
+    _collection_types: t.Set[t.Type[Collection]] = set()
 
     _ansible_tags_mapping = _EMPTY_INTERNAL_TAGS_MAPPING
     """
@@ -334,6 +342,9 @@ class AnsibleTaggedObject(AnsibleSerializable):
             cls.native_type = cls.__bases__[0]
 
         AnsibleTaggedObject._tagged_type_map[cls.__mro__[1]] = cls
+
+        if is_non_scalar_collection_type(cls):
+            AnsibleTaggedObject._collection_types.update({cls, cls.__mro__[1]})
 
     def native_copy(self) -> t.Any:
         return self.native_type(self)  # pylint: disable=abstract-class-instantiated
@@ -494,13 +505,14 @@ class AnsibleTaggedObject(AnsibleSerializable):
             tags_mapping: _AnsibleTagsMapping,
             item_source: t.Optional[t.Callable] = None,
     ) -> t.Self:
-        if type(value) in AnsibleTaggedObject._tagged_type_map:
+        if type(value) in AnsibleTaggedObject._collection_types:
             if not item_source:
                 item_source = cls.native_type.__iter__  # type: ignore[attr-defined]
 
             # use the underlying iterator to avoid access/iteration side effects (e.g. templating/wrapping on Lazy subclasses)
             instance = cls(item_source(value))  # type: ignore[call-arg]
         else:
+            # this is used when the value is a generator
             instance = cls(value)  # type: ignore[call-arg]
 
         instance._ansible_tags_mapping = tags_mapping
@@ -777,7 +789,7 @@ _untaggable_types = frozenset({type(None), bool})
 _ANSIBLE_ALLOWED_VAR_TYPES = _untaggable_types | set(AnsibleTaggedObject._tagged_type_map) | set(AnsibleTaggedObject._tagged_type_map.values())
 """These are the only types supported by Ansible's variable storage. Subclasses are not permitted."""
 
-_ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES = frozenset(item for item in _ANSIBLE_ALLOWED_VAR_TYPES if issubclass(item, Collection)
-                                                             and not issubclass(item, str) and not issubclass(item, bytes))
+
+_ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES = frozenset(item for item in _ANSIBLE_ALLOWED_VAR_TYPES if is_non_scalar_collection_type(item))
 _ANSIBLE_ALLOWED_MAPPING_VAR_TYPES = frozenset(item for item in _ANSIBLE_ALLOWED_VAR_TYPES if issubclass(item, Mapping))
 _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES = _ANSIBLE_ALLOWED_VAR_TYPES - _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES
