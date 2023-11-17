@@ -328,7 +328,10 @@ class AnsibleTaggedObject(AnsibleSerializable):
         except AttributeError:
             pass
 
-        cls.native_type = cls.__bases__[0]
+        try:
+            cls.native_type
+        except AttributeError:
+            cls.native_type = cls.__bases__[0]
 
         AnsibleTaggedObject._tagged_type_map[cls.__mro__[1]] = cls
 
