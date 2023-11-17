@@ -641,6 +641,7 @@ class _AnsibleLazyTemplateMixin:
                     break
             else:
                 # FIXME: what do we want here? such as HostVars, HostVarsVars
+                # FIXME: undefined types need to be here too? (prevent warnings from with_first_found loops with undefined values)
                 if not isinstance(item, _AnsibleLazyTemplateMixin._ignore_types):
                     display.warning(f'Encountered unsupported {item_type} type.')
 
@@ -870,6 +871,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
                 # FIXME: better exception type? (same thing in the lazy template wrapper constructors)
                 raise ReferenceError("no TemplateContext is available")
             try:
+                # FIXME: FDI039 - we need to propagate template args like fail_on_undefined and/or move them into a templar/overlay instance
+                #  also, what happens if Lazy's that survive encounter a different templar and/or override args
                 item = template_context.templar.template(item)
             except AnsibleUndefinedVariable as e:
                 # Instead of failing here prematurely, return an Undefined
@@ -1071,6 +1074,42 @@ class Templar:
         templar = Templar(self._loader, variables=variables)
         return templar.template(expression_template)
 
+    def _delazify(self, o: t.Any, fail_on_undefined: bool = False) -> t.Any:
+        # FIXME: isn't this going to over-fire managed access?
+
+        from jinja2 import Undefined
+
+        match o:
+            case str():
+                return o
+            case dict():
+                return AnsibleTaggedObject.tag_copy(o, ((k, self._delazify(v, fail_on_undefined=fail_on_undefined)) for k, v in o.items()), value_type=dict)
+            case list():
+                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, fail_on_undefined=fail_on_undefined) for v in o), value_type=list)
+            case tuple():
+                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, fail_on_undefined=fail_on_undefined) for v in o), value_type=tuple)
+            case set():
+                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, fail_on_undefined=fail_on_undefined) for v in o), value_type=set)
+            case Undefined() if fail_on_undefined:
+                raise AnsibleUndefinedVariable("undefined blah FIXME", obj=o)
+            case _:
+                return o
+
+    # FIXME: ditch this and/or
+    def _verify_delazified(self, o: t.Any) -> t.Any:
+        from jinja2 import Undefined
+        try:
+            match o:
+                case dict():
+                    list(self._verify_delazified(v) for v in o.values())
+                case list() | tuple() | set():
+                    list(self._verify_delazified(v) for v in o)
+                case _AnsibleLazyTemplateMixin(): # | Undefined():
+                    raise Exception(f"BANG: an unsupported type {type(o)} tried to escape from templating...")
+
+        except Exception as ex:
+            raise
+
     # FIXME: wrap tripwires in a template decorator so we can preserve/propagate args automatically
     # FIXME: static_vars is dead (long live NotATemplate); kill it from intermediate signatures and (possibly?) deprecation warning
     def template(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
@@ -1083,6 +1122,9 @@ class Templar:
         # bail out if we know we're looking at something that's been explicitly tagged as not a template
         if NotATemplate.is_tagged_on(variable):
             return variable
+
+        if fail_on_undefined is None:
+            fail_on_undefined = self._fail_on_undefined_errors
 
         template_kwargs = dict(
             convert_bare=convert_bare,
@@ -1110,19 +1152,17 @@ class Templar:
             # ensure that we never allow containers with untemplated strings to escape the template system, and that any
             # embedded Undefined values we encounter will raise AnsibleUndefinedError if fail_on_undefined is set (FIXME once we actually do that).
             if not TemplateContext.current():
-                if not isinstance(result, str) and isinstance(result, (Mapping, Sequence)):
+                if not isinstance(result, str) and isinstance(result, (Mapping, Sequence, set)):
                     # data is our only positional arg, everything else is kwargs-only
-                    with DetonateVaultBombsTripwire():
-                        result = self._template_recursive(result, **template_kwargs)
-                    # FIXME: why does this break (debug the else cases)?
-                    # if isinstance(variable, str):
-                    #     result = self._template_recursive(result, **template_kwargs)
-                    # else:
-                    #     pass
+                    with DetonateVaultBombsTripwire(), TemplateContext(template_value=result, templar=self):
+                        result = self._delazify(result, fail_on_undefined=fail_on_undefined)
 
                 if undecryptable.is_tripped:
                     # we encountered at least one UndecryptableVaultedValue; raise an error if any remain in the result
                     self._detonate_vault_bombs(result)
+
+                # FIXME: remove this, or make it conditional on a debugging thing?
+                self._verify_delazified(result)
 
         # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
         for deprecation_template, deprecation in deprecated.deprecated_access:
@@ -1150,9 +1190,6 @@ class Templar:
 
             if cache is not None:
                 display.deprecated("The `cache` option to `Templar.template` is no longer functional, and will be removed in a future release.", version='2.18')
-
-            if fail_on_undefined is None:
-                fail_on_undefined = self._fail_on_undefined_errors
 
             if convert_bare:
                 # FIXME: FDI034 determine if/when we should continue to allow this- all core callers are now passing False
@@ -1200,32 +1237,8 @@ class Templar:
 
                 return result
 
-            elif is_sequence(variable):
-                tagged_list = AnsibleTaggedObject.tag_copy(
-                    variable,
-                    (self._template_recursive(
-                        v,
-                        preserve_trailing_newlines=preserve_trailing_newlines,
-                        fail_on_undefined=fail_on_undefined,
-                        overrides=overrides,
-                        disable_lookups=disable_lookups,
-                    ) for v in variable),
-                    value_type=list,
-                )
-                return tagged_list
-            elif isinstance(variable, Mapping):
-                tagged_dict = AnsibleTaggedObject.tag_copy(
-                    variable,
-                    ((k, self._template_recursive(
-                        v,
-                        preserve_trailing_newlines=preserve_trailing_newlines,
-                        fail_on_undefined=fail_on_undefined,
-                        overrides=overrides,
-                        disable_lookups=disable_lookups,
-                    )) for k, v in variable.items()),
-                    value_type=dict,
-                )
-                return tagged_dict
+            elif (lazy := _AnsibleLazyTemplateMixin.try_create(variable)) is not None:
+                return lazy
             else:
                 return variable
 

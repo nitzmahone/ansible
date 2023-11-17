@@ -22,6 +22,7 @@ from functools import partial
 from random import Random, SystemRandom, shuffle
 
 from jinja2.filters import pass_environment
+from jinja2.filters import sync_do_groupby
 
 from ansible.errors import AnsibleError, AnsibleFilterError, AnsibleFilterTypeError
 from ansible.module_utils.datatag import SensitiveData, Deprecated
@@ -324,7 +325,7 @@ def mandatory(a, msg=None):
 
     if isinstance(a, Undefined):
         if a._undefined_name is not None:
-            name = "'%s' " % to_text(a._undefined_name)
+            name = "'%s'" % to_text(a._undefined_name)
         else:
             name = ''
 
@@ -605,6 +606,16 @@ def commonpath(paths):
 
     return os.path.commonpath(paths)
 
+# FIXME: FDI038 - this needs to be a generic return-type coercion for plugins that don't claim to be aware of the expanded var type system
+@pass_environment
+def _cleansed_groupby(*args, **kwargs):
+    res = sync_do_groupby(*args, **kwargs)
+
+    # flatten _GroupTuple children to dumb lists
+    res = [[v for v in g] for g in res]
+
+    return res
+
 
 class FilterModule(object):
     ''' Ansible core jinja2 filters '''
@@ -703,4 +714,6 @@ class FilterModule(object):
             'items2dict': list_of_dict_key_value_elements_to_dict,
             'subelements': subelements,
             'split': partial(unicode_wrap, text_type.split),
+            # FDI038 - replace this with a standard type compat shim
+            'groupby': _cleansed_groupby,
         }

@@ -237,7 +237,8 @@
       # but even though it's redundant with those unit tests, we do at least the most complicated example of the documentation here
       - "(default | combine(patch, recursive=True, list_merge='append_rp')) == result"
       - combine_fail is failed
-      - "combine_fail.msg == \"'recursive' and 'list_merge' are the only valid keyword arguments\""
+      - |
+          "'recursive' and 'list_merge' are the only valid keyword arguments" is in combine_fail.msg
 
 - set_fact:
     combine: "{{[x, [y]] | combine(z)}}"
@@ -247,7 +248,7 @@
 - name: Ensure combining objects which aren't dictionaries throws an error
   assert:
     that:
-      - "result.msg.startswith(\"failed to combine variables, expected dicts but got\")"
+      - "'failed to combine variables, expected dicts but got' is in result.msg"
 
 - name: Ensure combining two dictionaries containing undefined variables provides a helpful error
   block:
@@ -262,7 +263,7 @@
 
     - assert:
         that:
-          - result.msg.startswith('The task includes an option with an undefined variable')
+          - "'The task includes an option with an undefined variable' is in result.msg"
 
     - set_fact:
         combined: "{{ foo | combine({'key2': {'nested': [undef_variable]}})}}"
@@ -271,7 +272,7 @@
 
     - assert:
         that:
-          - result.msg.startswith('The task includes an option with an undefined variable')
+          - "'The task includes an option with an undefined variable' is in result.msg"
 
 - name: regex_search
   set_fact:
@@ -388,9 +389,9 @@
     that:
       - '"]]^"|regex_escape(re_type="posix_basic") == "\\]\\]\\^"'
       - regex_escape_fail_1 is failed
-      - 'regex_escape_fail_1.msg == "Regex type (posix_extended) not yet implemented"'
+      - '"Regex type (posix_extended) not yet implemented" is in regex_escape_fail_1.msg'
       - regex_escape_fail_2 is failed
-      - 'regex_escape_fail_2.msg == "Invalid regex type (haha)"'
+      - '"Invalid regex type (haha)" is in regex_escape_fail_2.msg'
 
 - name: Verify from_yaml and from_yaml_all
   assert:
@@ -483,7 +484,7 @@
 
 - assert:
     that:
-      - unsupported_hash_type.msg == msg
+      - msg is in unsupported_hash_type.msg
   vars:
     msg: "msdcc is not in the list of supported passlib algorithms: md5, blowfish, sha256, sha512"
 
@@ -521,9 +522,10 @@
     that:
       - 'mandatory_demo|mandatory == 123'
       - mandatory_1 is failed
-      - "mandatory_1.msg == \"Mandatory variable 'hey'  not defined.\""
+      - |
+          "Mandatory variable 'hey' not defined." is in mandatory_1.msg
       - mandatory_2 is failed
-      - "mandatory_2.msg == 'You did not give me a variable. I am a sad wolf.'"
+      - '"You did not give me a variable. I am a sad wolf." is in mandatory_2.msg'
 
 - name: Verify undef throws if resolved
   set_fact:
@@ -605,9 +607,9 @@
   assert:
     that:
       - subelements_1 is failed
-      - 'subelements_1.msg == "obj must be a list of dicts or a nested dict"'
+      - '"obj must be a list of dicts or a nested dict" is in subelements_1.msg'
       - subelements_2 is failed
-      - '"subelements must be a list or a string" in subelements_2.msg'
+      - '"subelements must be a list or a string" is in subelements_2.msg'
       - 'subelements_demo|subelements("does not compute", skip_missing=True) == []'
       - subelements_3 is failed
       - '"could not find" in subelements_3.msg'

@@ -212,7 +212,7 @@ class LookupModule(LookupBase):
         results = []
         for item in items:
             try:
-                results.append(self._templar.template(item))
+                results.append(self._templar.template(item)
             except (AnsibleUndefinedVariable, UndefinedError):
                 # NOTE: backwards compat ff behaviour is to ignore errors when vars are undefined.
                 #       moved here from task_executor.
