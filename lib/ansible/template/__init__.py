@@ -596,6 +596,7 @@ class _AnsibleLazyTemplateMixin:
     _container_types: set[type] = set()  # populated by our __init_subclass__
 
     def __init_subclass__(cls, **kwargs) -> None:
+        # FIXME: this determination is very fragile to new layers added to the hierarchy
         tagged_type = cls.__mro__[1]
         native_type = tagged_type.__mro__[1]
 
@@ -621,6 +622,7 @@ class _AnsibleLazyTemplateMixin:
         #  type or an alternate type map instead?
 
         # FIXME: add an optimization to avoid looking at tagged types for entire categories of things we're not interested in
+        # FIXME: consider optimizing empty container case (return input)?
 
         item_type = type(item)
 
@@ -1093,6 +1095,8 @@ class Templar:
             cache=cache,
             disable_lookups=disable_lookups,
         )
+
+        # FIXME: early exit on empty collections
 
         # track access to items that are tagged Deprecated during templating, handle accordingly
         with (
