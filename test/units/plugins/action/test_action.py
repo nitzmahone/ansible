@@ -22,14 +22,17 @@ import os
 import re
 from importlib import import_module
 
-from ansible import constants as C
-import unittest
-from unittest.mock import patch, MagicMock, mock_open
 
-from ansible.errors import AnsibleError, AnsibleAuthenticationFailure
 import builtins
 import shlex
+import unittest
+
+from unittest.mock import patch, MagicMock, mock_open
+
+from ansible import constants as C
+from ansible.errors import AnsibleError, AnsibleAuthenticationFailure
 from ansible.module_utils.common.text.converters import to_bytes
+from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.playbook.play_context import PlayContext
 from ansible.plugins.action import ActionBase
 from ansible.plugins.loader import init_plugin_loader
