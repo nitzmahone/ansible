@@ -320,6 +320,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
     _tagged_type_map: t.Dict[type, t.Type['AnsibleTaggedObject']] = {}
     _collection_types: t.Set[t.Type[Collection]] = set()
 
+    _empty_tags_as_native = True  # by default, untag will revert to the native type when no tags remain
     _ansible_tags_mapping = _EMPTY_INTERNAL_TAGS_MAPPING
     """
     Efficient internal storage of tags, indexed by tag type.
@@ -465,7 +466,10 @@ class AnsibleTaggedObject(AnsibleSerializable):
         tags_mapping = _AnsibleTagsMapping((type(tag), tag) for tag in tag_set if type(tag) is not tag_type)
 
         if not tags_mapping:
-            return t.cast(AnsibleTaggedObject, value).native_copy()
+            if t.cast(AnsibleTaggedObject, value)._empty_tags_as_native:
+                return t.cast(AnsibleTaggedObject, value).native_copy()
+
+            tags_mapping = _empty_frozenset
 
         return AnsibleTaggedObject._tag_value(type(value), value, tags_mapping)
 

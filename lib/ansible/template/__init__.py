@@ -605,6 +605,7 @@ class _AnsibleLazyTemplateMixin:
         cls._dispatch_types[cls] = None
 
         cls._container_types.add(native_type)
+        cls._empty_tags_as_native = False  # never revert to the native type when no tags remain
 
     def __init__(self):
         if not (tc := TemplateContext.current()):
