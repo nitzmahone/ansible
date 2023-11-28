@@ -13,7 +13,7 @@ import typing as t
 
 import pytest
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from ansible.module_utils.common.json import (
     AnsibleJSONDecoder,
@@ -35,7 +35,6 @@ from ansible.module_utils.datatag import (
     UndecryptableVaultedValue,
     VaultedValue,
     _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
-    _ANSIBLE_ALLOWED_MAPPING_VAR_TYPES,
     _AnsibleTaggedDateTime,
     _AnsibleTaggedSet,
     _AnsibleTaggedStr,
@@ -219,6 +218,11 @@ def test_repr(taggable_instance) -> None:
     """Ensure the repr() of tagged instance is identical to the repr() returned by the underlying native Python type."""
     tagged_instance = NotATemplate().tag(taggable_instance)
 
+    assert_repr(tagged_instance, taggable_instance)
+
+
+def assert_repr(tagged_instance, taggable_instance) -> None:
+    assert tagged_instance is not taggable_instance
     assert repr(tagged_instance) == repr(taggable_instance)
 
 
@@ -227,6 +231,11 @@ def test_str(taggable_instance) -> None:
     """Ensure the str() of tagged instance is identical to the str() returned by the underlying native Python type."""
     tagged_instance = NotATemplate().tag(taggable_instance)
 
+    assert_str(tagged_instance, taggable_instance)
+
+
+def assert_str(tagged_instance, taggable_instance) -> None:
+    assert tagged_instance is not taggable_instance
     assert str(tagged_instance) == str(taggable_instance)
 
 
@@ -402,16 +411,23 @@ def test_tag_value_type_specified_untagged() -> None:
     assert value == [1, 2, 3]
 
 
-def values_and_types() -> list[tuple[t.Any, t.Optional[type], type]]:
+def container_values_and_types(types: t.Iterable[type[t.Collection]], instances: list[t.Collection]) -> list[tuple[t.Any, t.Optional[type], type]]:
     sources = []
 
-    for type_under_test in sorted(_ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES, key=lambda item: item.__name__):
-        value = [instance for instance in taggable_instances + tagged_object_instances if isinstance(instance, type_under_test)][0]
+    for type_under_test in sorted(types, key=lambda item: item.__name__):
+        value = [instance for instance in instances if isinstance(instance, type_under_test)][0]
 
-        if type_under_test in _ANSIBLE_ALLOWED_MAPPING_VAR_TYPES:
-            generator = ((k, v) for k, v in value.items())
+        # This test creates a generator to source items from the value to facilitate optimized creation of collections when tagging and copying tags.
+        # To avoid triggering special behavior during iteration, a native copy is used when the value is a tagged object.
+        if isinstance(value, AnsibleTaggedObject):
+            native_value = value.native_copy()
         else:
-            generator = (item for item in value)
+            native_value = value
+
+        if isinstance(value, Mapping):
+            generator = ((k, v) for k, v in native_value.items())
+        else:
+            generator = (item for item in native_value)
 
         sources.extend((
             (value, None, type_under_test),  # testing the actual type without specifying value_type
@@ -421,8 +437,16 @@ def values_and_types() -> list[tuple[t.Any, t.Optional[type], type]]:
     return sources
 
 
+def container_test_ids(values: list[tuple[t.Any, t.Optional[type], type]]) -> list[str]:
+    return [f'{type_under_test.__name__} from {type(value).__name__}' for value, _value_type, type_under_test in values]
+
+
+def values_and_types() -> list[tuple[t.Any, t.Optional[type], type]]:
+    return container_values_and_types(_ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES, taggable_instances + tagged_object_instances)
+
+
 def value_and_types_ids() -> list[str]:
-    return [f'{type_under_test.__name__} from {type(value).__name__}' for value, _value_type, type_under_test in values_and_types()]
+    return container_test_ids(values_and_types())
 
 
 @pytest.mark.parametrize("value, value_type, type_under_test", values_and_types(), ids=value_and_types_ids())
