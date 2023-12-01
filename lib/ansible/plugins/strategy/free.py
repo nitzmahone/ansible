@@ -155,7 +155,8 @@ class StrategyModule(StrategyBase):
                             action = None
 
                         try:
-                            task.name = to_text(templar.template(task.name, fail_on_undefined=False), nonstring='empty')
+                            # FIXME: should a failure here be a warning?
+                            task.name = templar.template_with_result(task.name, undefined_behavior=templar.BestEffort()).as_text()
                             display.debug("done templating", host=host_name)
                         except Exception:
                             # just ignore any errors during task name templating,

@@ -49,30 +49,6 @@ def task_timeout(signum, frame):
     raise TaskTimeoutError
 
 
-def remove_omit(task_args, omit_token):
-    '''
-    Remove args with a value equal to the ``omit_token`` recursively
-    to align with now having suboptions in the argument_spec
-    '''
-
-    if not isinstance(task_args, dict):
-        return task_args
-
-    # FIXME: sneaky copy- we're propagating tags, but can we do this more cheaply?
-    new_args = AnsibleTaggedObject.tag_copy(task_args, {})
-    for i in task_args.items():
-        if i[1] == omit_token:
-            continue
-        elif isinstance(i[1], dict):
-            new_args[i[0]] = remove_omit(i[1], omit_token)
-        elif isinstance(i[1], list):
-            new_args[i[0]] = AnsibleTaggedObject.tag_copy(i[1], (remove_omit(v, omit_token) for v in i[1]), value_type=list)
-        else:
-            new_args[i[0]] = i[1]
-
-    return new_args
-
-
 class TaskExecutor:
 
     '''
@@ -599,11 +575,6 @@ class TaskExecutor:
             module_defaults_fqcn, self._task.args, self._task.module_defaults, templar,
             action_groups=self._task._parent._play._action_groups
         )
-
-        # And filter out any fields which were set to default(omit), and got the omit token value
-        omit_token = variables.get('omit')
-        if omit_token is not None:
-            self._task.args = remove_omit(self._task.args, omit_token)
 
         retries = 1  # includes the default actual run + retries set by user/default
         if self._task.retries is not None:

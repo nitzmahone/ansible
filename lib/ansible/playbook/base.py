@@ -15,7 +15,7 @@ from jinja2.exceptions import UndefinedError
 
 from ansible import constants as C
 from ansible import context
-from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError
+from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError, AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleSourcePosition
 from ansible.module_utils.six import string_types
 from ansible.module_utils.parsing.convert_bool import boolean
@@ -23,6 +23,7 @@ from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.parsing.dataloader import DataLoader
 from ansible.playbook.attribute import Attribute, FieldAttribute, ConnectionFieldAttribute, NonInheritableFieldAttribute
 from ansible.plugins.loader import module_loader, action_loader
+from ansible.template import Omit
 from ansible.utils.collection_loader._collection_finder import _get_collection_metadata, AnsibleCollectionRef
 from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
@@ -191,7 +192,11 @@ class FieldAttributeBase:
         return self._variable_manager
 
     def _post_validate_debugger(self, attr, value, templar):
-        value = templar.template(value)
+        try:
+            value = templar.template(value)
+        except AnsibleValueOmittedError:
+            value = self.set_to_context(attr.name)
+
         valid_values = frozenset(('always', 'on_failed', 'on_unreachable', 'on_skipped', 'never'))
         if value and isinstance(value, string_types) and value not in valid_values:
             raise AnsibleParserError("'%s' is not a valid value for debugger. Must be one of %s" % (value, ', '.join(valid_values)), obj=self.get_ds())
@@ -490,19 +495,23 @@ class FieldAttributeBase:
             raise AnsibleAssertionError(f"Unknown value for attribute.isa: {attribute.isa}")
         return value
 
-    def set_to_context(self, name):
+    def set_to_context(self, name: str) -> t.Any:
         ''' set to parent inherited value or Sentinel as appropriate'''
 
         attribute = self.fattributes[name]
         if isinstance(attribute, NonInheritableFieldAttribute):
             # setting to sentinel will trigger 'default/default()' on getter
-            setattr(self, name, Sentinel)
+            value = Sentinel
         else:
             try:
-                setattr(self, name, self._get_parent_attribute(name, omit=True))
+                value = self._get_parent_attribute(name, omit=True)
             except AttributeError:
                 # mostly playcontext as only tasks/handlers/blocks really resolve parent
-                setattr(self, name, Sentinel)
+                value = Sentinel
+
+        setattr(self, name, value)
+        return value
+
 
     def post_validate(self, templar):
         '''
@@ -510,9 +519,6 @@ class FieldAttributeBase:
         all the variables.  Run basic types (from isa) as well as
         any _post_validate_<foo> functions.
         '''
-
-        # save the omit value for later checking
-        omit_value = templar.available_variables.get('omit')
 
         for (name, attribute) in self.fattributes.items():
             if attribute.static:
@@ -539,19 +545,19 @@ class FieldAttributeBase:
                 # Run the post-validator if present. These methods are responsible for
                 # using the given templar to template the values, if required.
                 method = getattr(self, '_post_validate_%s' % name, None)
+
                 if method:
                     value = method(attribute, getattr(self, name), templar)
                 elif attribute.isa == 'class':
                     value = getattr(self, name)
                 else:
-                    # if the attribute contains a variable, template it now
-                    value = templar.template(getattr(self, name))
-
-                # If this evaluated to the omit value, set the value back to inherited by context
-                # or default specified in the FieldAttribute and move on
-                if omit_value is not None and value == omit_value:
-                    self.set_to_context(name)
-                    continue
+                    try:
+                        # if the attribute contains a variable, template it now
+                        value = templar.template(getattr(self, name))
+                    except AnsibleValueOmittedError:
+                        # If this evaluated to the omit value, set the value back to inherited by context
+                        # or default specified in the FieldAttribute and move on
+                        value = self.set_to_context(name)
 
                 # and make sure the attribute is of the type it should be
                 if value is not None:

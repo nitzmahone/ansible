@@ -381,3 +381,16 @@ class AnsibleConditionalError(AnsibleRuntimeError):
 
 class AnsibleVariableTypeError(AnsibleRuntimeError):
     """An error due to attempted storage of an unsupported variable type."""
+
+
+class AnsibleValueOmittedError(Exception):
+    """
+    Raised when the result of a template operation was the Omit singleton. This exception purposely does
+    not derive from AnsibleError to avoid elision of the traceback, since uncaught errors of this type always
+    indicate a bug.
+    """
+    def __init__(self):
+        super().__init__(
+            "A template was resolved to an Omit scalar; callers must be prepared to handle this value. "
+            "This is most likely a bug in the code requesting templating."
+        )

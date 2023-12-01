@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import ast
+import dataclasses
 import datetime
 import functools
 import os
@@ -35,10 +36,11 @@ import ansible.module_utils.compat.typing as t
 
 from collections.abc import Iterator, Mapping, Sequence, MappingView, MutableMapping
 from contextlib import contextmanager
+from itertools import islice
 from numbers import Number
 from traceback import format_exc
 
-from jinja2 import Environment
+from jinja2 import Environment, Undefined
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
 from jinja2.nativetypes import NativeCodeGenerator
@@ -54,6 +56,7 @@ from ansible.errors import (
     AnsibleError,
     AnsibleFilterError,
     AnsibleLookupError,
+    AnsibleValueOmittedError,
     AnsibleOptionsError,
     AnsibleUndefinedVariable,
 )
@@ -376,6 +379,12 @@ class AnsibleUndefined(StrictUndefined):
     A custom Undefined class, which returns further Undefined objects on access,
     rather than throwing an exception.
     '''
+    __slots__ = ('_undefined_template_source')
+
+    def __init__(self, *args, template_source: str | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._undefined_template_source = template_source
+
     def __getattr__(self, name):
         # Return original Undefined object to preserve the first failure context
         return self
@@ -576,10 +585,33 @@ def _ansible_finalize(ctx, thing):
     if _is_rolled(thing):
         thing = list(thing)
 
-    _fail_on_undefined(thing)
+#    _fail_on_undefined(thing)
 
     # FIXME: do this on the output of do_template?
     return thing if thing is not None else ''
+
+
+# FIXME: find this a better home?
+class _OmitType:
+    """
+    A placeholder singleton used to dynamically omit items from a dict/list/tuple/set when the value is `Omit`.
+
+    The Omit singleton value is accessible from all Ansible templating contexts via the Jinja global
+    name `omit`. Item removal occurs during final recursive processing of template results. The singleton
+    `Omit` placeholder value will be visible to plugins during templating. The only time a template result
+    will include `Omit` outside a templating context is when the template renders to the scalar value `Omit`.
+    """
+    __slots__ = tuple()
+
+    # FIXME: this keeps pickle happy, but not JSON/YAML for callbacks; just teach them about it?
+    def __new__(cls):
+        return Omit
+
+    def __repr__(self):
+        return "<<Omit>>"
+
+
+Omit = object.__new__(_OmitType)
 
 
 class _AnsibleLazyTemplateMixin:
@@ -591,7 +623,7 @@ class _AnsibleLazyTemplateMixin:
 
     # due to the way Jinja handles globals, we may encounter things like functions/methods in hooked getitem/getattr that
     # always pass through this mixin; we want to silently ignore those types
-    _ignore_types = (types.MethodType,)
+    _ignore_types = (types.MethodType, type(Omit))
 
     _container_types: set[type] = set()  # populated by our __init_subclass__
 
@@ -848,6 +880,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
                 return ''
             return AnsibleAccessContext.current().access(node_list[0])
 
+        # FIXME: to_text is a problem here with embedded undefineds not tripping during a recursive repr
         return ''.join([to_text(AnsibleAccessContext.current().access(v)) for v in node_list])
 
     # NB: this method is for exclusive use of the template compiler to render embedded constant templates
@@ -875,13 +908,14 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
                 # FIXME: FDI039 - we need to propagate template args like fail_on_undefined and/or move them into a templar/overlay instance
                 #  also, what happens if Lazy's that survive encounter a different templar and/or override args
                 item = template_context.templar.template(item)
-            except AnsibleUndefinedVariable as e:
+            except (AnsibleUndefinedVariable, UndefinedError) as e:  # FIXME: can we dump this whole thing or preserve just enough?
                 # Instead of failing here prematurely, return an Undefined
                 # object which fails only after its first usage allowing us to
                 # do lazy evaluation and passing it into filters/tests that
                 # operate on such objects.
-                return template_context.templar.environment.undefined(
-                    hint=f"{item}: {e.message}",
+                return AnsibleUndefined(
+                    template_source=item,
+                    hint=e.message,  # FIXME: what should this actually be?
                     name=key,
                     exc=AnsibleUndefinedVariable,
                 )
@@ -903,6 +937,15 @@ class AnsibleNativeEnvironment(AnsibleEnvironment):
     pass
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
+class TemplateResult:
+    result: t.Any
+
+    def as_text(self):
+        result = self.result
+        return AnsibleTaggedObject.tag(str(result), AnsibleTaggedObject.tags(result) | {NotATemplate()})
+
+
 class Templar:
     '''
     The main class for templating, with the main entry-point of template().
@@ -922,11 +965,14 @@ class Templar:
         )
         self.environment.template_class.environment_class = environment_class
 
+        # FIXME: move all this magic under our Jinja environment?
+
         # Custom globals
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
         self.environment.globals['now'] = self._now_datetime
         self.environment.globals['undef'] = self._make_undefined
+        self.environment.globals['omit'] = Omit
 
         # this regex is re-compiled each time variable_start_string and variable_end_string are possibly changed
         self._compile_single_var(self.environment)
@@ -987,6 +1033,54 @@ class Templar:
             jinja_exts = C.DEFAULT_JINJA2_EXTENSIONS.replace(" ", "").split(',')
 
         return jinja_exts
+
+    # FIXME: move/rename these, better access than via an instance
+    def fail_on_undefined_value(self, value):
+        raise AnsibleUndefinedVariable("undefined BLAH FIXME", obj=value)
+
+    class BestEffort:
+        def __init__(self) -> None:
+            self._undefined_templates: list[Undefined] = []
+
+        @staticmethod
+        def _hint(value: Undefined):
+            try:
+                # FIXME: need to come up with a better way to capture the context when Jinja gives us not much to go on, or maybe inject our own
+                hint = value._undefined_template_source or value._undefined_hint
+
+                if not hint and (hint := value._undefined_name):
+                    hint = f'{{{{ {hint} }}}}'
+            except AttributeError:
+                hint = None
+
+            if not hint:
+                hint = "FIXME shrug"
+
+            return hint
+
+        def __call__(self, value: Undefined) -> t.Any:
+            self._undefined_templates.append(value)
+            # FIXME: figure out how/where to propagate this as a failure to the TemplateResult
+
+            return NotATemplate().tag(self._hint(value))
+
+        @property
+        def has_warnings(self) -> bool:
+            return bool(self._undefined_templates)
+
+        def warnings(self, max_count: int | None = None):
+            try:
+                #blah = list(f'FIXME busted template {self._hint(w)}' for w in islice(self._undefined_templates, max_count))
+                #yield from blah
+                for w in islice(self._undefined_templates, max_count):
+                    try:
+                        yield f'FIXME busted template {self._hint(w)}'
+                    except Exception as exi:
+                        raise
+            except Exception as e:
+                raise
+
+
 
     @property
     def available_variables(self):
@@ -1075,24 +1169,25 @@ class Templar:
         templar = Templar(self._loader, variables=variables)
         return templar.template(expression_template)
 
-    def _delazify(self, o: t.Any, fail_on_undefined: bool = False) -> t.Any:
+    def _delazify(self, o: t.Any, undefined_behavior: t.Callable[t.Any, t.Any]) -> t.Any:
         # FIXME: isn't this going to over-fire managed access?
 
         from jinja2 import Undefined
 
+        # FIXME: is this using isinstance or something cheaper?
         match o:
             case str():
                 return o
             case dict():
-                return AnsibleTaggedObject.tag_copy(o, ((k, self._delazify(v, fail_on_undefined=fail_on_undefined)) for k, v in o.items()), value_type=dict)
+                return AnsibleTaggedObject.tag_copy(o, ((k, self._delazify(v, undefined_behavior=undefined_behavior)) for k, v in o.items() if v is not Omit), value_type=dict)
             case list():
-                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, fail_on_undefined=fail_on_undefined) for v in o), value_type=list)
+                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=list)
             case tuple():
-                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, fail_on_undefined=fail_on_undefined) for v in o), value_type=tuple)
+                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=tuple)
             case set():
-                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, fail_on_undefined=fail_on_undefined) for v in o), value_type=set)
-            case Undefined() if fail_on_undefined:
-                raise AnsibleUndefinedVariable("undefined blah FIXME", obj=o)
+                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=set)
+            case Undefined():
+                return undefined_behavior(o)
             case _:
                 return o
 
@@ -1113,17 +1208,22 @@ class Templar:
 
     # FIXME: wrap tripwires in a template decorator so we can preserve/propagate args automatically
     # FIXME: static_vars is dead (long live NotATemplate); kill it from intermediate signatures and (possibly?) deprecation warning
-    def template(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
-                 overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False):
+    def template(self, *args, **kwargs) -> t.Any:
+        return self.template_with_result(*args, **kwargs).result
+
+    def template_with_result(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
+                 overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=None) -> TemplateResult:
         '''
         Templates (possibly recursively) any given data as input. If convert_bare is
         set to True, the given data will be wrapped as a jinja2 variable ('{{foo}}')
         before being sent through the template engine.
         '''
+
         # bail out if we know we're looking at something that's been explicitly tagged as not a template
         if NotATemplate.is_tagged_on(variable):
-            return variable
+            return TemplateResult(result=variable)
 
+        # FIXME: nuke
         if fail_on_undefined is None:
             fail_on_undefined = self._fail_on_undefined_errors
 
@@ -1146,24 +1246,29 @@ class Templar:
                 UndecryptableAccessTripwire() as undecryptable,
                 DeprecatedAccessAuditContext() as deprecated,
         ):
-            result = self._template_recursive(variable, **template_kwargs)
+            _template_result = self._template_recursive(variable, **template_kwargs)
 
             # If we're the outermost template operation, and our input was a string template whose result was NOT a string,
             # we need to do one last recursive template pass over the resulting container (since we're not doing it on Jinja resolve anymore). This will
             # ensure that we never allow containers with untemplated strings to escape the template system, and that any
             # embedded Undefined values we encounter will raise AnsibleUndefinedError if fail_on_undefined is set (FIXME once we actually do that).
             if not TemplateContext.current():
-                if not isinstance(result, str) and isinstance(result, (Mapping, Sequence, set)):
+                # FIXME: make this check cheaper
+                if not isinstance(_template_result, str) and isinstance(_template_result, (Mapping, Sequence, set, Undefined)):
                     # data is our only positional arg, everything else is kwargs-only
-                    with DetonateVaultBombsTripwire(), TemplateContext(template_value=result, templar=self):
-                        result = self._delazify(result, fail_on_undefined=fail_on_undefined)
+                    with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
+                        if not undefined_behavior:
+                            undefined_behavior = self.fail_on_undefined_value
+                        _template_result = self._delazify(_template_result, undefined_behavior=undefined_behavior)
+                elif _template_result is Omit:
+                    raise AnsibleValueOmittedError()
 
                 if undecryptable.is_tripped:
                     # we encountered at least one UndecryptableVaultedValue; raise an error if any remain in the result
-                    self._detonate_vault_bombs(result)
+                    self._detonate_vault_bombs(_template_result)
 
                 # FIXME: remove this, or make it conditional on a debugging thing?
-                self._verify_delazified(result)
+                self._verify_delazified(_template_result)
 
         # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
         for deprecation_template, deprecation in deprecated.deprecated_access:
@@ -1176,7 +1281,7 @@ class Templar:
 
             display.deprecated(message, version=deprecation.removal_version, date=deprecation.removal_date)
 
-        return result
+        return TemplateResult(result=_template_result)
 
     def _template_recursive(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
                             overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False):
@@ -1315,7 +1420,11 @@ class Templar:
         # safely catch run failures per #5059
         try:
             ran = instance.run(args, variables=self._available_variables, **kwargs)
-        except (AnsibleUndefinedVariable, UndefinedError) as e:
+        except AnsibleUndefinedVariable:
+            # this is just to prevent the broad `except Exception` from firing below
+            raise
+        # FIXME: most of this exception handling should occur at the edge of templating
+        except UndefinedError as e:
             raise AnsibleUndefinedVariable(e)
         except AnsibleOptionsError as e:
             # invalid options given to lookup, just reraise
@@ -1468,9 +1577,11 @@ class Templar:
                 # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
                 #  at least the warning allows us a place to consistently present useful forensic information about the problem
 
-                display.warning(f'Conditional {_repr_from(conditional)} evaluation failed: {e}')
+                conditional_repr = _repr_from(conditional)
 
-                raise AnsibleUndefinedVariable(f"error while evaluating conditional {_repr_from(conditional)}: {e}")
+                display.warning(f'Conditional {conditional_repr} evaluation failed: {e}')
+
+                raise AnsibleUndefinedVariable(f"error while evaluating conditional {conditional_repr}: {e}") from e
 
         if isinstance(result, bool):
             return result
@@ -1601,16 +1712,19 @@ class Templar:
                     newlines = self.environment.newline_sequence * (data_newlines - res_newlines)
                     res = AnsibleTaggedObject.tag_copy(res, res + newlines)
             return res
-        except UndefinedError as e:
-            if fail_on_undefined:
-                raise AnsibleUndefinedVariable(e)
-            display.debug("Ignoring undefined failure: %s" % to_text(e))
-            return data
-        except AnsibleUndefinedVariable as e:
-            if fail_on_undefined:
-                raise
-            display.debug("Ignoring undefined failure: %s" % to_text(e))
-            return data
+        except Exception:
+            # FIXME: lazy testing, remove this whole thing once we've centralized the handling of these errors
+            raise
+        # except (UndefinedError, AnsibleUndefinedVariable) as e:
+        #     if fail_on_undefined:
+        #         raise AnsibleUndefinedVariable(e, orig_exc=e)
+        #     else:
+        #         display.debug("Ignoring undefined failure: %s" % to_text(e))
+        #         return data
 
     # for backwards compatibility in case anyone is using old private method directly
     _do_template = do_template
+
+# FIXME: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
+from ansible.module_utils import datatag
+datatag._untaggable_types |= {AnsibleUndefined, type(Omit)}

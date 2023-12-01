@@ -13,6 +13,7 @@ import re
 import shlex
 import stat
 import tempfile
+import typing as t
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -36,6 +37,11 @@ from ansible.utils.plugin_docs import get_versioned_doclink
 
 display = Display()
 
+if t.TYPE_CHECKING:
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.playbook.play_context import PlayContext
+    from ansible.playbook.task import Task
+    from ansible.plugins.connection import ConnectionBase
 
 def _validate_utf8_json(d):
     if isinstance(d, text_type):
@@ -68,7 +74,7 @@ class ActionBase(ABC):
     _supports_check_mode = True
     _supports_async = False
 
-    def __init__(self, task, connection, play_context, loader, templar: Templar, shared_loader_obj):
+    def __init__(self, task: Task, connection: ConnectionBase, play_context: PlayContext, loader: DataLoader, templar: Templar, shared_loader_obj):
         self._task = task
         self._connection = connection
         self._play_context = play_context

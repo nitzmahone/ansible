@@ -81,7 +81,6 @@ class VariableManager:
         self._inventory = inventory
         self._loader = loader
         self._hostvars = None
-        self._omit_token = '__omit_place_holder__%s' % sha1(os.urandom(64)).hexdigest()
 
         self._options_vars = load_options_vars(version_info)
 
@@ -110,7 +109,6 @@ class VariableManager:
             extra_vars=self._extra_vars,
             host_vars_files=self._host_vars_files,
             group_vars_files=self._group_vars_files,
-            omit_token=self._omit_token,
             options_vars=self._options_vars,
             inventory=self._inventory,
             safe_basedir=self.safe_basedir,
@@ -124,7 +122,6 @@ class VariableManager:
         self._extra_vars = data.get('extra_vars', dict())
         self._host_vars_files = data.get('host_vars_files', defaultdict(dict))
         self._group_vars_files = data.get('group_vars_files', defaultdict(dict))
-        self._omit_token = data.get('omit_token', '__omit_place_holder__%s' % sha1(os.urandom(64)).hexdigest())
         self._inventory = data.get('inventory', None)
         self._options_vars = data.get('options_vars', dict())
         self.safe_basedir = data.get('safe_basedir', False)
@@ -495,8 +492,6 @@ class VariableManager:
                 # however this would take work in the templating engine, so for now we'll add both
                 variables['play_hosts'] = variables['ansible_play_batch']
 
-        # the 'omit' value allows params to be left out if the variable they are based on is undefined
-        variables['omit'] = self._omit_token
         # Set options vars
         for option, option_value in self._options_vars.items():
             variables[option] = option_value

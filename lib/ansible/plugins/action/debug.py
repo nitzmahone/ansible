@@ -17,18 +17,18 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-from ansible.errors import AnsibleUndefinedVariable
+from ansible.errors import AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.datatag.access import SensitiveDataMask
 from ansible.module_utils.common.text.converters import to_text
 from ansible.plugins.action import ActionBase
+from ansible.template import Omit
 
 
 class ActionModule(ActionBase):
     ''' Print statements during execution '''
 
     TRANSFERS_FILES = False
-    _VALID_ARGS = frozenset(('msg', 'var', 'verbosity'))
     _requires_connection = False
 
     def run(self, tmp=None, task_vars=None):
@@ -36,12 +36,33 @@ class ActionModule(ActionBase):
             if task_vars is None:
                 task_vars = dict()
 
+            best_effort = self._templar.BestEffort()
+
+            argument_spec = {
+                'msg': {'type': 'raw', 'default': 'Hello world!'},
+                'var': {'type': 'str_no_conversion'},
+                'verbosity': {'type': 'int', 'default': 0},
+            }
+
+            custom_undefined_handlers = dict(msg=best_effort, var=best_effort)
+
+            # special omit handling
+            for arg_name in argument_spec:
+                if (arg := self._task.args.get(arg_name, Omit)) is Omit:
+                    continue
+
+                undefined_handler = custom_undefined_handlers.get(arg_name, None)
+
+                try:
+                    result = self._templar.template_with_result(arg, undefined_behavior=undefined_handler)
+                except AnsibleValueOmittedError:
+                    self._task.args.pop(arg_name)
+                    continue
+
+                self._task.args[arg_name] = result.result
+
             validation_result, new_module_args = self.validate_argument_spec(
-                argument_spec={
-                    'msg': {'type': 'raw', 'default': 'Hello world!'},
-                    'var': {'type': 'raw'},
-                    'verbosity': {'type': 'int', 'default': 0},
-                },
+                argument_spec=argument_spec,
                 mutually_exclusive=(
                     ('msg', 'var'),
                 ),
@@ -55,39 +76,34 @@ class ActionModule(ActionBase):
 
             if verbosity <= self._display.verbosity:
                 if raw_var_arg := new_module_args['var']:
+                    # If var name is same as result, try to template it
+                    # FIXME: preserve AnsibleSourcePosition, SensitiveData, others?
+                    template_wrapped_arg = AnsibleTaggedObject.tag_copy(raw_var_arg, "{{" + raw_var_arg + "}}")
+
                     try:
-                        # if results is not str/unicode type, raise an exception
-                        if not isinstance(raw_var_arg, str):
-                            # FIXME: this behavior is odd; shouldn't we just tell you non-string inputs to vars aren't valid?
-                            #  This code path also currently has zero test coverage.
-                            raise AnsibleUndefinedVariable
-
-                        # If var name is same as result, try to template it
-                        # FIXME: preserve AnsibleSourcePosition, SensitiveData, others?
-                        template_wrapped_arg = AnsibleTaggedObject.tag_copy(raw_var_arg, "{{" + raw_var_arg + "}}")
-
-                        results = self._templar.template(template_wrapped_arg, fail_on_undefined=True)
-
-                        # handle the corner case where the input was untrusted- if so, return the raw input, not the
-                        # generated template
-                        if results == template_wrapped_arg:
-                            results = raw_var_arg
-                    except AnsibleUndefinedVariable as e:
-                        results = u"VARIABLE IS NOT DEFINED!"
-                        if self._display.verbosity > 0:
-                            results += u": %s" % to_text(e)
-
-                    if isinstance(raw_var_arg, (list, dict)):
-                        # FIXME: this code path also has no test coverage (same issue as above with non-string inputs/first-pass template results)
-                        # If var is a list or dict, use the type as key to display
-                        result[to_text(type(raw_var_arg))] = results
+                        template_result = self._templar.template_with_result(template_wrapped_arg, undefined_behavior=best_effort)
+                    except AnsibleValueOmittedError:
+                        results = repr(Omit)
+                        result.setdefault('warnings', []).append(f"The result of expression {raw_var_arg!r} could not be omitted; a placeholder was used instead.")
                     else:
-                        result[raw_var_arg] = results
+                        results = template_result.result
+
+                    # handle the corner case where the input was untrusted- if so, return the raw input, not the
+                    # generated template
+                    if results == template_wrapped_arg:
+                        results = raw_var_arg
+
+                    result[raw_var_arg] = results
+
                 else:
                     result['msg'] = new_module_args['msg']
 
                 # force flag to make debug output module always verbose
                 result['_ansible_verbose_always'] = True
+
+                # propagate any undefined warnings in the task result unless we're skipping the task
+                if best_effort.has_warnings:
+                    result.setdefault('warnings', []).extend(best_effort.warnings())
             else:
                 result['skipped_reason'] = "Verbosity threshold not met."
                 result['skipped'] = True

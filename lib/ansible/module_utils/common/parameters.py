@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import datetime
+import functools
 import os
 
 from collections import deque
@@ -108,6 +109,8 @@ PASS_BOOLS = ('check_mode', 'debug', 'diff', 'keep_remote_files', 'ignore_unknow
 
 DEFAULT_TYPE_VALIDATORS = {
     'str': check_type_str,
+    # FIXME: do we want to merge this? bikeshed name, etc
+    'str_no_conversion': functools.partial(check_type_str, allow_conversion=False),
     'list': check_type_list,
     'dict': check_type_dict,
     'bool': check_type_bool,

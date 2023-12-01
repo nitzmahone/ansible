@@ -20,7 +20,7 @@ from __future__ import annotations
 import typing as t
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError
+from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError, AnsibleValueOmittedError
 from ansible.module_utils.common.text.converters import to_native
 from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.six import string_types
@@ -68,7 +68,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
     # inheritance is only triggered if the 'current value' is Sentinel,
     # default can be set at play/top level object and inheritance will take it's course.
 
-    args = NonInheritableFieldAttribute(isa='dict', default=dict)
+    args: Attribute[dict] = NonInheritableFieldAttribute(isa='dict', default=dict)
     action = NonInheritableFieldAttribute(isa='string')
 
     async_val = NonInheritableFieldAttribute(isa='int', default=0, alias='async')
@@ -140,6 +140,11 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         # smuggle an untemplated copy of the task args for actions that need more control over the templating of their
         # input (eg, debug's var/msg, assert's "that" conditional expressions)
         self.untemplated_args = value
+
+        # FIXME: load action handler earlier so we can query it for "do you want untemplated args?"
+        if self.resolved_action in ('ansible.builtin.debug', 'debug'):
+            # FIXME: need to also handle _variable_args; move below or ?
+            return value
 
         # now recursively template the args dict
         args = templar.template(value)
@@ -324,38 +329,54 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         template these too early.
         '''
         env = {}
-        if value is not None:
 
-            def _parse_env_kv(k, v):
-                try:
-                    env[k] = templar.template(v, convert_bare=False)
-                except AnsibleUndefinedVariable as e:
-                    error = to_native(e)
-                    if self.action in C._ACTION_FACT_GATHERING and 'ansible_facts.env' in error or 'ansible_env' in error:
-                        # ignore as fact gathering is required for 'env' facts
-                        return
-                    raise
+        # FIXME: move this into an integration test for environment
+        """
+    - shell: echo "IAMHERE = $IAMHERE; NOTHERE = $NOTHERE; ANOTHER = $ANOTHER"
+      environment:
+        - NOTHERE: '{{ omit }}'
+          IAMHERE: hello
+        - '{{ omit }}'
+        - ANOTHER: stillhere
 
-            if isinstance(value, list):
-                for env_item in value:
-                    if isinstance(env_item, dict):
-                        for k in env_item:
-                            _parse_env_kv(k, env_item[k])
-                    else:
-                        isdict = templar.template(env_item, convert_bare=False)
-                        if isinstance(isdict, dict):
-                            env |= isdict
-                        else:
-                            display.warning("could not parse environment value, skipping: %s" % value)
+    - shell: echo hi
+      environment: '{{ omit }}'
 
-            elif isinstance(value, dict):
-                # should not really happen
-                env = dict()
-                for env_item in value:
-                    _parse_env_kv(env_item, value[env_item])
+    - shell: echo hi
+      environment:
+        - blar
+
+        """
+
+        # FIXME: kill this with fire
+        def _parse_env_kv(k, v):
+            try:
+                env[k] = templar.template(v, convert_bare=False)
+            except AnsibleValueOmittedError:
+                # skip this value
+                return
+            except AnsibleUndefinedVariable as e:
+                error = to_native(e)
+                if self.action in C._ACTION_FACT_GATHERING and 'ansible_facts.env' in error or 'ansible_env' in error:
+                    # ignore as fact gathering is required for 'env' facts
+                    return
+                raise
+
+        # NB: the environment FieldAttribute definition ensures that value is always a list
+        for env_item in value:
+            if isinstance(env_item, dict):
+                for k in env_item:
+                    _parse_env_kv(k, env_item[k])
             else:
-                # at this point it should be a simple string, also should not happen
-                env = templar.template(value, convert_bare=False)
+                try:
+                    isdict = templar.template(env_item, convert_bare=False)
+                except AnsibleValueOmittedError:
+                    continue
+
+                if isinstance(isdict, dict):
+                    env |= isdict
+                else:
+                    display.warning("could not parse environment value, skipping: %s" % value)
 
         return env
 
