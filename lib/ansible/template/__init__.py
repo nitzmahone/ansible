@@ -818,7 +818,7 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
     def visit_Const(self, node: Const, frame: Frame) -> None:
         # FIXME: shortcut "is maybe template", then blindly wrap with TrustedAsTemplate if so
         # FIXME: this needs to consult the variable marker overrides
-        is_template = type(node.value) is str and '{{' in node.value
+        is_template = type(node.value) is str and '{{' in node.value  # pylint: disable=unidiomatic-typecheck
 
         val = node.as_const(frame.eval_ctx)
         if isinstance(val, float):
@@ -1618,7 +1618,7 @@ class Templar:
         return True
 
     def _detonate_vault_bombs(self, value: t.Any) -> None:
-        if type(value) is _AnsibleTaggedVaultBomb:
+        if type(value) is _AnsibleTaggedVaultBomb:  # pylint: disable=unidiomatic-typecheck
             value.detonate()
         elif is_sequence(value):
             for x in value:

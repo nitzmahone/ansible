@@ -205,7 +205,7 @@ def _try_get_internal_tags_mapping(value: t.Any) -> _AnsibleTagsMapping:
         return _EMPTY_INTERNAL_TAGS_MAPPING
 
     # handle cases where the instance always returns something, such as AnsibleUndefined or MagicMock
-    if type(tags) is not _AnsibleTagsMapping:
+    if type(tags) is not _AnsibleTagsMapping:  # pylint: disable=unidiomatic-typecheck
         return _EMPTY_INTERNAL_TAGS_MAPPING
 
     return tags
@@ -463,7 +463,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
         if not tag_set:
             return value
 
-        tags_mapping = _AnsibleTagsMapping((type(tag), tag) for tag in tag_set if type(tag) is not tag_type)
+        tags_mapping = _AnsibleTagsMapping((type(tag), tag) for tag in tag_set if type(tag) is not tag_type)  # pylint: disable=unidiomatic-typecheck
 
         if not tags_mapping:
             if t.cast(AnsibleTaggedObject, value)._empty_tags_as_native:
@@ -532,7 +532,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
 
     @classmethod
     def _new(cls, value: t.Any, *args, **kwargs) -> t.Self:
-        if type(value) is _AnsibleTagsMapping:
+        if type(value) is _AnsibleTagsMapping:  # pylint: disable=unidiomatic-typecheck
             self = cls.native_type.__new__(cls, *args, **kwargs)
             self._ansible_tags_mapping = value
             return self
@@ -540,7 +540,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
         return cls.native_type.__new__(cls, value, *args, **kwargs)
 
     def _reduce(self, reduced: t.Union[str, tuple[t.Any, ...]]) -> tuple:
-        if type(reduced) is not tuple:
+        if type(reduced) is not tuple:  # pylint: disable=unidiomatic-typecheck
             raise TypeError()
 
         updated: list[t.Any] = list(reduced)
@@ -755,7 +755,7 @@ class _AnsibleTaggedSet(set, AnsibleTaggedObject):
         return copy.copy(self)
 
     def __init__(self, value=None, *args, **kwargs):
-        if type(value) is _AnsibleTagsMapping:
+        if type(value) is _AnsibleTagsMapping:  # pylint: disable=unidiomatic-typecheck
             super().__init__(*args, **kwargs)
         else:
             super().__init__(value, *args, **kwargs)

@@ -247,7 +247,7 @@ def test_untag(taggable_instance):
     one_less_tag = NotATemplate.untag(tagged_instance)
 
     assert one_less_tag is not tagged_instance
-    assert type(one_less_tag) is type(tagged_instance)
+    assert type(one_less_tag) is type(tagged_instance)  # pylint: disable=unidiomatic-typecheck
     assert AnsibleTaggedObject.tags(one_less_tag) == frozenset((SensitiveData(),))
 
     no_tags = SensitiveData.untag(one_less_tag)

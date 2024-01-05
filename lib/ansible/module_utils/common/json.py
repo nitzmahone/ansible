@@ -17,18 +17,20 @@ def json_dump(structure):
     return json.dumps(structure, cls=AnsibleJSONEncoder, sort_keys=True, indent=4)
 
 
+# FIXME: use a frozen dataclass if it's not more expensive
+class _WrappedValue:
+    __slots__ = tuple(('wrapped',))
+
+    def __init__(self, wrapped):
+        self.wrapped = wrapped
+
+
 class AnsibleJSONEncoder(json.JSONEncoder):
     '''
     Simple encoder class to deal with JSON encoding of Ansible internal types
     '''
 
     _wrap_container_types = (list, set, tuple, dict)
-
-    class _WrappedValue:
-        __slots__ = tuple(('wrapped',))
-
-        def __init__(self, wrapped):
-            self.wrapped = wrapped
 
     def __init__(self, preprocess_unsafe=False, vault_to_text=False, preserve_datatags=False, **kwargs):
         self._wrap_types = self._wrap_container_types + (AnsibleSerializable,)
@@ -39,17 +41,17 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         super(AnsibleJSONEncoder, self).__init__(**kwargs)
 
     def encode(self, o):
-        o = self._WrappedValue(o)
+        o = _WrappedValue(o)
 
         return super(AnsibleJSONEncoder, self).encode(o)
 
     # NOTE: ALWAYS inform AWS/Tower when new items get added as they consume them downstream via a callback
-    def default(self, o, _WrappedValue=_WrappedValue):
+    def default(self, o):
         # To control serialization of subclasses of builtin types, we have to wrap their values (and one level
         # of sub-values, for containers) in a non-serializable wrapper (_WrappedValue). The wrapper forces the values back
         # through this method on future iterations; without this, or a pre-flight copy, objects that are subclasses of
         # native types get short-circuited through their default representation by the serializer.
-        if type(o) is _WrappedValue:
+        if type(o) is _WrappedValue:  # pylint: disable=unidiomatic-typecheck
             o = o.wrapped
         # managed access; allows external access audit and/or replacement of values
         o = AnsibleAccessContext.current().access(o)
@@ -66,9 +68,9 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         #         value = {'__ansible_vault': to_text(o._ciphertext, errors='surrogate_or_strict', nonstring='strict')}
         # start a new if parade to ensure we handle eg, nested lists of custom types from as_dict
         if isinstance(o, Mapping):
-            value = {str(k): self._WrappedValue(v) if isinstance(v, self._wrap_types) else v for k, v in o.items()}
+            value = {str(k): _WrappedValue(v) if isinstance(v, self._wrap_types) else v for k, v in o.items()}
         elif isinstance(o, self._wrap_container_types):  # FIXME: others, maybe sequence? can't use Iterable...
-            value = [self._WrappedValue(v) if isinstance(v, self._wrap_types) else v for v in o]
+            value = [_WrappedValue(v) if isinstance(v, self._wrap_types) else v for v in o]
         elif isinstance(o, (datetime.date, datetime.datetime)):
             # date object
             value = o.isoformat()
