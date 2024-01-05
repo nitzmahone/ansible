@@ -606,13 +606,14 @@ def commonpath(paths):
 
     return os.path.commonpath(paths)
 
+
 # FIXME: FDI038 - this needs to be a generic return-type coercion for plugins that don't claim to be aware of the expanded var type system
 @pass_environment
 def _cleansed_groupby(*args, **kwargs):
     res = sync_do_groupby(*args, **kwargs)
 
     # flatten _GroupTuple children to dumb lists
-    res = [[v for v in g] for g in res]
+    res = [list(g) for g in res]
 
     return res
 

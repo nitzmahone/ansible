@@ -18,7 +18,6 @@
 
 from __future__ import annotations
 
-import unittest
 from ansible.module_utils.basic import heuristic_log_sanitize
 
 

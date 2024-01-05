@@ -43,6 +43,7 @@ if t.TYPE_CHECKING:
     from ansible.playbook.task import Task
     from ansible.plugins.connection import ConnectionBase
 
+
 def _validate_utf8_json(d):
     if isinstance(d, text_type):
         # Purposefully not using to_bytes here for performance reasons

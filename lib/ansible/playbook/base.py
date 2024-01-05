@@ -8,6 +8,8 @@ import itertools
 import operator
 import os
 
+import typing as t
+
 from copy import copy as shallowcopy
 from functools import cache
 
@@ -23,7 +25,6 @@ from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.parsing.dataloader import DataLoader
 from ansible.playbook.attribute import Attribute, FieldAttribute, ConnectionFieldAttribute, NonInheritableFieldAttribute
 from ansible.plugins.loader import module_loader, action_loader
-from ansible.template import Omit
 from ansible.utils.collection_loader._collection_finder import _get_collection_metadata, AnsibleCollectionRef
 from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
@@ -511,7 +512,6 @@ class FieldAttributeBase:
 
         setattr(self, name, value)
         return value
-
 
     def post_validate(self, templar):
         '''

@@ -469,7 +469,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
             if t.cast(AnsibleTaggedObject, value)._empty_tags_as_native:
                 return t.cast(AnsibleTaggedObject, value).native_copy()
 
-            tags_mapping = _empty_frozenset
+            tags_mapping = _EMPTY_INTERNAL_TAGS_MAPPING
 
         return AnsibleTaggedObject._tag_value(type(value), value, tags_mapping)
 

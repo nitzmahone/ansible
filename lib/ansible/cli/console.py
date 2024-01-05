@@ -182,7 +182,6 @@ class ConsoleCLI(CLI, cmd.Cmd):
         from ansible.module_utils.datatag import TrustedAsTemplate
         module_args = TrustedAsTemplate().tag(module_args)
 
-
         if self.callback:
             cb = self.callback
         elif C.DEFAULT_LOAD_CALLBACK_PLUGINS and C.DEFAULT_STDOUT_CALLBACK != 'default':

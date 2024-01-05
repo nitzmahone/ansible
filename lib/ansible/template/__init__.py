@@ -379,7 +379,7 @@ class AnsibleUndefined(StrictUndefined):
     A custom Undefined class, which returns further Undefined objects on access,
     rather than throwing an exception.
     '''
-    __slots__ = ('_undefined_template_source')
+    __slots__ = ('_undefined_template_source',)
 
     def __init__(self, *args, template_source: str | None = None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -601,7 +601,7 @@ class _OmitType:
     `Omit` placeholder value will be visible to plugins during templating. The only time a template result
     will include `Omit` outside a templating context is when the template renders to the scalar value `Omit`.
     """
-    __slots__ = tuple()
+    __slots__ = ()
 
     # FIXME: this keeps pickle happy, but not JSON/YAML for callbacks; just teach them about it?
     def __new__(cls):
@@ -1070,8 +1070,8 @@ class Templar:
 
         def warnings(self, max_count: int | None = None):
             try:
-                #blah = list(f'FIXME busted template {self._hint(w)}' for w in islice(self._undefined_templates, max_count))
-                #yield from blah
+                # blah = list(f'FIXME busted template {self._hint(w)}' for w in islice(self._undefined_templates, max_count))
+                # yield from blah
                 for w in islice(self._undefined_templates, max_count):
                     try:
                         yield f'FIXME busted template {self._hint(w)}'
@@ -1079,8 +1079,6 @@ class Templar:
                         raise
             except Exception as e:
                 raise
-
-
 
     @property
     def available_variables(self):
@@ -1169,7 +1167,7 @@ class Templar:
         templar = Templar(self._loader, variables=variables)
         return templar.template(expression_template)
 
-    def _delazify(self, o: t.Any, undefined_behavior: t.Callable[t.Any, t.Any]) -> t.Any:
+    def _delazify(self, o: t.Any, undefined_behavior: t.Callable[..., t.Any]) -> t.Any:
         # FIXME: isn't this going to over-fire managed access?
 
         from jinja2 import Undefined
@@ -1179,7 +1177,8 @@ class Templar:
             case str():
                 return o
             case dict():
-                return AnsibleTaggedObject.tag_copy(o, ((k, self._delazify(v, undefined_behavior=undefined_behavior)) for k, v in o.items() if v is not Omit), value_type=dict)
+                return AnsibleTaggedObject.tag_copy(o, ((k, self._delazify(v, undefined_behavior=undefined_behavior)) for k, v in o.items() if v is not Omit),
+                                                    value_type=dict)
             case list():
                 return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=list)
             case tuple():
@@ -1200,7 +1199,7 @@ class Templar:
                     list(self._verify_delazified(v) for v in o.values())
                 case list() | tuple() | set():
                     list(self._verify_delazified(v) for v in o)
-                case _AnsibleLazyTemplateMixin(): # | Undefined():
+                case _AnsibleLazyTemplateMixin():  # | Undefined():
                     raise Exception(f"BANG: an unsupported type {type(o)} tried to escape from templating...")
 
         except Exception as ex:
@@ -1212,7 +1211,7 @@ class Templar:
         return self.template_with_result(*args, **kwargs).result
 
     def template_with_result(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
-                 overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=None) -> TemplateResult:
+                             overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=None) -> TemplateResult:
         '''
         Templates (possibly recursively) any given data as input. If convert_bare is
         set to True, the given data will be wrapped as a jinja2 variable ('{{foo}}')
@@ -1725,6 +1724,8 @@ class Templar:
     # for backwards compatibility in case anyone is using old private method directly
     _do_template = do_template
 
+
 # FIXME: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
 from ansible.module_utils import datatag
+
 datatag._untaggable_types |= {AnsibleUndefined, type(Omit)}

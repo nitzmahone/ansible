@@ -23,7 +23,6 @@ import sys
 
 from collections import defaultdict
 from collections.abc import Mapping, MutableMapping, Sequence
-from hashlib import sha1
 
 from jinja2.exceptions import UndefinedError
 

@@ -68,7 +68,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
     # inheritance is only triggered if the 'current value' is Sentinel,
     # default can be set at play/top level object and inheritance will take it's course.
 
-    args: Attribute[dict] = NonInheritableFieldAttribute(isa='dict', default=dict)
+    args = NonInheritableFieldAttribute(isa='dict', default=dict)
     action = NonInheritableFieldAttribute(isa='string')
 
     async_val = NonInheritableFieldAttribute(isa='int', default=0, alias='async')
@@ -331,22 +331,22 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         env = {}
 
         # FIXME: move this into an integration test for environment
-        """
-    - shell: echo "IAMHERE = $IAMHERE; NOTHERE = $NOTHERE; ANOTHER = $ANOTHER"
-      environment:
-        - NOTHERE: '{{ omit }}'
-          IAMHERE: hello
-        - '{{ omit }}'
-        - ANOTHER: stillhere
-
-    - shell: echo hi
-      environment: '{{ omit }}'
-
-    - shell: echo hi
-      environment:
-        - blar
-
-        """
+        #     """
+        # - shell: echo "IAMHERE = $IAMHERE; NOTHERE = $NOTHERE; ANOTHER = $ANOTHER"
+        #   environment:
+        #     - NOTHERE: '{{ omit }}'
+        #       IAMHERE: hello
+        #     - '{{ omit }}'
+        #     - ANOTHER: stillhere
+        #
+        # - shell: echo hi
+        #   environment: '{{ omit }}'
+        #
+        # - shell: echo hi
+        #   environment:
+        #     - blar
+        #
+        #     """
 
         # FIXME: kill this with fire
         def _parse_env_kv(k, v):

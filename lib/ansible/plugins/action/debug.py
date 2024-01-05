@@ -20,7 +20,6 @@ from __future__ import annotations
 from ansible.errors import AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.datatag.access import SensitiveDataMask
-from ansible.module_utils.common.text.converters import to_text
 from ansible.plugins.action import ActionBase
 from ansible.template import Omit
 
@@ -84,7 +83,8 @@ class ActionModule(ActionBase):
                         template_result = self._templar.template_with_result(template_wrapped_arg, undefined_behavior=best_effort)
                     except AnsibleValueOmittedError:
                         results = repr(Omit)
-                        result.setdefault('warnings', []).append(f"The result of expression {raw_var_arg!r} could not be omitted; a placeholder was used instead.")
+                        result.setdefault('warnings', []).append(
+                            f"The result of expression {raw_var_arg!r} could not be omitted; a placeholder was used instead.")
                     else:
                         results = template_result.result
 
