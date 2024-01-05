@@ -27,7 +27,8 @@ from collections.abc import Mapping, MutableMapping, Sequence
 from jinja2.exceptions import UndefinedError
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleFileNotFound, AnsibleAssertionError, AnsibleTemplateError
+from ansible.errors import (AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleFileNotFound,
+                            AnsibleAssertionError, AnsibleTemplateError, AnsibleValueOmittedError)
 from ansible.inventory.host import Host
 from ansible.inventory.helpers import sort_groups, get_group_vars
 from ansible.module_utils.common.text.converters import to_text
@@ -512,37 +513,42 @@ class VariableManager:
         Not used directly be VariableManager, but used primarily within TaskExecutor
         """
         delegated_vars = {}
-        delegated_host_name = None
+        delegated_host_name = ...  # sentinel value distinct from empty/None, which are errors
+
         if task.delegate_to:
-            delegated_host_name = templar.template(task.delegate_to, fail_on_undefined=False)
+            try:
+                delegated_host_name = templar.template(task.delegate_to, fail_on_undefined=False)
+            except AnsibleValueOmittedError:
+                pass
 
-            # no need to do work if omitted
-            if delegated_host_name != self._omit_token:
+        # bypass for unspecified value/omit
+        if delegated_host_name is ...:
+            return delegated_vars, None
 
-                if not delegated_host_name:
-                    raise AnsibleError('Empty hostname produced from delegate_to: "%s"' % task.delegate_to)
+        if not delegated_host_name:
+            raise AnsibleError('Empty hostname produced from delegate_to: "%s"' % task.delegate_to)
 
-                delegated_host = self._inventory.get_host(delegated_host_name)
-                if delegated_host is None:
-                    for h in self._inventory.get_hosts(ignore_limits=True, ignore_restrictions=True):
-                        # check if the address matches, or if both the delegated_to host
-                        # and the current host are in the list of localhost aliases
-                        if h.address == delegated_host_name:
-                            delegated_host = h
-                            break
-                    else:
-                        delegated_host = Host(name=delegated_host_name)
+        delegated_host = self._inventory.get_host(delegated_host_name)
+        if delegated_host is None:
+            for h in self._inventory.get_hosts(ignore_limits=True, ignore_restrictions=True):
+                # check if the address matches, or if both the delegated_to host
+                # and the current host are in the list of localhost aliases
+                if h.address == delegated_host_name:
+                    delegated_host = h
+                    break
+            else:
+                delegated_host = Host(name=delegated_host_name)
 
-                delegated_vars['ansible_delegated_vars'] = {
-                    delegated_host_name: self.get_vars(
-                        play=task.get_play(),
-                        host=delegated_host,
-                        task=task,
-                        include_delegate_to=False,
-                        include_hostvars=True,
-                    )
-                }
-                delegated_vars['ansible_delegated_vars'][delegated_host_name]['inventory_hostname'] = variables.get('inventory_hostname')
+        delegated_vars['ansible_delegated_vars'] = {
+            delegated_host_name: self.get_vars(
+                play=task.get_play(),
+                host=delegated_host,
+                task=task,
+                include_delegate_to=False,
+                include_hostvars=True,
+            )
+        }
+        delegated_vars['ansible_delegated_vars'][delegated_host_name]['inventory_hostname'] = variables.get('inventory_hostname')
 
         return delegated_vars, delegated_host_name
 
