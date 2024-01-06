@@ -47,7 +47,7 @@
 
 - assert:
     that:
-      - "'VARIABLE IS NOT DEFINED!' in var_undefined.undefined_variable"
+      - var_undefined.undefined_variable == "{" + "{ undefined_variable }}"  # break up handlebars to avoid templating
       - same_value_as_var_name.same_value_as_var_name_var == 'same_value_as_var_name_var'
 
 - name: cleanup temporary template output
