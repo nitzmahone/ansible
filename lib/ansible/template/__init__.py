@@ -40,14 +40,15 @@ from itertools import islice
 from numbers import Number
 from traceback import format_exc
 
-from jinja2 import Environment, Undefined
+from jinja2 import Environment
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
 from jinja2.nativetypes import NativeCodeGenerator
-from jinja2.runtime import Context, StrictUndefined
+from jinja2.runtime import Context, StrictUndefined, Undefined
 from jinja2.nodes import Const
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.compiler import Frame
+from jinja2.utils import missing
 
 from ansible import constants as C
 from ansible.errors import (
@@ -381,7 +382,20 @@ class AnsibleUndefined(StrictUndefined):
     '''
     __slots__ = ('_undefined_template_source',)
 
-    def __init__(self, *args, template_source: str | None = None, **kwargs):
+    def __init__(
+            self,
+            hint: t.Optional[str] = None,
+            obj: t.Any = missing,
+            name: t.Optional[str] = None,
+            *args,
+            template_source: str | None = None,
+            **kwargs,
+    ):
+        if not hint and name and obj is not missing:
+            obj_type_name = (obj.native_type if isinstance(obj, AnsibleTaggedObject) else type(obj)).__name__
+            hint = f"object of type {obj_type_name!r} has no attribute {name!r}"
+
+        kwargs.update(hint=hint, obj=obj, name=name)
         super().__init__(*args, **kwargs)
         self._undefined_template_source = template_source
 
@@ -623,7 +637,7 @@ class _AnsibleLazyTemplateMixin:
 
     # due to the way Jinja handles globals, we may encounter things like functions/methods in hooked getitem/getattr that
     # always pass through this mixin; we want to silently ignore those types
-    _ignore_types = (types.MethodType, type(Omit))
+    _ignore_types = (types.MethodType, type(Omit), Undefined, StrictUndefined, AnsibleUndefined)
 
     _container_types: set[type] = set()  # populated by our __init_subclass__
 

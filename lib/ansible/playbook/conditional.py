@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import typing as t
 
+from jinja2.exceptions import UndefinedError
+
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.text.converters import to_native
 from ansible.playbook.attribute import FieldAttribute
@@ -72,7 +74,7 @@ class Conditional:
             else:
                 try:
                     res = self._check_conditional(conditional, templar, all_vars)
-                except AnsibleError as e:
+                except (UndefinedError, AnsibleError) as e:
                     raise AnsibleError(
                         "The conditional check '%s' failed. The error was: %s" % (to_native(conditional), to_native(e)),
                         obj=getattr(self, '_ds', None)
