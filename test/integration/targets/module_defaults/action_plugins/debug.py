@@ -17,63 +17,97 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-from ansible.errors import AnsibleUndefinedVariable
-from ansible.module_utils.six import string_types
-from ansible.module_utils.common.text.converters import to_text
+from ansible.errors import AnsibleValueOmittedError
+from ansible.module_utils.datatag import AnsibleTaggedObject
+from ansible.module_utils.datatag.access import SensitiveDataMask
 from ansible.plugins.action import ActionBase
+from ansible.template import Omit
 
 
 class ActionModule(ActionBase):
     ''' Print statements during execution '''
 
     TRANSFERS_FILES = False
-    _VALID_ARGS = frozenset(('msg', 'var', 'verbosity'))
+    _requires_connection = False
 
     def run(self, tmp=None, task_vars=None):
-        if task_vars is None:
-            task_vars = dict()
+        with SensitiveDataMask():
+            if task_vars is None:
+                task_vars = dict()
 
-        if 'msg' in self._task.args and 'var' in self._task.args:
-            return {"failed": True, "msg": "'msg' and 'var' are incompatible options"}
+            best_effort = self._templar.BestEffort()
 
-        result = super(ActionModule, self).run(tmp, task_vars)
-        del tmp  # tmp no longer has any effect
+            argument_spec = {
+                'msg': {'type': 'raw', 'default': 'Hello world!'},
+                'var': {'type': 'str_no_conversion'},
+                'verbosity': {'type': 'int', 'default': 0},
+            }
 
-        # get task verbosity
-        verbosity = int(self._task.args.get('verbosity', 0))
+            custom_undefined_handlers = dict(msg=best_effort, var=best_effort)
 
-        if verbosity <= self._display.verbosity:
-            if 'msg' in self._task.args:
-                result['msg'] = self._task.args['msg']
+            # special omit handling
+            for arg_name in argument_spec:
+                if (arg := self._task.args.get(arg_name, Omit)) is Omit:
+                    continue
 
-            elif 'var' in self._task.args:
+                undefined_handler = custom_undefined_handlers.get(arg_name, None)
+
                 try:
-                    results = self._templar.template(self._task.args['var'], fail_on_undefined=True)
-                    if results == self._task.args['var']:
-                        # if results is not str/unicode type, raise an exception
-                        if not isinstance(results, string_types):
-                            raise AnsibleUndefinedVariable
-                        # If var name is same as result, try to template it
-                        results = self._templar.template("{{" + results + "}}", fail_on_undefined=True)
-                except AnsibleUndefinedVariable as e:
-                    results = u"VARIABLE IS NOT DEFINED!"
-                    if self._display.verbosity > 0:
-                        results += u": %s" % to_text(e)
+                    result = self._templar.template_with_result(arg, undefined_behavior=undefined_handler)
+                except AnsibleValueOmittedError:
+                    self._task.args.pop(arg_name)
+                    continue
 
-                if isinstance(self._task.args['var'], (list, dict)):
-                    # If var is a list or dict, use the type as key to display
-                    result[to_text(type(self._task.args['var']))] = results
+                self._task.args[arg_name] = result.result
+
+            validation_result, new_module_args = self.validate_argument_spec(
+                argument_spec=argument_spec,
+                mutually_exclusive=(
+                    ('msg', 'var'),
+                ),
+            )
+
+            result = super(ActionModule, self).run(tmp, task_vars)
+            del tmp  # tmp no longer has any effect
+
+            # get task verbosity
+            verbosity = new_module_args['verbosity']
+
+            if verbosity <= self._display.verbosity:
+                if raw_var_arg := new_module_args['var']:
+                    # If var name is same as result, try to template it
+                    # FIXME: preserve AnsibleSourcePosition, SensitiveData, others?
+                    template_wrapped_arg = AnsibleTaggedObject.tag_copy(raw_var_arg, "{{" + raw_var_arg + "}}")
+
+                    try:
+                        template_result = self._templar.template_with_result(template_wrapped_arg, undefined_behavior=best_effort)
+                    except AnsibleValueOmittedError:
+                        results = repr(Omit)
+                        result.setdefault('warnings', []).append(
+                            f"The result of expression {raw_var_arg!r} could not be omitted; a placeholder was used instead.")
+                    else:
+                        results = template_result.result
+
+                    # handle the corner case where the input was untrusted- if so, return the raw input, not the
+                    # generated template
+                    if results == template_wrapped_arg:
+                        results = raw_var_arg
+
+                    result[raw_var_arg] = results
+
                 else:
-                    result[self._task.args['var']] = results
+                    result['msg'] = new_module_args['msg']
+
+                # force flag to make debug output module always verbose
+                result['_ansible_verbose_always'] = True
+
+                # propagate any undefined warnings in the task result unless we're skipping the task
+                if best_effort.has_warnings:
+                    result.setdefault('warnings', []).extend(best_effort.warnings())
             else:
-                result['msg'] = 'Hello world!'
+                result['skipped_reason'] = "Verbosity threshold not met."
+                result['skipped'] = True
 
-            # force flag to make debug output module always verbose
-            result['_ansible_verbose_always'] = True
-        else:
-            result['skipped_reason'] = "Verbosity threshold not met."
-            result['skipped'] = True
+            result['failed'] = False
 
-        result['failed'] = False
-
-        return result
+            return result
