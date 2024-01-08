@@ -18,7 +18,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleConnectionFailure, AnsibleActionFail, AnsibleActionSkip
 from ansible.executor.task_result import TaskResult
 from ansible.executor.module_common import get_action_args_with_defaults
-from ansible.module_utils.datatag import Deprecated
+from ansible.module_utils.datatag import Deprecated, NotATemplate
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.connection import write_to_file_descriptor
@@ -47,6 +47,11 @@ class TaskTimeoutError(BaseException):
 
 def task_timeout(signum, frame):
     raise TaskTimeoutError
+
+
+# FIXME: rename this, add docstring
+class PostValidateError(AnsibleError):
+    pass
 
 
 class TaskExecutor:
@@ -171,11 +176,20 @@ class TaskExecutor:
             res = _clean_res(res)
             display.debug("done dumping result, returning")
             return res
+        # FIXME: consolidate/cleanup exception handling -- this seems somewhat redundant (3 different ways to create result dict)
+        #        there are other places we do this as well, perhaps utility code for exception to dict would help
+        except PostValidateError as ex:
+            return dict(
+                failed=True,
+                msg=NotATemplate().tag(f'Unexpected failure during module execution: {ex}'),
+                exception=NotATemplate().tag(to_text(traceback.format_exc())),
+                _ansible_no_log=self._play_context.no_log,
+            )
         except AnsibleError as e:
             return dict(failed=True, msg=to_text(e, nonstring='simplerepr'), _ansible_no_log=self._play_context.no_log)
         except Exception as e:
             return dict(failed=True, msg='Unexpected failure during module execution: %s' % (to_native(e, nonstring='simplerepr')),
-                        exception=to_text(traceback.format_exc()), stdout='', _ansible_no_log=self._play_context.no_log)
+                        exception=NotATemplate().tag(to_text(traceback.format_exc())), stdout='', _ansible_no_log=self._play_context.no_log)
         finally:
             try:
                 self._connection.close()
@@ -309,7 +323,18 @@ class TaskExecutor:
             # execute, and swap them back so we can do the next iteration cleanly
             (self._task, tmp_task) = (tmp_task, self._task)
             (self._play_context, tmp_play_context) = (tmp_play_context, self._play_context)
-            res = self._execute(variables=task_vars)
+
+            try:
+                res = self._execute(variables=task_vars)
+            except PostValidateError as ex:
+                res = dict(
+                    changed=False,
+                    failed=True,
+                    _ansible_no_log=no_log,
+                    msg=NotATemplate().tag(f'Unexpected failure during module execution: {ex}'),
+                    exception=NotATemplate().tag(to_text(traceback.format_exc())),
+                )
+
             task_fields = self._task.dump_attrs()
             (self._task, tmp_task) = (tmp_task, self._task)
             (self._play_context, tmp_play_context) = (tmp_play_context, self._play_context)
@@ -501,10 +526,8 @@ class TaskExecutor:
         # Now we do final validation on the task, which sets all fields to their final values.
         try:
             self._task.post_validate(templar=templar)
-        except AnsibleError:
-            raise
-        except Exception:
-            return dict(changed=False, failed=True, _ansible_no_log=no_log, exception=to_text(traceback.format_exc()))
+        except Exception as ex:
+            raise PostValidateError(str(ex)) from ex
 
         # update no_log to task value, now that we have it templated
         no_log = self._task.no_log
@@ -595,6 +618,7 @@ class TaskExecutor:
                     old_sig = signal.signal(signal.SIGALRM, task_timeout)
                     signal.alarm(self._task.timeout)
                 result = self._handler.run(task_vars=vars_copy)
+                # FIXME: Actions that don't handle their own exceptions kill loops.
             except (AnsibleActionFail, AnsibleActionSkip) as e:
                 return e.result
             except AnsibleConnectionFailure as e:

@@ -17,8 +17,10 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
+import traceback
+
 from ansible.errors import AnsibleValueOmittedError
-from ansible.module_utils.datatag import AnsibleTaggedObject
+from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.module_utils.datatag.access import SensitiveDataMask
 from ansible.plugins.action import ActionBase
 from ansible.template import Omit
@@ -57,6 +59,13 @@ class ActionModule(ActionBase):
                 except AnsibleValueOmittedError:
                     self._task.args.pop(arg_name)
                     continue
+                except Exception as ex:
+                    return dict(
+                        # FIXME: better error message and location?
+                        msg=NotATemplate().tag(f'Error while templating arg {arg!r}: {ex}'),
+                        exception=NotATemplate().tag(str(traceback.format_exc())),
+                        failed=True,
+                    )
 
                 self._task.args[arg_name] = result.result
 
@@ -85,6 +94,13 @@ class ActionModule(ActionBase):
                         results = repr(Omit)
                         result.setdefault('warnings', []).append(
                             f"The result of expression {raw_var_arg!r} could not be omitted; a placeholder was used instead.")
+                    except Exception as ex:
+                        return dict(
+                            # FIXME: better error message and location?
+                            msg=NotATemplate().tag(f'Error while templating variable expression {raw_var_arg!r}: {ex}'),
+                            exception=NotATemplate().tag(str(traceback.format_exc())),
+                            failed=True,
+                        )
                     else:
                         results = template_result.result
 

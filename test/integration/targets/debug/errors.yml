@@ -1,6 +1,9 @@
-- name: Ensure task arg templating failures are handled properly
-  ping:
-    data: "{{ 5 / 0 | int }}"
+# The debug action bypasses standard task arg templating.
+# Failures during templating occur when running the debug action.
+
+- name: Ensure debug templating failures are handled properly
+  debug:
+    msg: "{{ 5 / 0 | int }}"
   ignore_errors: true
   register: result
 
@@ -13,9 +16,9 @@
       - "'division by zero' in result.msg"
       - result.exception.startswith('Traceback')
 
-- name: Ensure task arg templating failures do not stop later loop iterations
-  ping:
-    data: "{{ 5 / item }}"
+- name: Ensure debug templating failures do not stop later loop iterations
+  debug:
+    msg: "{{ 5 / item }}"
   ignore_errors: true
   register: result
   loop: [0, 0, 1]
@@ -36,6 +39,6 @@
       - result.results[1].item == 0
 
       - result.results[2] is success
-      - result.results[2].ping == '5.0'
+      - result.results[2].msg == 5.0
       - result.results[2].exception is undefined
       - result.results[2].item == 1

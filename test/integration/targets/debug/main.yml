@@ -21,3 +21,5 @@
         that:
         - debug_out_unsafe.debug_me == 'debug_me'
         - debug_out_safe.debug_me == 'hi mom'
+
+    - include_tasks: errors.yml

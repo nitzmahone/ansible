@@ -637,7 +637,16 @@ class _AnsibleLazyTemplateMixin:
 
     # due to the way Jinja handles globals, we may encounter things like functions/methods in hooked getitem/getattr that
     # always pass through this mixin; we want to silently ignore those types
-    _ignore_types = (types.MethodType, type(Omit), Undefined, StrictUndefined, AnsibleUndefined)
+    # FIXME: optimize this list by separating base types (using isinstance) from exact types using a set lookup
+    _ignore_types = (
+        types.MethodType,
+        # FIXME: is there a better way to include callables like these, so we're not playing whack-a-mole
+        type(''.startswith),  # builtin_function_or_method
+        type(Omit),
+        Undefined,
+        StrictUndefined,
+        AnsibleUndefined,
+    )
 
     _container_types: set[type] = set()  # populated by our __init_subclass__
 
@@ -1604,6 +1613,7 @@ class Templar:
         bool_result = bool(result)
         # FIXME: SensitiveData check here?
         # FIXME: `type(result)` should probably be the base type of the data structure
+        # FIXME: add an option to make these errors, enabled by default for integration tests
         display.warning(f'Conditional {_repr_from(conditional)} had result {result!r} of type {type(result)}, '
                         f'which evaluates to {bool_result}. Conditionals should always have a boolean result.')
 
