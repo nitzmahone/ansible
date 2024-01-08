@@ -559,6 +559,13 @@ class FieldAttributeBase:
                         # or default specified in the FieldAttribute and move on
                         value = self.set_to_context(name)
 
+                        if value is Sentinel:
+                            continue
+
+                # FIXME: remove this once we know it's not needed?
+                if value is Sentinel:
+                    raise Exception(f'Encountered unexpected Sentinel on attribute {name!r} on {type(self)}.')
+
                 # and make sure the attribute is of the type it should be
                 if value is not None:
                     value = self.get_validated_value(name, attribute, value, templar)
