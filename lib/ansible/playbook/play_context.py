@@ -214,17 +214,11 @@ class PlayContext(Base):
         # If the value 'ansible_delegated_vars' is in the variables, it means
         # we have a delegated-to host, so we check there first before looking
         # at the variables in general
-        if delegated_host_name := task.delegate_to is not None:
-            try:
-                delegated_host_name = templar.template(delegated_host_name)
-            except AnsibleValueOmittedError:
-                delegated_host_name = None
-
-        if delegated_host_name is not None:
+        if task.delegate_to is not None:
             # In the case of a loop, the delegated_to host may have been
             # templated based on the loop variable, so we try and locate
             # the host name in the delegated variable dictionary here
-            delegated_vars = variables.get('ansible_delegated_vars', dict()).get(delegated_host_name, dict())
+            delegated_vars = variables.get('ansible_delegated_vars', dict()).get(task.delegate_to, dict())
 
             delegated_transport = C.DEFAULT_TRANSPORT
             for transport_var in C.MAGIC_VARIABLE_MAPPING.get('connection'):
@@ -240,8 +234,8 @@ class PlayContext(Base):
                 if address_var in delegated_vars:
                     break
             else:
-                display.debug("no remote address found for delegated host %s\nusing its name, so success depends on DNS resolution" % delegated_host_name)
-                delegated_vars['ansible_host'] = delegated_host_name
+                display.debug("no remote address found for delegated host %s\nusing its name, so success depends on DNS resolution" % task.delegate_to)
+                delegated_vars['ansible_host'] = task.delegate_to
 
             # reset the port back to the default if none was specified, to prevent
             # the delegated host from inheriting the original host's setting

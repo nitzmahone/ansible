@@ -414,9 +414,9 @@ class TaskExecutor:
         # At the point this is executed it is safe to mutate self._task,
         # since `self._task` is either a copy referred to by `tmp_task` in `_run_loop`
         # or just a singular non-looped task
-        if delegated_host_name:
-            self._task.delegate_to = delegated_host_name
-            variables.update(delegated_vars)
+
+        self._task.delegate_to = delegated_host_name  # always override, since a templated result could be an omit (-> None)
+        variables.update(delegated_vars)
 
     def _execute(self, variables=None):
         '''
