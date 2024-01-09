@@ -1097,7 +1097,7 @@ class Templar:
                 # yield from blah
                 for w in islice(self._undefined_templates, max_count):
                     try:
-                        yield f'FIXME busted template {self._hint(w)}'
+                        yield NotATemplate().tag(f'FIXME busted template {self._hint(w)}')
                     except Exception as exi:
                         raise
             except Exception as e:
@@ -1234,7 +1234,8 @@ class Templar:
         return self.template_with_result(*args, **kwargs).result
 
     def template_with_result(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
-                             overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=None) -> TemplateResult:
+                             overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=None,
+                             stop_on_container_result=False) -> TemplateResult:
         '''
         Templates (possibly recursively) any given data as input. If convert_bare is
         set to True, the given data will be wrapped as a jinja2 variable ('{{foo}}')
@@ -1277,6 +1278,10 @@ class Templar:
             if not TemplateContext.current():
                 # FIXME: make this check cheaper
                 if not isinstance(_template_result, str) and isinstance(_template_result, (Mapping, Sequence, set, Undefined)):
+                    if stop_on_container_result:
+                        # FIXME: defensive handling for non-lazy types?
+                        return TemplateResult(result=_template_result.native_copy())
+
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
                         if not undefined_behavior:

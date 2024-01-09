@@ -69,6 +69,7 @@ class ActionModule(ActionBase):
         #  we could fix that by doing direct var lookups on the inputs
         # FIXME: some form of this code should probably be shared between debug, assert, and Task.post_validate, since they
         #  have a lot of overlapping needs
+        # FIXME: this needs to handle `_variable_args` for arg splat, eg `assert: args={{somevar}}` - crib from debug and make shared utility code?
         try:
             thats = self._task.untemplated_args['that']
         except KeyError:

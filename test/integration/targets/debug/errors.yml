@@ -42,3 +42,26 @@
       - result.results[2].msg == 5.0
       - result.results[2].exception is undefined
       - result.results[2].item == 1
+
+- name: var templating exception
+  debug:
+    var: 5/0
+  ignore_errors: true
+  register: result
+
+- assert:
+    that:
+      - result is failed
+      - '"division by zero" in result.msg'
+
+- name: undefined warnings in `var` template
+  debug:
+    var: something_undefined
+  register: result
+
+- assert:
+    that:
+      - result is success
+      - result.warnings | length == 1
+      # FIXME: fix this to match the actual warning text
+      - '"something_undefined" in result.warnings[0]'
