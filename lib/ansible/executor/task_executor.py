@@ -507,6 +507,12 @@ class TaskExecutor:
         # set templar to use temp variables until loop is evaluated
         templar.available_variables = tempvars
 
+        # Now we do final validation on the task, which sets all fields to their final values.
+        try:
+            self._task.post_validate(templar=templar)
+        except Exception as ex:
+            raise PostValidateError(str(ex)) from ex
+
         # if this task is a TaskInclude, we just return now with a success code so the
         # main thread can expand the task list for the given host
         if self._task.action in C._ACTION_INCLUDE_TASKS:
@@ -515,19 +521,12 @@ class TaskExecutor:
             if not include_file:
                 return dict(failed=True, msg="No include file was specified to the include")
 
-            include_file = templar.template(include_file)
             return dict(include=include_file, include_args=include_args)
 
         # if this task is a IncludeRole, we just return now with a success code so the main thread can expand the task list for the given host
         elif self._task.action in C._ACTION_INCLUDE_ROLE:
             include_args = self._task.args.copy()
             return dict(include_args=include_args)
-
-        # Now we do final validation on the task, which sets all fields to their final values.
-        try:
-            self._task.post_validate(templar=templar)
-        except Exception as ex:
-            raise PostValidateError(str(ex)) from ex
 
         # update no_log to task value, now that we have it templated
         no_log = self._task.no_log

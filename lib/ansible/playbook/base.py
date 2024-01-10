@@ -535,7 +535,8 @@ class FieldAttributeBase:
                     continue
                 else:
                     raise AnsibleParserError("the field '%s' is required but was not set" % name)
-            elif not attribute.always_post_validate and self.__class__.__name__ not in ('Task', 'Handler', 'PlayContext'):
+            # FIXME: compare types, not strings
+            elif not attribute.always_post_validate and self.__class__.__name__ not in ('Task', 'Handler', 'PlayContext', 'IncludeRole', 'TaskInclude'):
                 # Intermediate objects like Play() won't have their fields validated by
                 # default, as their values are often inherited by other objects and validated
                 # later, so we don't want them to fail out early

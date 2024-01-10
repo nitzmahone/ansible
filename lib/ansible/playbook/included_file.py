@@ -129,7 +129,7 @@ class IncludedFile:
                                     parent_include_dir = parent_include._role_path
                                 else:
                                     try:
-                                        parent_include_dir = os.path.dirname(templar.template(parent_include.args.get('_raw_params')))
+                                        parent_include_dir = os.path.dirname(parent_include.args.get('_raw_params'))
                                     except AnsibleError as e:
                                         parent_include_dir = ''
                                         display.warning(
@@ -141,7 +141,7 @@ class IncludedFile:
                                     cumulative_path = os.path.join(parent_include_dir, cumulative_path)
                                 else:
                                     cumulative_path = parent_include_dir
-                                include_target = templar.template(include_result['include'])
+                                include_target = include_result['include']
                                 if original_task._role:
                                     dirname = 'handlers' if isinstance(original_task, Handler) else 'tasks'
                                     new_basedir = os.path.join(original_task._role._role_path, dirname, cumulative_path)
@@ -167,7 +167,7 @@ class IncludedFile:
 
                         if include_file is None:
                             if original_task._role:
-                                include_target = templar.template(include_result['include'])
+                                include_target = include_result['include']
                                 include_file = loader.path_dwim_relative(
                                     original_task._role._role_path,
                                     'handlers' if isinstance(original_task, Handler) else 'tasks',
@@ -176,21 +176,17 @@ class IncludedFile:
                             else:
                                 include_file = loader.path_dwim(include_result['include'])
 
-                        include_file = templar.template(include_file)
                         inc_file = IncludedFile(include_file, include_args, special_vars, original_task)
                     else:
                         # template the included role's name here
                         role_name = include_args.pop('name', include_args.pop('role', None))
-                        if role_name is not None:
-                            role_name = templar.template(role_name)
-
                         new_task = original_task.copy()
                         new_task.post_validate(templar=templar)
                         new_task._role_name = role_name
                         for from_arg in new_task.FROM_ARGS:
                             if from_arg in include_args:
                                 from_key = from_arg.removesuffix('_from')
-                                new_task._from_files[from_key] = templar.template(include_args.pop(from_arg))
+                                new_task._from_files[from_key] = include_args.pop(from_arg)
 
                         inc_file = IncludedFile(role_name, include_args, special_vars, new_task, is_role=True)
 
