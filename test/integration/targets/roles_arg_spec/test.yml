@@ -393,7 +393,8 @@
               # We expect the role to actually run, but will fail because an undefined variable was referenced
               # and validation wasn't performed up front (thus not returning 'argument_errors').
               - "'argument_errors' not in ansible_failed_result"
-              - "'The task includes an option with an undefined variable.' in ansible_failed_result.msg"
+              - |
+                ansible_failed_result.msg | regex_search("Error while templating arg 'Role C that includes Role A with var .. c_int ..': 'c_int' is undefined") | length > 0
 
 - name: "New play to reset vars: Test collection-based role"
   hosts: localhost
