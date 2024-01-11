@@ -228,7 +228,7 @@ def _escape_backslashes(data: str, jinja_env: Environment) -> str:
     return data
 
 
-def _create_overlay(data: str, overrides: dict, jinja_env: Environment) -> tuple[str, Environment, bool]:
+def _create_overlay(data: str, overrides: dict, jinja_env: AnsibleEnvironment, undefined_behavior=None) -> tuple[str, Environment, bool]:
     if overrides is None:
         overrides = {}
 
@@ -237,8 +237,8 @@ def _create_overlay(data: str, overrides: dict, jinja_env: Environment) -> tuple
     except (TypeError, AttributeError):
         has_override_header = False
 
-    if overrides or has_override_header:
-        overlay = jinja_env.overlay(**overrides)
+    if overrides or has_override_header or undefined_behavior:
+        overlay = jinja_env.overlay(**overrides, undefined_behavior=undefined_behavior)
     else:
         overlay = jinja_env
 
@@ -879,6 +879,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.undefined = AnsibleUndefined
         self.finalize = _ansible_finalize
+        self.undefined_behavior = Templar.fail_on_undefined_value
 
         # Disabling the optimizer prevents compile-time constant expression folding, which prevents our
         # visit_Const recursive inline template expansion tricks from working in many cases where Jinja's
@@ -889,8 +890,12 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # See also optimizeconst impl: https://github.com/pallets/jinja/blob/3.1.0/src/jinja2/compiler.py#L48-L49
         self.optimized = False
 
-    @staticmethod
-    def concat(nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
+    def overlay(self, *args, undefined_behavior: t.Callable[..., t.Any] = None, **kwargs):
+        res = super().overlay(*args, **kwargs)
+        res.undefined_behavior = undefined_behavior or self.undefined_behavior
+        return res
+
+    def concat(self, nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
         node_list = list(nodes)
         if not node_list:
             return ''
@@ -903,8 +908,13 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
                 return ''
             return AnsibleAccessContext.current().access(node_list[0])
 
-        # FIXME: to_text is a problem here with embedded undefineds not tripping during a recursive repr
-        return ''.join([to_text(AnsibleAccessContext.current().access(v)) for v in node_list])
+        # FIXME: need to smuggle undefined_behavior in from the current templating operation (eg, debug and templated task names w/ BestEffort)
+        # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive delazify before we repr (otherwise we can end up
+        # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
+        node_list = _delazify(node_list, undefined_behavior=self.undefined_behavior)
+
+        # FIXME: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
+        return ''.join([to_text(v) for v in node_list])
 
     # NB: this method is for exclusive use of the template compiler to render embedded constant templates
     def _render_inline_template(self, const_template: str) -> t.Any:
@@ -1058,7 +1068,8 @@ class Templar:
         return jinja_exts
 
     # FIXME: move/rename these, better access than via an instance
-    def fail_on_undefined_value(self, value):
+    @staticmethod
+    def fail_on_undefined_value(value):
         raise AnsibleUndefinedVariable("undefined BLAH FIXME", obj=value)
 
     class BestEffort:
@@ -1190,29 +1201,6 @@ class Templar:
         templar = Templar(self._loader, variables=variables)
         return templar.template(expression_template)
 
-    def _delazify(self, o: t.Any, undefined_behavior: t.Callable[..., t.Any]) -> t.Any:
-        # FIXME: isn't this going to over-fire managed access?
-
-        from jinja2 import Undefined
-
-        # FIXME: is this using isinstance or something cheaper?
-        match o:
-            case str():
-                return o
-            case dict():
-                return AnsibleTaggedObject.tag_copy(o, ((k, self._delazify(v, undefined_behavior=undefined_behavior)) for k, v in o.items() if v is not Omit),
-                                                    value_type=dict)
-            case list():
-                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=list)
-            case tuple():
-                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=tuple)
-            case set():
-                return AnsibleTaggedObject.tag_copy(o, (self._delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=set)
-            case Undefined():
-                return undefined_behavior(o)
-            case _:
-                return o
-
     # FIXME: ditch this and/or
     def _verify_delazified(self, o: t.Any) -> t.Any:
         from jinja2 import Undefined
@@ -1234,7 +1222,7 @@ class Templar:
         return self.template_with_result(*args, **kwargs).result
 
     def template_with_result(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
-                             overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=None,
+                             overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=fail_on_undefined_value,
                              stop_on_container_result=False) -> TemplateResult:
         '''
         Templates (possibly recursively) any given data as input. If convert_bare is
@@ -1256,10 +1244,9 @@ class Templar:
             escape_backslashes=escape_backslashes,
             fail_on_undefined=fail_on_undefined,
             overrides=overrides,
-            convert_data=convert_data,
-            static_vars=static_vars,
             cache=cache,
             disable_lookups=disable_lookups,
+            undefined_behavior=undefined_behavior,
         )
 
         # FIXME: early exit on empty collections
@@ -1284,9 +1271,7 @@ class Templar:
 
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
-                        if not undefined_behavior:
-                            undefined_behavior = self.fail_on_undefined_value
-                        _template_result = self._delazify(_template_result, undefined_behavior=undefined_behavior)
+                        _template_result = _delazify(_template_result, undefined_behavior=undefined_behavior)
                 elif _template_result is Omit:
                     raise AnsibleValueOmittedError()
 
@@ -1310,8 +1295,8 @@ class Templar:
 
         return TemplateResult(result=_template_result)
 
-    def _template_recursive(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
-                            overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False):
+    def _template_recursive(self, variable, *, undefined_behavior, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True,
+                            fail_on_undefined=None, overrides=None, cache=None, disable_lookups=False):
         '''
         Templates (possibly recursively) any given data as input. If convert_bare is
         set to True, the given data will be wrapped as a jinja2 variable ('{{foo}}')
@@ -1358,7 +1343,7 @@ class Templar:
                     fail_on_undefined=fail_on_undefined,
                     overrides=overrides,
                     disable_lookups=disable_lookups,
-                    convert_data=convert_data,
+                    undefined_behavior=undefined_behavior,
                 )
 
                 self._compile_single_var(self.environment)
@@ -1657,8 +1642,8 @@ class Templar:
             for x in value.values():
                 self._detonate_vault_bombs(x)
 
-    def do_template(self, data, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None, overrides=None, disable_lookups=False,
-                    convert_data=False):
+    def do_template(self, data, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None, overrides=None,
+                    disable_lookups=False):
         if not TemplateContext.current():
             # FIXME: deprecation? Also, probably include a stacktrace...
             display.warning('missing TemplateContext (direct call to do_template?)')
@@ -1680,7 +1665,7 @@ class Templar:
         try:
             # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
             # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
-            data, myenv, _has_override_header = _create_overlay(data, overrides, self.environment)
+            data, myenv, _has_override_header = _create_overlay(data, overrides, self.environment, undefined_behavior=undefined_behavior)
 
             # in case delimiters change
             self._compile_single_var(myenv)
@@ -1752,6 +1737,30 @@ class Templar:
 
     # for backwards compatibility in case anyone is using old private method directly
     _do_template = do_template
+
+
+def _delazify(o: t.Any, undefined_behavior: t.Callable[..., t.Any]) -> t.Any:
+    # FIXME: isn't this going to over-fire managed access?
+
+    from jinja2 import Undefined
+
+    # FIXME: is this using isinstance or something cheaper?
+    match o:
+        case str():
+            return o
+        case dict():
+            return AnsibleTaggedObject.tag_copy(o, ((k, _delazify(v, undefined_behavior=undefined_behavior)) for k, v in o.items() if v is not Omit),
+                                                value_type=dict)
+        case list():
+            return AnsibleTaggedObject.tag_copy(o, (_delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=list)
+        case tuple():
+            return AnsibleTaggedObject.tag_copy(o, (_delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=tuple)
+        case set():
+            return AnsibleTaggedObject.tag_copy(o, (_delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=set)
+        case Undefined():
+            return undefined_behavior(o)
+        case _:
+            return o
 
 
 # FIXME: decide if these should be taggable; do we need to support other kinds of Undefineds, etc

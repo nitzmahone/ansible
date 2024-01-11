@@ -65,3 +65,12 @@
       - result.warnings | length == 1
       # FIXME: fix this to match the actual warning text
       - '"something_undefined" in result.warnings[0]'
+
+- name: composite template with embedded undefined
+  debug:
+    msg: mixed composite {{ "valid template" }} {{ bogus_var }} {{ another_bogus_var }} {{ "another valid template" }}
+  register: result
+
+- assert:
+    that:
+      - result.msg | regex_search("^mixed composite valid template .. bogus_var .. .. another_bogus_var .. another valid template$") is not none
