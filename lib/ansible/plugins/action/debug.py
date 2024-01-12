@@ -23,7 +23,7 @@ from ansible.errors import AnsibleError, AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.module_utils.datatag.access import SensitiveDataMask
 from ansible.plugins.action import ActionBase
-from ansible.template import Omit
+from ansible.template import Omit, BestEffort
 
 
 class ActionModule(ActionBase):
@@ -34,7 +34,7 @@ class ActionModule(ActionBase):
 
     def run(self, tmp=None, task_vars=None):
         with SensitiveDataMask():
-            best_effort = self._templar.BestEffort()
+            best_effort = BestEffort()
 
             raw_task_args = self._task.untemplated_args
 

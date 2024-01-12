@@ -17,11 +17,13 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-from ansible.errors import AnsibleValueOmittedError
-from ansible.module_utils.datatag import AnsibleTaggedObject
+import traceback
+
+from ansible.errors import AnsibleError, AnsibleValueOmittedError
+from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.module_utils.datatag.access import SensitiveDataMask
 from ansible.plugins.action import ActionBase
-from ansible.template import Omit
+from ansible.template import Omit, BestEffort
 
 
 class ActionModule(ActionBase):
@@ -32,10 +34,24 @@ class ActionModule(ActionBase):
 
     def run(self, tmp=None, task_vars=None):
         with SensitiveDataMask():
-            if task_vars is None:
-                task_vars = dict()
+            best_effort = BestEffort()
 
-            best_effort = self._templar.BestEffort()
+            raw_task_args = self._task.untemplated_args
+
+            # template splatted `args` only until we get a dictionary
+            if vp := raw_task_args.pop('_variable_params', None):
+                try:
+                    raw_task_args = self._templar.template(vp, stop_on_container_result=True)
+                except AnsibleValueOmittedError:
+                    raw_task_args = {}
+
+                if not isinstance(raw_task_args, dict):
+                    # FIXME: needs AnsibleTaggedObject.get_native_type() to avoid displaying internal type names
+                    raise AnsibleError(NotATemplate().tag(f"variable args {vp!r} resolved to a {type(raw_task_args)!r} instead of a dict"))
+
+                # merge any explicitly-defined args on top of splatted args, then put them back on untemplated_args
+                # FIXME: or not put them back?
+                raw_task_args.update(self._task.untemplated_args)
 
             argument_spec = {
                 'msg': {'type': 'raw', 'default': 'Hello world!'},
@@ -45,20 +61,26 @@ class ActionModule(ActionBase):
 
             custom_undefined_handlers = dict(msg=best_effort, var=best_effort)
 
-            # special omit handling
-            for arg_name in argument_spec:
-                if (arg := self._task.args.get(arg_name, Omit)) is Omit:
-                    continue
-
+            # special omit handling; we're popping omitted items, so need to iterate a static copy
+            for arg_name, arg in list(raw_task_args.items()):
                 undefined_handler = custom_undefined_handlers.get(arg_name, None)
 
                 try:
-                    result = self._templar.template_with_result(arg, undefined_behavior=undefined_handler)
+                    result = self._templar.template(arg, undefined_behavior=undefined_handler)
                 except AnsibleValueOmittedError:
-                    self._task.args.pop(arg_name)
+                    raw_task_args.pop(arg_name)
                     continue
+                except Exception as ex:
+                    return dict(
+                        # FIXME: better error message and location?
+                        msg=NotATemplate().tag(f'Error while templating arg {arg!r}: {ex}'),
+                        exception=NotATemplate().tag(str(traceback.format_exc())),
+                        failed=True,
+                    )
 
-                self._task.args[arg_name] = result.result
+                raw_task_args[arg_name] = result
+
+            self._task.args = raw_task_args
 
             validation_result, new_module_args = self.validate_argument_spec(
                 argument_spec=argument_spec,
@@ -85,6 +107,13 @@ class ActionModule(ActionBase):
                         results = repr(Omit)
                         result.setdefault('warnings', []).append(
                             f"The result of expression {raw_var_arg!r} could not be omitted; a placeholder was used instead.")
+                    except Exception as ex:
+                        return dict(
+                            # FIXME: better error message and location?
+                            msg=NotATemplate().tag(f'Error while templating variable expression {raw_var_arg!r}: {ex}'),
+                            exception=NotATemplate().tag(str(traceback.format_exc())),
+                            failed=True,
+                        )
                     else:
                         results = template_result.result
 
