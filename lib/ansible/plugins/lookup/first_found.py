@@ -204,7 +204,6 @@ class LookupModule(LookupBase):
 
         return total_search
 
-
     def run(self, terms, variables, **kwargs):
 
         if not terms:
