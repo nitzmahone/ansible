@@ -313,6 +313,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         if self._parent:
             self._parent.post_validate(templar)
 
+        # FIXME: why is this here, dump it?
         if AnsibleCollectionConfig.default_collection:
             pass
 
