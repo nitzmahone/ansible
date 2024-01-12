@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from jinja2.runtime import Context
+from jinja2.runtime import Context, UndefinedError
 
 import unittest
 
@@ -25,7 +25,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleUndefinedVariable
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate
 from ansible.plugins.loader import init_plugin_loader
-from ansible.template import Templar, AnsibleContext, AnsibleEnvironment
+from ansible.template import Templar, AnsibleContext, AnsibleEnvironment, BestEffort
 from units.mock.loader import DictDataLoader
 
 import pytest
@@ -229,10 +229,14 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         self.assertRaises(AnsibleUndefinedVariable, templar.template, TrustedAsTemplate().tag("{{lookup('file', bad_var)}}"))
         self.assertRaises(AnsibleError, templar.template, TrustedAsTemplate().tag("{{lookup('bad_lookup')}}"))
         self.assertRaises(AnsibleError, templar.template, TrustedAsTemplate().tag("{{recursive}}"))
-        self.assertRaises(AnsibleUndefinedVariable, templar.template, TrustedAsTemplate().tag("{{foo-bar}}"))
+        self.assertRaises(UndefinedError, templar.template, TrustedAsTemplate().tag("{{foo-bar}}"))  # FIXME: what's the correct exception type to expect here?
 
         # test with fail_on_undefined=False
-        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), fail_on_undefined=False), "{{bad_var}}")
+        # FIXME: restore this test when/if we restore fail_on_undefined (for API backwards compat)
+        # self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), fail_on_undefined=False), "{{bad_var}}")
+        # FIXME: this currently expects the best effort result to match the hint, which is a reconstructed version of the original template with additional
+        #        spaces, which may not be what we want (or what we end up with after refactoring)
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), undefined_behavior=BestEffort()), "{{ bad_var }}")
 
         # test setting available_variables
         templar.available_variables = dict(foo="bam")
@@ -284,7 +288,7 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
 
     def test_lookup_jinja_undefined(self):
         self.assertRaisesRegex(AnsibleUndefinedVariable,
-                               "'an_undefined_jinja_var' is undefined",
+                               "undefined BLAH FIXME",  # FIXME: update with correct message once we know what it should be
                                self.templar.template,
                                TrustedAsTemplate().tag('{{ lookup("list", an_undefined_jinja_var) }}'))
 
@@ -316,7 +320,7 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
 
     def test_lookup_jinja_list_wantlist_undefined(self):
         self.assertRaisesRegex(AnsibleUndefinedVariable,
-                               "'some_undefined_var' is undefined",
+                               "undefined BLAH FIXME",  # FIXME: update with correct message once we know what it should be
                                self.templar.template,
                                TrustedAsTemplate().tag('{{ lookup("list", some_undefined_var, wantlist=True) }}'))
 

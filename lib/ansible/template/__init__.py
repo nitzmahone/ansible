@@ -97,6 +97,7 @@ from collections import ChainMap
 display = Display()
 
 
+# FIXME: change this when overhauling the API
 __all__ = ['Templar', 'generate_ansible_template_vars']
 
 # Primitive Types which we don't want Jinja to convert to strings.
@@ -1265,7 +1266,7 @@ class Templar:
         '''
 
         # bail out if we know we're looking at something that's been explicitly tagged as not a template
-        if NotATemplate.is_tagged_on(variable):
+        if variable is None or NotATemplate.is_tagged_on(variable):
             return TemplateResult(result=variable)
 
         # FIXME: nuke

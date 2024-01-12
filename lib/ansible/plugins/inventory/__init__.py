@@ -25,7 +25,7 @@ import typing as t
 
 from collections.abc import Mapping
 
-from ansible.errors import AnsibleError, AnsibleParserError
+from ansible.errors import AnsibleError, AnsibleParserError, AnsibleValueOmittedError
 from ansible.inventory.group import to_safe_group_name as original_safe
 from ansible.parsing.utils.addresses import parse_address
 from ansible.parsing.dataloader import DataLoader
@@ -440,13 +440,16 @@ class Constructable(_BaseInventoryPlugin):
                         prefix = keyed.get('prefix', '')
                         sep = keyed.get('separator', '_')
                         raw_parent_name = keyed.get('parent_group', None)
-                        if raw_parent_name:
-                            try:
-                                raw_parent_name = self.templar.template(raw_parent_name)
-                            except AnsibleError as e:
-                                if strict:
-                                    raise AnsibleParserError("Could not generate parent group %s for group %s: %s" % (raw_parent_name, key, to_native(e)))
-                                continue
+
+                        try:
+                            raw_parent_name = self.templar.template(raw_parent_name)
+                        except AnsibleValueOmittedError:
+                            raw_parent_name = None
+                        except Exception as ex:
+                            if strict:
+                                raise AnsibleParserError(f'Could not generate parent group {raw_parent_name!r} for group {key!r}: {ex}') from ex
+
+                            continue
 
                         new_raw_group_names = []
                         if isinstance(key, string_types):

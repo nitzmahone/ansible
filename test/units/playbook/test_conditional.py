@@ -121,7 +121,6 @@ class TestConditional(unittest.TestCase):
                                self._eval_con,
                                when, variables)
 
-    @pytest.mark.xfail(reason='probably can be removed, see evaluate_conditional FIXME for details')
     def test_dict_undefined_values_bare(self):
         variables = {'dict_value': 1,
                      'some_defined_dict_with_undefined_values': {'key1': 'value1',
