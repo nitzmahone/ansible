@@ -190,9 +190,7 @@ class LookupModule(LookupBase):
 
             # magic extra splitting to create lists
             filelist = _split_on(files, ',;')
-            filelist = self._template_or_omit_terms(filelist)
             pathlist = _split_on(paths, ',:;')
-            pathlist = self._template_or_omit_terms(pathlist)
 
             # create search structure
             if pathlist:
@@ -208,17 +206,6 @@ class LookupModule(LookupBase):
 
         return total_search
 
-    def _template_or_omit_terms(self, items: list[str]) -> list[str]:
-        results = []
-        for item in items:
-            try:
-                results.append(self._templar.template(item))
-            except (AnsibleUndefinedVariable, UndefinedError):
-                # NOTE: backwards compat ff behaviour is to ignore errors when vars are undefined.
-                #       moved here from task_executor.
-                continue
-
-        return results
 
     def run(self, terms, variables, **kwargs):
 

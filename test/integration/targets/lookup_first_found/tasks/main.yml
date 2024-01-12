@@ -113,6 +113,8 @@
         - item|basename == 'itworks.yml'
     with_first_found:
       - files:
+          # FIXME: these variables are misleading for the test; use "bogus" or something for the ones that are not
+          #  expected to exist
           - "{{ansible_id}}-{{ansible_lsb.major_release}}.yml"  # invalid var, should be skipped
           - "{{ansible_lsb.id}}-{{ansible_lsb.major_release}}.yml"  # does not exist, but should try
           - "{{ansible_distribution}}-{{ansible_distribution_major_version}}.yml"  # does not exist, but should try

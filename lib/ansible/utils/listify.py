@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from ansible.template import FAIL_ON_UNDEFINED, BestEffortOmitUndefined
 from ansible.utils.display import Display
 
 display = Display()
@@ -31,12 +32,19 @@ def listify_lookup_plugin_terms(terms, templar, loader=None, fail_on_undefined=T
         display.deprecated('"listify_lookup_plugin_terms" does not use "dataloader" anymore, the ability to pass it in will be removed in future versions.',
                            version='2.18')
 
+    undefined_behavior = FAIL_ON_UNDEFINED if fail_on_undefined else BestEffortOmitUndefined()
+
     if isinstance(terms, str):
-        terms = templar.template(terms.strip(), convert_bare=convert_bare, fail_on_undefined=fail_on_undefined)
+        terms = templar.template(terms.strip(), convert_bare=convert_bare, undefined_behavior=undefined_behavior)
     else:
-        terms = templar.template(terms, fail_on_undefined=fail_on_undefined)
+        terms = templar.template(terms, undefined_behavior=undefined_behavior)
 
     if isinstance(terms, str) or not isinstance(terms, Iterable):
         terms = [terms]
+
+    if isinstance(undefined_behavior, BestEffortOmitUndefined):
+        for warning in undefined_behavior.warnings():
+            # FIXME: add context to warning for template?
+            display.warning(warning)
 
     return terms

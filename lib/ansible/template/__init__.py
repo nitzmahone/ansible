@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import abc
 import ast
 import dataclasses
 import datetime
@@ -855,6 +856,86 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
             self.write(repr(val))
 
 
+# FIXME: bikeshed name/placement/access/singleton
+# FIXME: change post_delazify to be the main entrypoint into _delazify?
+# FIXME: these look an awful lot like Jinja finalizers (which are also owned by the environment); as part of Jinja-normalization, should we wrap this and all
+#  other custom post-templating behavior into a Jinja finalizer?
+class UndefinedBehavior(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def handle_undefined(self, value: Undefined) -> t.Any:
+        ...
+
+    def post_delazify(self, template_result: t.Any) -> t.Any:
+        return template_result
+
+
+# FUTURE: do we want an option to let these accumulate so we can report > 1 failure at a time?
+class FailOnUndefined(UndefinedBehavior):
+    def handle_undefined(self, value):
+        raise AnsibleUndefinedVariable("undefined BLAH FIXME", obj=value)
+
+
+FAIL_ON_UNDEFINED: t.Final = FailOnUndefined()  # no sense in making many instances...
+
+
+class BestEffort(UndefinedBehavior):
+    def __init__(self) -> None:
+        self._undefined_templates: list[Undefined] = []
+
+    @staticmethod
+    def _hint(value: Undefined):
+        try:
+            # FIXME: need to come up with a better way to capture the context when Jinja gives us not much to go on, or maybe inject our own
+            hint = value._undefined_template_source or value._undefined_hint
+
+            if not hint and (hint := value._undefined_name):
+                hint = f'{{{{ {hint} }}}}'
+        except AttributeError:
+            hint = None
+
+        if not hint:
+            hint = "FIXME shrug"
+
+        return hint
+
+    def handle_undefined(self, value: Undefined) -> t.Any:
+        self._undefined_templates.append(value)
+        # FIXME: figure out how/where to propagate this as a failure to the TemplateResult
+
+        return NotATemplate().tag(self._hint(value))
+
+    @property
+    def has_warnings(self) -> bool:
+        return bool(self._undefined_templates)
+
+    def warnings(self, max_count: int | None = None) -> t.Generator[str]:
+        try:
+            # blah = list(f'FIXME busted template {self._hint(w)}' for w in islice(self._undefined_templates, max_count))
+            # yield from blah
+            for w in islice(self._undefined_templates, max_count):
+                try:
+                    yield NotATemplate().tag(f'FIXME busted template {self._hint(w)}')
+                except Exception as exi:
+                    raise
+        except Exception as e:
+            raise
+
+
+class BestEffortOmitUndefined(BestEffort):
+    def handle_undefined(self, value: Undefined) -> t.Any:
+        self._undefined_templates.append(value)
+
+        return Omit
+
+    def post_delazify(self, template_result: t.Any) -> t.Any:
+        if not self.has_warnings:
+            return template_result
+
+        # there were warnings, which means we emitted omits that need omitting into the template result
+        # do another delazify pass to clean it up
+        return _delazify(template_result, undefined_behavior=FAIL_ON_UNDEFINED)
+
+
 class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     '''
     Our custom environment, which simply allows us to override the class-level
@@ -879,7 +960,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.undefined = AnsibleUndefined
         self.finalize = _ansible_finalize
-        self.undefined_behavior = Templar.fail_on_undefined_value
+        self.undefined_behavior = FAIL_ON_UNDEFINED
 
         # Disabling the optimizer prevents compile-time constant expression folding, which prevents our
         # visit_Const recursive inline template expansion tricks from working in many cases where Jinja's
@@ -1067,53 +1148,6 @@ class Templar:
 
         return jinja_exts
 
-    # FIXME: move/rename these, better access than via an instance
-    @staticmethod
-    def fail_on_undefined_value(value):
-        raise AnsibleUndefinedVariable("undefined BLAH FIXME", obj=value)
-
-    class BestEffort:
-        def __init__(self) -> None:
-            self._undefined_templates: list[Undefined] = []
-
-        @staticmethod
-        def _hint(value: Undefined):
-            try:
-                # FIXME: need to come up with a better way to capture the context when Jinja gives us not much to go on, or maybe inject our own
-                hint = value._undefined_template_source or value._undefined_hint
-
-                if not hint and (hint := value._undefined_name):
-                    hint = f'{{{{ {hint} }}}}'
-            except AttributeError:
-                hint = None
-
-            if not hint:
-                hint = "FIXME shrug"
-
-            return hint
-
-        def __call__(self, value: Undefined) -> t.Any:
-            self._undefined_templates.append(value)
-            # FIXME: figure out how/where to propagate this as a failure to the TemplateResult
-
-            return NotATemplate().tag(self._hint(value))
-
-        @property
-        def has_warnings(self) -> bool:
-            return bool(self._undefined_templates)
-
-        def warnings(self, max_count: int | None = None):
-            try:
-                # blah = list(f'FIXME busted template {self._hint(w)}' for w in islice(self._undefined_templates, max_count))
-                # yield from blah
-                for w in islice(self._undefined_templates, max_count):
-                    try:
-                        yield NotATemplate().tag(f'FIXME busted template {self._hint(w)}')
-                    except Exception as exi:
-                        raise
-            except Exception as e:
-                raise
-
     @property
     def available_variables(self):
         return self._available_variables
@@ -1222,7 +1256,7 @@ class Templar:
         return self.template_with_result(*args, **kwargs).result
 
     def template_with_result(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
-                             overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=fail_on_undefined_value,
+                             overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
                              stop_on_container_result=False) -> TemplateResult:
         '''
         Templates (possibly recursively) any given data as input. If convert_bare is
@@ -1271,7 +1305,7 @@ class Templar:
 
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
-                        _template_result = _delazify(_template_result, undefined_behavior=undefined_behavior)
+                        _template_result = undefined_behavior.post_delazify(_delazify(_template_result, undefined_behavior=undefined_behavior))
                 elif _template_result is Omit:
                     raise AnsibleValueOmittedError()
 
@@ -1739,7 +1773,7 @@ class Templar:
     _do_template = do_template
 
 
-def _delazify(o: t.Any, undefined_behavior: t.Callable[..., t.Any]) -> t.Any:
+def _delazify(o: t.Any, undefined_behavior: UndefinedBehavior) -> t.Any:
     # FIXME: isn't this going to over-fire managed access?
 
     from jinja2 import Undefined
@@ -1758,7 +1792,7 @@ def _delazify(o: t.Any, undefined_behavior: t.Callable[..., t.Any]) -> t.Any:
         case set():
             return AnsibleTaggedObject.tag_copy(o, (_delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=set)
         case Undefined():
-            return undefined_behavior(o)
+            return undefined_behavior.handle_undefined(o)
         case _:
             return o
 

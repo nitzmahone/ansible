@@ -217,8 +217,8 @@ class TaskExecutor:
             if self._task.loop_with in self._shared_loader_obj.lookup_loader:
 
                 # FIXME: allow lookups to opt-in to accepting inputs with undefined templating failures instead of hardcoding here
-                fail = bool(self._task.loop_with != 'first_found')
-                loop_terms = listify_lookup_plugin_terms(terms=self._task.loop, templar=templar, fail_on_undefined=fail, convert_bare=False)
+                fail_on_undefined = bool(self._task.loop_with != 'first_found')
+                loop_terms = listify_lookup_plugin_terms(terms=self._task.loop, templar=templar, fail_on_undefined=fail_on_undefined)
 
                 # get lookup
                 mylookup = self._shared_loader_obj.lookup_loader.get(self._task.loop_with, loader=self._loader, templar=templar)
