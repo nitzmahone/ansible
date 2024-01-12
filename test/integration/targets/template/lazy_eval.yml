@@ -13,12 +13,12 @@
         lazy_eval: true
 
     - name: EXPECTED FAILURE actually using deep_undefined fails
-      debug:
-        msg: "{{ deep_undefined }}"
+      raw: "{{ deep_undefined }}"
       ignore_errors: true
       register: res
 
     - assert:
         that:
           - res.failed
-          - res.msg is contains("'nested_undefined_variable' is undefined")
+          # FIXME: update this once we know what the error message will be
+          - res.msg is contains("undefined BLAH FIXME")

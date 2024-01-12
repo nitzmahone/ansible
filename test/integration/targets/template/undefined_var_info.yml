@@ -4,12 +4,14 @@
     foo: []
     bar: "{{ foo[0] }}"
   tasks:
-    - debug:
-        msg: "{{ bar }}"
+    - raw: echo {{ bar }}
       register: result
       ignore_errors: yes
 
     - assert:
         that:
-          - '"foo[0]" in result.msg'
-          - '"object has no element 0" in result.msg'
+          # FIXME: update this once we know what the new error message will be
+          - result is failed
+          - '"undefined BLAH FIXME" in result.msg'
+          #- '"foo[0]" in result.msg'
+          #- '"object has no element 0" in result.msg'
