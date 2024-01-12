@@ -142,9 +142,7 @@ import re
 
 from collections.abc import Mapping, Sequence
 
-from jinja2.exceptions import UndefinedError
-
-from ansible.errors import AnsibleLookupError, AnsibleUndefinedVariable
+from ansible.errors import AnsibleLookupError
 from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.plugins.lookup import LookupBase
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import abc
 import ast
+import collections.abc as c
 import dataclasses
 import datetime
 import functools
@@ -28,7 +29,6 @@ import re
 import secrets
 import time
 import types
-import typing
 
 import jinja2
 
@@ -711,7 +711,7 @@ class _AnsibleLazyTemplateMixin:
         return value
 
 
-@typing.final
+@t.final
 class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
     __slots__ = _ANSIBLE_LAZY_TEMPLATE_SLOTS
 
@@ -745,7 +745,7 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
         return dict(dict.items(self))
 
 
-@typing.final
+@t.final
 class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
     __slots__ = _ANSIBLE_LAZY_TEMPLATE_SLOTS
 
@@ -774,7 +774,7 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
         return list(list.__iter__(self))
 
 
-@typing.final
+@t.final
 class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
     # nonempty __slots__ not supported for subtype of 'tuple'
 
@@ -804,7 +804,7 @@ class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
         return tuple(tuple.__iter__(self))
 
 
-@typing.final
+@t.final
 class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
     __slots__ = _ANSIBLE_LAZY_TEMPLATE_SLOTS
 
@@ -909,7 +909,7 @@ class BestEffort(UndefinedBehavior):
     def has_warnings(self) -> bool:
         return bool(self._undefined_templates)
 
-    def warnings(self, max_count: int | None = None) -> t.Generator[str]:
+    def warnings(self, max_count: int | None = None) -> c.Generator[str, None, None]:
         try:
             # blah = list(f'FIXME busted template {self._hint(w)}' for w in islice(self._undefined_templates, max_count))
             # yield from blah
@@ -1301,8 +1301,7 @@ class Templar:
                 # FIXME: make this check cheaper
                 if not isinstance(_template_result, str) and isinstance(_template_result, (Mapping, Sequence, set, Undefined)):
                     if stop_on_container_result:
-                        # FIXME: defensive handling for non-lazy types?
-                        return TemplateResult(result=_template_result.native_copy())
+                        return TemplateResult(result=_template_result.native_copy() if isinstance(_template_result, AnsibleTaggedObject) else _template_result)
 
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):

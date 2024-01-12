@@ -77,6 +77,7 @@ from itertools import product
 from ansible import constants as C
 from ansible.errors import AnsibleParserError
 from ansible.plugins.inventory import BaseInventoryPlugin
+from ansible.template import FAIL_ON_UNDEFINED
 
 
 class InventoryModule(BaseInventoryPlugin):
@@ -102,9 +103,10 @@ class InventoryModule(BaseInventoryPlugin):
         return valid
 
     def template(self, pattern, variables):
+        # FIXME: don't clobber variables
         self.templar.available_variables = variables
         # FIXME: FDI036
-        return self.templar.do_template(pattern)
+        return self.templar.do_template(pattern, undefined_behavior=FAIL_ON_UNDEFINED)
 
     def add_parents(self, inventory, child, parents, template_vars):
         for parent in parents:

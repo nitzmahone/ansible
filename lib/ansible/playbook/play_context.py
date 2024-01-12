@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from ansible import constants as C
 from ansible import context
-from ansible.errors import AnsibleValueOmittedError
 from ansible.playbook.attribute import FieldAttribute
 from ansible.playbook.base import Base
 from ansible.utils.display import Display
