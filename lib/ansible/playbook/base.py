@@ -29,6 +29,7 @@ from ansible.utils.collection_loader._collection_finder import _get_collection_m
 from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
 from ansible.utils.vars import combine_vars, isidentifier, get_unique_id
+from ansible.template import Templar
 
 display = Display()
 
@@ -521,71 +522,80 @@ class FieldAttributeBase:
         '''
 
         for (name, attribute) in self.fattributes.items():
-            if attribute.static:
-                value = getattr(self, name)
+            value = self.post_validate_attribute(templar, name, attribute)
 
-                # we don't template 'vars' but allow template as values for later use
-                if name not in ('vars',) and templar.is_template(value):
-                    display.warning('"%s" is not templatable, but we found: %s, '
-                                    'it will not be templated and will be used "as is".' % (name, value))
-                continue
-
-            if getattr(self, name) is None:
-                if not attribute.required:
-                    continue
-                else:
-                    raise AnsibleParserError("the field '%s' is required but was not set" % name)
-            # FIXME: compare types, not strings
-            elif not attribute.always_post_validate and self.__class__.__name__ not in ('Task', 'Handler', 'PlayContext', 'IncludeRole', 'TaskInclude'):
-                # Intermediate objects like Play() won't have their fields validated by
-                # default, as their values are often inherited by other objects and validated
-                # later, so we don't want them to fail out early
-                continue
-
-            try:
-                # Run the post-validator if present. These methods are responsible for
-                # using the given templar to template the values, if required.
-                method = getattr(self, '_post_validate_%s' % name, None)
-
-                if method:
-                    value = method(attribute, getattr(self, name), templar)
-                elif attribute.isa == 'class':
-                    value = getattr(self, name)
-                else:
-                    try:
-                        # if the attribute contains a variable, template it now
-                        value = templar.template(getattr(self, name))
-                    except AnsibleValueOmittedError:
-                        # If this evaluated to the omit value, set the value back to inherited by context
-                        # or default specified in the FieldAttribute and move on
-                        value = self.set_to_context(name)
-
-                        if value is Sentinel:
-                            continue
-
-                # FIXME: remove this once we know it's not needed?
-                if value is Sentinel:
-                    raise Exception(f'Encountered unexpected Sentinel on attribute {name!r} on {type(self)}.')
-
-                # and make sure the attribute is of the type it should be
-                if value is not None:
-                    value = self.get_validated_value(name, attribute, value, templar)
-
+            if value is not Sentinel:
                 # and assign the massaged value back to the attribute field
                 setattr(self, name, value)
-            except (TypeError, ValueError) as e:
-                value = getattr(self, name)
-                raise AnsibleParserError("the field '%s' has an invalid value (%s), and could not be converted to an %s. "
-                                         "The error was: %s" % (name, value, attribute.isa, e), obj=self.get_ds(), orig_exc=e)
-            except (AnsibleUndefinedVariable, UndefinedError) as e:
-                if templar._fail_on_undefined_errors and name != 'name':
-                    if name == 'args':
-                        msg = "The task includes an option with an undefined variable. The error was: %s" % (to_native(e))
-                    else:
-                        msg = "The field '%s' has an invalid value, which includes an undefined variable. The error was: %s" % (name, to_native(e))
-                    raise AnsibleParserError(msg, obj=self.get_ds(), orig_exc=e)
 
         self._finalized = True
+
+    def post_validate_attribute(self, templar: Templar, name: str, attribute: FieldAttribute):
+        if attribute.static:
+            value = getattr(self, name)
+
+            # we don't template 'vars' but allow template as values for later use
+            if name not in ('vars',) and templar.is_template(value):
+                display.warning('"%s" is not templatable, but we found: %s, '
+                                'it will not be templated and will be used "as is".' % (name, value))
+            return Sentinel
+
+        if getattr(self, name) is None:
+            if not attribute.required:
+                return Sentinel
+            else:
+                raise AnsibleParserError("the field '%s' is required but was not set" % name)
+        # FIXME: compare types, not strings
+        elif not attribute.always_post_validate and self.__class__.__name__ not in ('Task', 'Handler', 'PlayContext', 'IncludeRole', 'TaskInclude'):
+            # Intermediate objects like Play() won't have their fields validated by
+            # default, as their values are often inherited by other objects and validated
+            # later, so we don't want them to fail out early
+            return Sentinel
+
+        try:
+            # Run the post-validator if present. These methods are responsible for
+            # using the given templar to template the values, if required.
+            method = getattr(self, '_post_validate_%s' % name, None)
+
+            if method:
+                value = method(attribute, getattr(self, name), templar)
+            elif attribute.isa == 'class':
+                value = getattr(self, name)
+            else:
+                try:
+                    # if the attribute contains a variable, template it now
+                    value = templar.template(getattr(self, name))
+                except AnsibleValueOmittedError:
+                    # If this evaluated to the omit value, set the value back to inherited by context
+                    # or default specified in the FieldAttribute and move on
+                    value = self.set_to_context(name)
+
+                    if value is Sentinel:
+                        return value
+
+            # FIXME: remove this once we know it's not needed?
+            if value is Sentinel:
+                raise Exception(f'Encountered unexpected Sentinel on attribute {name!r} on {type(self)}.')
+
+            # and make sure the attribute is of the type it should be
+            if value is not None:
+                value = self.get_validated_value(name, attribute, value, templar)
+
+            # returning the value results in assigning the massaged value back to the attribute field
+            return value
+        except (TypeError, ValueError) as e:
+            value = getattr(self, name)
+            raise AnsibleParserError("the field '%s' has an invalid value (%s), and could not be converted to an %s."
+                                     "The error was: %s" % (name, value, attribute.isa, e), obj=self.get_ds(), orig_exc=e)
+        except (AnsibleUndefinedVariable, UndefinedError) as e:
+            if templar._fail_on_undefined_errors and name != 'name':
+                if name == 'args':
+                    msg = "The task includes an option with an undefined variable. The error was: %s" % (to_native(e))
+                else:
+                    msg = "The field '%s' has an invalid value, which includes an undefined variable. The error was: %s" % (name, to_native(e))
+                raise AnsibleParserError(msg, obj=self.get_ds(), orig_exc=e)
+
+        return Sentinel
 
     def _load_vars(self, attr, ds):
         '''

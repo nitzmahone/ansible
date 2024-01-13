@@ -15,7 +15,8 @@ import traceback
 import datetime
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleConnectionFailure, AnsibleActionFail, AnsibleActionSkip
+from ansible.errors import (
+    AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleConnectionFailure, AnsibleActionFail, AnsibleActionSkip, AnsibleValueOmittedError)
 from ansible.executor.task_result import TaskResult
 from ansible.executor.module_common import get_action_args_with_defaults
 from ansible.module_utils.datatag import Deprecated, NotATemplate
@@ -47,11 +48,6 @@ class TaskTimeoutError(BaseException):
 
 def task_timeout(signum, frame):
     raise TaskTimeoutError
-
-
-# FIXME: rename this, add docstring
-class PostValidateError(AnsibleError):
-    pass
 
 
 class TaskExecutor:
@@ -178,13 +174,6 @@ class TaskExecutor:
             return res
         # FIXME: consolidate/cleanup exception handling -- this seems somewhat redundant (3 different ways to create result dict)
         #        there are other places we do this as well, perhaps utility code for exception to dict would help
-        except PostValidateError as ex:
-            return dict(
-                failed=True,
-                msg=NotATemplate().tag(f'Unexpected failure during module execution: {ex}'),
-                exception=NotATemplate().tag(to_text(traceback.format_exc())),
-                _ansible_no_log=self._play_context.no_log,
-            )
         except AnsibleError as e:
             return dict(failed=True, msg=to_text(e, nonstring='simplerepr'), _ansible_no_log=self._play_context.no_log)
         except Exception as e:
@@ -272,7 +261,6 @@ class TaskExecutor:
 
         ran_once = False
         task_fields = None
-        no_log = False
         items_len = len(items)
         results = []
         for item_index, item in enumerate(items):
@@ -324,23 +312,36 @@ class TaskExecutor:
             (self._task, tmp_task) = (tmp_task, self._task)
             (self._play_context, tmp_play_context) = (tmp_play_context, self._play_context)
 
+            # FIXME: a truthy non-boolean no_log is treated as true
+
             try:
                 res = self._execute(variables=task_vars)
-            except PostValidateError as ex:
+            except Exception as ex:
+                try:
+                    # execute failed, we don't know if no_log was templated already or not for this item, so try again
+                    no_log = templar.template(self._task.no_log)
+                except AnsibleValueOmittedError:
+                    no_log = False
+                except AnsibleUndefinedVariable:
+                    display.warning(f'A loop item has invalid no_log value, no logging will be suppressed for this item: {ex}')  # FIXME: better error here
+                    no_log = False
+
                 res = dict(
                     changed=False,
                     failed=True,
                     _ansible_no_log=no_log,
-                    msg=NotATemplate().tag(f'Unexpected failure during module execution: {ex}'),
+                    msg=NotATemplate().tag(f'Unexpected failure during loop item execution: {ex}'),  # FIXME: better error message here
                     exception=NotATemplate().tag(to_text(traceback.format_exc())),
                 )
+
+                # FIXME: dirty hack, fix this, assume no_log in msg means our failure was due to no_log, avoid redundant error reporting
+                if 'no_log' in res['msg']:
+                    res.pop('msg')
+                    res.pop('exception')
 
             task_fields = self._task.dump_attrs()
             (self._task, tmp_task) = (tmp_task, self._task)
             (self._play_context, tmp_play_context) = (tmp_play_context, self._play_context)
-
-            # update 'general no_log' based on specific no_log
-            no_log = no_log or tmp_task.no_log
 
             # now update the result with the item info, and append the result
             # to the list of results
@@ -398,7 +399,6 @@ class TaskExecutor:
                         if var in task_vars and var not in self._job_vars:
                             del task_vars[var]
 
-        self._task.no_log = no_log
         # NOTE: run_once cannot contain loop vars because it's templated earlier also
         # This is saving the post-validated field from the last loop so the strategy can use the templated value post task execution
         self._task.run_once = task_fields.get('run_once')
@@ -419,16 +419,34 @@ class TaskExecutor:
         variables.update(delegated_vars)
 
     def _execute(self, variables=None):
+        if variables is None:
+            variables = self._job_vars
+
+        templar = Templar(loader=self._loader, variables=variables)
+
+        try:
+            return self._execute_internal(templar, variables)
+        except Exception as ex:
+            try:
+                no_log = self._task.post_validate_attribute(templar, 'no_log', self._task.fattributes['no_log'])
+            except Exception as no_log_ex:
+                display.warning(f'Invalid no_log value for task, output will be masked. The error was: {no_log_ex}')  # FIXME: better error here
+                no_log = True
+
+            return dict(
+                changed=False,
+                failed=True,
+                _ansible_no_log=no_log,
+                msg=NotATemplate().tag(f'Unexpected failure during task execution: {ex}'),  # FIXME: better error message here
+                exception=NotATemplate().tag(to_text(traceback.format_exc())),
+            )
+
+    def _execute_internal(self, templar, variables):
         '''
         The primary workhorse of the executor system, this runs the task
         on the specified host (which may be the delegated_to host) and handles
         the retry/until and block rescue/always execution
         '''
-
-        if variables is None:
-            variables = self._job_vars
-
-        templar = Templar(loader=self._loader, variables=variables)
 
         self._calculate_delegate_to(templar, variables)
 
@@ -508,10 +526,7 @@ class TaskExecutor:
         templar.available_variables = tempvars
 
         # Now we do final validation on the task, which sets all fields to their final values.
-        try:
-            self._task.post_validate(templar=templar)
-        except Exception as ex:
-            raise PostValidateError(str(ex)) from ex
+        self._task.post_validate(templar=templar)
 
         # if this task is a TaskInclude, we just return now with a success code so the
         # main thread can expand the task list for the given host

@@ -144,6 +144,9 @@ class TaskResult:
                 if preserve in self._result:
                     x[preserve] = self._result[preserve]
 
+            if results := self._result.get('results'):
+                x['results'] = [{} for x in results]  # FIXME: what additional information should be here?
+
             result._result = x
         elif self._result:
             result._result = module_response_deepcopy(self._result)
