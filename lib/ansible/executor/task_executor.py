@@ -13,6 +13,7 @@ import sys
 import termios
 import traceback
 import datetime
+import typing as t
 
 from ansible import constants as C
 from ansible.errors import (
@@ -71,6 +72,7 @@ class TaskExecutor:
         self._final_q = final_q
         self._variable_manager = variable_manager
         self._loop_eval_error = None
+        self._task_templar = Templar(loader=self._loader, variables=self._job_vars)
 
         self._task.squash()
 
@@ -102,6 +104,9 @@ class TaskExecutor:
                     # loop through the item results and set the global changed/failed/skipped result flags based on any item.
                     res['skipped'] = True
                     for item in item_results:
+                        if item.get('_ansible_no_log'):
+                            res.update(_ansible_no_log=True)  # ensure no_log processing recognizes at least one item needs to be censored
+
                         if 'changed' in item and item['changed'] and not res.get('changed'):
                             res['changed'] = True
                         if res['skipped'] and ('skipped' not in item or ('skipped' in item and not item['skipped'])):
@@ -139,7 +144,7 @@ class TaskExecutor:
                     res = dict(changed=False, skipped=True, skipped_reason='No items in the list', results=[])
             else:
                 display.debug("calling self._execute()")
-                res = self._execute()
+                res = self._execute(self._task_templar, self._job_vars)
                 display.debug("_execute() done")
 
             # make sure changed is set in the result, if it's not present
@@ -172,13 +177,19 @@ class TaskExecutor:
             res = _clean_res(res)
             display.debug("done dumping result, returning")
             return res
-        # FIXME: consolidate/cleanup exception handling -- this seems somewhat redundant (3 different ways to create result dict)
-        #        there are other places we do this as well, perhaps utility code for exception to dict would help
         except AnsibleError as e:
-            return dict(failed=True, msg=to_text(e, nonstring='simplerepr'), _ansible_no_log=self._play_context.no_log)
+            return dict(
+                failed=True,
+                msg=NotATemplate().tag(str(e)),
+                _ansible_no_log=self._task.no_log_with_fallback(self._task_templar),
+            )
         except Exception as e:
-            return dict(failed=True, msg='Unexpected failure during module execution: %s' % (to_native(e, nonstring='simplerepr')),
-                        exception=NotATemplate().tag(to_text(traceback.format_exc())), stdout='', _ansible_no_log=self._play_context.no_log)
+            return dict(
+                failed=True,
+                msg=NotATemplate().tag(f'Unexpected failure during module execution: {e}'),
+                exception=NotATemplate().tag(to_text(traceback.format_exc())),
+                _ansible_no_log=self._task.no_log_with_fallback(self._task_templar),
+            )
         finally:
             try:
                 self._connection.close()
@@ -200,17 +211,16 @@ class TaskExecutor:
         if self._loader.get_basedir() not in self._job_vars['ansible_search_path']:
             self._job_vars['ansible_search_path'].append(self._loader.get_basedir())
 
-        templar = Templar(loader=self._loader, variables=self._job_vars)
         items = None
         if self._task.loop_with:
             if self._task.loop_with in self._shared_loader_obj.lookup_loader:
 
                 # FIXME: allow lookups to opt-in to accepting inputs with undefined templating failures instead of hardcoding here
                 fail_on_undefined = bool(self._task.loop_with != 'first_found')
-                loop_terms = listify_lookup_plugin_terms(terms=self._task.loop, templar=templar, fail_on_undefined=fail_on_undefined)
+                loop_terms = listify_lookup_plugin_terms(terms=self._task.loop, templar=self._task_templar, fail_on_undefined=fail_on_undefined)
 
                 # get lookup
-                mylookup = self._shared_loader_obj.lookup_loader.get(self._task.loop_with, loader=self._loader, templar=templar)
+                mylookup = self._shared_loader_obj.lookup_loader.get(self._task.loop_with, loader=self._loader, templar=self._task_templar)
 
                 # give lookup task 'context' for subdir (mostly needed for first_found)
                 for subdir in ['template', 'var', 'file']:  # TODO: move this to constants?
@@ -224,7 +234,7 @@ class TaskExecutor:
                 raise AnsibleError("Unexpected failure in finding the lookup named '%s' in the available lookup plugins" % self._task.loop_with)
 
         elif self._task.loop is not None:
-            items = templar.template(self._task.loop)
+            items = self._task_templar.template(self._task.loop)
             if not isinstance(items, list):
                 raise AnsibleError(
                     "Invalid data passed to 'loop', it requires a list, got this instead: %s."
@@ -312,32 +322,7 @@ class TaskExecutor:
             (self._task, tmp_task) = (tmp_task, self._task)
             (self._play_context, tmp_play_context) = (tmp_play_context, self._play_context)
 
-            # FIXME: a truthy non-boolean no_log is treated as true
-
-            try:
-                res = self._execute(variables=task_vars)
-            except Exception as ex:
-                try:
-                    # execute failed, we don't know if no_log was templated already or not for this item, so try again
-                    no_log = templar.template(self._task.no_log)
-                except AnsibleValueOmittedError:
-                    no_log = False
-                except AnsibleUndefinedVariable:
-                    display.warning(f'A loop item has invalid no_log value, no logging will be suppressed for this item: {ex}')  # FIXME: better error here
-                    no_log = False
-
-                res = dict(
-                    changed=False,
-                    failed=True,
-                    _ansible_no_log=no_log,
-                    msg=NotATemplate().tag(f'Unexpected failure during loop item execution: {ex}'),  # FIXME: better error message here
-                    exception=NotATemplate().tag(to_text(traceback.format_exc())),
-                )
-
-                # FIXME: dirty hack, fix this, assume no_log in msg means our failure was due to no_log, avoid redundant error reporting
-                if 'no_log' in res['msg']:
-                    res.pop('msg')
-                    res.pop('exception')
+            res = self._execute(templar=templar, variables=task_vars)
 
             task_fields = self._task.dump_attrs()
             (self._task, tmp_task) = (tmp_task, self._task)
@@ -418,30 +403,22 @@ class TaskExecutor:
         self._task.delegate_to = delegated_host_name  # always override, since a templated result could be an omit (-> None)
         variables.update(delegated_vars)
 
-    def _execute(self, variables=None):
-        if variables is None:
-            variables = self._job_vars
-
-        templar = Templar(loader=self._loader, variables=variables)
-
+    def _execute(self, templar: Templar, variables: dict[str, t.Any]) -> dict[str, t.Any]:
         try:
-            return self._execute_internal(templar, variables)
+            result = self._execute_internal(templar, variables)
         except Exception as ex:
-            try:
-                no_log = self._task.post_validate_attribute(templar, 'no_log', self._task.fattributes['no_log'])
-            except Exception as no_log_ex:
-                display.warning(f'Invalid no_log value for task, output will be masked. The error was: {no_log_ex}')  # FIXME: better error here
-                no_log = True
-
-            return dict(
+            result = dict(
                 changed=False,
                 failed=True,
-                _ansible_no_log=no_log,
                 msg=NotATemplate().tag(f'Unexpected failure during task execution: {ex}'),  # FIXME: better error message here
                 exception=NotATemplate().tag(to_text(traceback.format_exc())),
             )
 
-    def _execute_internal(self, templar, variables):
+        result.update(_ansible_no_log=self._task.no_log_with_fallback(templar))
+
+        return result
+
+    def _execute_internal(self, templar: Templar, variables: dict[str, t.Any]) -> dict[str, t.Any]:
         '''
         The primary workhorse of the executor system, this runs the task
         on the specified host (which may be the delegated_to host) and handles
@@ -482,8 +459,6 @@ class TaskExecutor:
             # skipping this task during the conditional evaluation step
             context_validation_error = e
 
-        no_log = self._play_context.no_log
-
         # Evaluate the conditional (if any) for this task, which we do before running
         # the final task post-validation. We do this before the post validation due to
         # the fact that the conditional may specify that the task be skipped due to a
@@ -492,8 +467,7 @@ class TaskExecutor:
             conditional_result, false_condition = self._task.evaluate_conditional_with_result(templar, tempvars)
             if not conditional_result:
                 display.debug("when evaluation is False, skipping this task")
-                return dict(changed=False, skipped=True, skip_reason='Conditional result was False',
-                            false_condition=false_condition, _ansible_no_log=no_log)
+                return dict(changed=False, skipped=True, skip_reason='Conditional result was False', false_condition=false_condition)
         except AnsibleError as e:
             # loop error takes precedence
             if self._loop_eval_error is not None:
@@ -542,9 +516,6 @@ class TaskExecutor:
         elif self._task.action in C._ACTION_INCLUDE_ROLE:
             include_args = self._task.args.copy()
             return dict(include_args=include_args)
-
-        # update no_log to task value, now that we have it templated
-        no_log = self._task.no_log
 
         # free tempvars up, not used anymore, cvars and vars_copy should be mainly used after this point
         # updating the original 'variables' at the end
@@ -647,9 +618,6 @@ class TaskExecutor:
                 self._handler.cleanup()
             display.debug("handler run complete")
 
-            # preserve no log
-            result["_ansible_no_log"] = no_log
-
             # update the local copy of vars with the registered value, if specified,
             # or any facts which may have been generated by the module execution
             if self._task.register:
@@ -675,9 +643,6 @@ class TaskExecutor:
                                        self._task._uuid,
                                        result,
                                        task_fields=self._task.dump_attrs()))
-
-                # ensure no log is preserved
-                result["_ansible_no_log"] = no_log
 
             # helper methods for use below in evaluating changed/failed_when
             def _evaluate_changed_when_result(result):

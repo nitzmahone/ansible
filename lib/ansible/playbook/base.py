@@ -778,6 +778,21 @@ class Base(FieldAttributeBase):
     # used to hold sudo/su stuff
     DEPRECATED_ATTRIBUTES = []  # type: list[str]
 
+    # FIXME: generalize this, we're going to need it for other values (e.g.: ignore_errors, etc.)
+    def no_log_with_fallback(self, templar: Templar) -> bool:
+        """Return the post-validated no_log value, falling back to a default on validation/templating failure with a warning."""
+
+        if self.finalized:
+            return self.no_log
+
+        try:
+            no_log = self.post_validate_attribute(templar, 'no_log', self.fattributes['no_log'])
+        except Exception as no_log_ex:
+            display.warning(f'Invalid no_log value for task, output will be masked. The error was: {no_log_ex}')  # FIXME: better error here
+            no_log = True
+
+        return no_log
+
     def get_path(self) -> str:
         ''' return the absolute path of the playbook object and its line number '''
 

@@ -171,7 +171,7 @@ class CallbackModule(CallbackBase):
         # that they can secure this if they feel that their stdout is insecure
         # (shoulder surfing, logging stdout straight to a file, etc).
         args = ''
-        # FIXME: this is not templated when using a loop, which means any non-empty value is truthy
+        # FIXME: the no_log value is not templated at this point, so any template will be considered truthy
         if not task.no_log and C.DISPLAY_ARGS_TO_STDOUT:
             args = u', '.join(u'%s=%s' % a for a in task.args.items())
             args = u' %s' % args

@@ -4,10 +4,13 @@
 
 from __future__ import annotations
 
+import typing as t
+
 from ansible import constants as C
 from ansible.module_utils.datatag import NotATemplate
 from ansible.parsing.dataloader import DataLoader
 from ansible.vars.clean import module_response_deepcopy, strip_internal_keys
+from ansible.playbook.task import Task
 
 _IGNORE = ('failed', 'skipped')
 _PRESERVE = ('attempts', 'changed', 'retries')
@@ -136,18 +139,14 @@ class TaskResult:
                     if key in self._result[sub]:
                         subset[sub][key] = self._result[sub][key]
 
-        if isinstance(self._task.no_log, bool) and self._task.no_log or self._result.get('_ansible_no_log', False):
-            x = {"censored": "the output has been hidden due to the fact that 'no_log: true' was specified for this result"}
-
-            # preserve full
-            for preserve in _PRESERVE:
-                if preserve in self._result:
-                    x[preserve] = self._result[preserve]
+        if isinstance(self._task.no_log, bool) and self._task.no_log or self._result.get('_ansible_no_log'):
+            censored_result = censor_result(self._result)
 
             if results := self._result.get('results'):
-                x['results'] = [{} for x in results]  # FIXME: what additional information should be here?
+                # maintain shape for loop results so callback behavior recognizes a loop was performed
+                censored_result.update(results=[censor_result(item) if item.get('_ansible_no_log') else item for item in results])
 
-            result._result = x
+            result._result = censored_result
         elif self._result:
             result._result = module_response_deepcopy(self._result)
 
@@ -163,3 +162,10 @@ class TaskResult:
         result._result.update(subset)
 
         return result
+
+
+def censor_result(result: dict[str, t.Any]) -> dict[str, t.Any]:
+    censored_result = {key: value for key in _PRESERVE if (value := result.get(key, ...)) is not ...}
+    censored_result.update(censored="the output has been hidden due to the fact that 'no_log: true' was specified for this result")
+
+    return censored_result
