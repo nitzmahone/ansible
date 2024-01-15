@@ -17,7 +17,7 @@ import typing as t
 
 from ansible import constants as C
 from ansible.errors import (
-    AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleConnectionFailure, AnsibleActionFail, AnsibleActionSkip, AnsibleValueOmittedError)
+    AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleConnectionFailure, AnsibleActionFail, AnsibleActionSkip)
 from ansible.executor.task_result import TaskResult
 from ansible.executor.module_common import get_action_args_with_defaults
 from ansible.module_utils.datatag import Deprecated, NotATemplate
@@ -519,7 +519,7 @@ class TaskExecutor:
 
         # free tempvars up, not used anymore, cvars and vars_copy should be mainly used after this point
         # updating the original 'variables' at the end
-        tempvars = {}
+        del tempvars
 
         # setup cvars copy, used for all connection related templating
         if self._task.delegate_to:

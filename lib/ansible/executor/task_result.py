@@ -10,7 +10,6 @@ from ansible import constants as C
 from ansible.module_utils.datatag import NotATemplate
 from ansible.parsing.dataloader import DataLoader
 from ansible.vars.clean import module_response_deepcopy, strip_internal_keys
-from ansible.playbook.task import Task
 
 _IGNORE = ('failed', 'skipped')
 _PRESERVE = ('attempts', 'changed', 'retries')

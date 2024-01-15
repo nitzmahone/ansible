@@ -182,7 +182,7 @@ class TestTaskExecutor(unittest.TestCase):
             variable_manager=MagicMock(),
         )
 
-        def _execute(variables):
+        def _execute(templar, variables):
             return dict(item=variables.get('item'))
 
         te._execute = MagicMock(side_effect=_execute)
@@ -373,23 +373,23 @@ class TestTaskExecutor(unittest.TestCase):
             te._get_action_handler_with_context = MagicMock(return_value=get_with_context_result(mock_action, context))
 
         mock_action.run.return_value = dict(ansible_facts=dict())
-        res = te._execute()
+        res = te._execute(te._task_templar, te._job_vars)
 
         mock_task.changed_when = MagicMock(return_value="1 == 1")
-        res = te._execute()
+        res = te._execute(te._task_templar, te._job_vars)
 
         mock_task.changed_when = None
         mock_task.failed_when = MagicMock(return_value="1 == 1")
-        res = te._execute()
+        res = te._execute(te._task_templar, te._job_vars)
 
         mock_task.failed_when = None
         mock_task.evaluate_conditional.return_value = False
-        res = te._execute()
+        res = te._execute(te._task_templar, te._job_vars)
 
         mock_task.evaluate_conditional.return_value = True
         mock_task.args = dict(_raw_params='foo.yml', a='foo', b='bar')
         mock_task.action = 'include'
-        res = te._execute()
+        res = te._execute(te._task_templar, te._job_vars)
 
     def test_task_executor_poll_async_result(self):
         fake_loader = DictDataLoader({})
