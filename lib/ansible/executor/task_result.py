@@ -12,7 +12,7 @@ from ansible.parsing.dataloader import DataLoader
 from ansible.vars.clean import module_response_deepcopy, strip_internal_keys
 
 _IGNORE = ('failed', 'skipped')
-_PRESERVE = ('attempts', 'changed', 'retries')
+_PRESERVE = ('attempts', 'changed', 'retries', '_ansible_no_log')
 _SUB_PRESERVE = {'_ansible_delegated_vars': ('ansible_host', 'ansible_port', 'ansible_user', 'ansible_connection')}
 
 # stuff callbacks need
