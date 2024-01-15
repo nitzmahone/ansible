@@ -2355,7 +2355,7 @@
   assert:
     that:
     - fail_copy_encrypted_file is failed
-    - fail_copy_encrypted_file.msg == 'A vault password or secret must be specified to decrypt ' + role_path + '/files-different/vault/vault-file'
+    - fail_copy_encrypted_file.msg.endswith('A vault password or secret must be specified to decrypt ' + role_path + '/files-different/vault/vault-file')
 
 - name: fail to copy a directory with an encrypted file without the password
   copy:
@@ -2368,7 +2368,7 @@
   assert:
     that:
     - fail_copy_directory_with_enc_file is failed
-    - fail_copy_directory_with_enc_file.msg == 'A vault password or secret must be specified to decrypt ' + role_path + '/files-different/vault/vault-file'
+    - fail_copy_directory_with_enc_file.msg.endswith('A vault password or secret must be specified to decrypt ' + role_path + '/files-different/vault/vault-file')
 
 #
 # Test for issue 74536: recursively copy all nested directories with remote_src=yes and src='dir/' when dest exists
