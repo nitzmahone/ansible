@@ -1258,7 +1258,7 @@ class Templar:
 
     def template_with_result(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
                              overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
-                             stop_on_container_result=False) -> TemplateResult:
+                             stop_on_container_result=False, value_for_omit=Omit) -> TemplateResult:
         '''
         Templates (possibly recursively) any given data as input. If convert_bare is
         set to True, the given data will be wrapped as a jinja2 variable ('{{foo}}')
@@ -1307,7 +1307,10 @@ class Templar:
                     with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
                         _template_result = undefined_behavior.post_delazify(_delazify(_template_result, undefined_behavior=undefined_behavior))
                 elif _template_result is Omit:
-                    raise AnsibleValueOmittedError()
+                    if value_for_omit is Omit:
+                        raise AnsibleValueOmittedError()
+
+                    return TemplateResult(result=value_for_omit)
 
                 if undecryptable.is_tripped:
                     # we encountered at least one UndecryptableVaultedValue; raise an error if any remain in the result
