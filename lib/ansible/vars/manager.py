@@ -53,6 +53,7 @@ def preprocess_vars(a):
     that vars loaded from a file conform to an expected state.
     '''
 
+    # FIXME: this does not properly handle omit, undefined, or dynamic structure from templated `vars` ; templating should be done earlier
     if a is None:
         return None
     elif not isinstance(a, list):
