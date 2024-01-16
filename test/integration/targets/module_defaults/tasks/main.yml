@@ -3,7 +3,7 @@
     test_file: /tmp/ansible-test.module_defaults.foo
   module_defaults:
     debug:
-      msg: test default
+      msg: test {{ "default" }}
     file:
       path: '{{ test_file }}'
   block:
@@ -87,3 +87,17 @@
       - assert:
           that:
             foo.msg == "Hello world!"
+
+
+- name: ensure that untemplate-able module_defaults breaks task templating
+  module_defaults:
+    ansible.builtin.debug:
+      msg: '{{ busted_invalid_var }}'
+  ansible.builtin.debug:  # debug was chosen because it ignores failures during task templating; this ensures the expected failure comes from task templating of module_defaults
+  ignore_errors: true
+  register: result
+
+- assert:
+    that:
+      - result is failed
+      - result.msg is contains("undefined variable")

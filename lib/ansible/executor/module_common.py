@@ -28,6 +28,7 @@ import time
 import zipfile
 import re
 import pkgutil
+import typing as t
 
 from ast import AST, Import, ImportFrom
 from io import BytesIO
@@ -39,6 +40,7 @@ from ansible.executor.interpreter_discovery import InterpreterDiscoveryRequiredE
 from ansible.executor.powershell import module_manifest as ps_manifest
 from ansible.module_utils.common.json import AnsibleJSONEncoder
 from ansible.module_utils.common.text.converters import to_bytes, to_text, to_native
+from ansible.playbook.task import Task
 from ansible.plugins.loader import module_utils_loader
 from ansible.utils.collection_loader._collection_finder import _get_collection_metadata, _nested_dict_get
 
@@ -1395,7 +1397,10 @@ def modify_module(module_name, module_path, module_args, templar, task_vars=None
     return (b_module_data, module_style, shebang)
 
 
-def get_action_args_with_defaults(action, args, defaults, templar, action_groups=None):
+def _get_action_arg_defaults(action: str, task: Task) -> dict[str, t.Any]:
+    action_groups = task._parent._play._action_groups
+    defaults = task.module_defaults
+
     # Get the list of groups that contain this action
     if action_groups is None:
         msg = (
@@ -1416,8 +1421,6 @@ def get_action_args_with_defaults(action, args, defaults, templar, action_groups
         for default in defaults:
             module_defaults.update(default)
 
-    # module_defaults keys are static, but the values may be templated
-    module_defaults = templar.template(module_defaults)
     for default in module_defaults:
         if default.startswith('group/'):
             group_name = default.split('group/')[-1]
@@ -1427,7 +1430,11 @@ def get_action_args_with_defaults(action, args, defaults, templar, action_groups
     # handle specific action defaults
     tmp_args.update(module_defaults.get(action, {}).copy())
 
-    # direct args override all
-    tmp_args.update(args)
-
     return tmp_args
+
+
+def _apply_action_arg_defaults(action: str, task: Task, action_args: dict[str, t.Any]) -> dict[str, t.Any]:
+    args = _get_action_arg_defaults(action, task)
+    args.update(action_args)
+
+    return args

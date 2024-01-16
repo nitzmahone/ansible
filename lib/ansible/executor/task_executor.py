@@ -19,7 +19,7 @@ from ansible import constants as C
 from ansible.errors import (
     AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleConnectionFailure, AnsibleActionFail, AnsibleActionSkip)
 from ansible.executor.task_result import TaskResult
-from ansible.executor.module_common import get_action_args_with_defaults
+from ansible.executor.module_common import _get_action_arg_defaults
 from ansible.module_utils.datatag import Deprecated, NotATemplate
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.common.text.converters import to_text, to_native
@@ -578,11 +578,18 @@ class TaskExecutor:
         else:
             module_defaults_fqcn = self._task.resolved_action
 
-        # Apply default params for action/module, if present
-        self._task.args = get_action_args_with_defaults(
-            module_defaults_fqcn, self._task.args, self._task.module_defaults, templar,
-            action_groups=self._task._parent._play._action_groups
-        )
+        # Task args always start with defined module_defaults, if any (already templated by task post_validate).
+        # Then, args explicitly defined on the task are layered over the top. This layering is repeated for both
+        # templated task args and untemplated task args. Module_defaults apply properly for actions that do
+        # their own templating, but the action will never see untemplated values from module_defaults.
+        templated_action_args = _get_action_arg_defaults(module_defaults_fqcn, self._task)
+        untemplated_action_args = templated_action_args.copy()
+
+        templated_action_args.update(self._task.args)
+        untemplated_action_args.update(self._task.untemplated_args)
+
+        self._task.args = templated_action_args
+        self._task.untemplated_args = untemplated_action_args
 
         retries = 1  # includes the default actual run + retries set by user/default
         if self._task.retries is not None:
