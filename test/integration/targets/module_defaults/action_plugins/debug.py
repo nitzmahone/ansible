@@ -40,10 +40,7 @@ class ActionModule(ActionBase):
 
             # template splatted `args` only until we get a dictionary
             if vp := raw_task_args.pop('_variable_params', None):
-                try:
-                    raw_task_args = self._templar.template(vp, stop_on_container_result=True)
-                except AnsibleValueOmittedError:
-                    raw_task_args = {}
+                raw_task_args = self._templar.template(vp, stop_on_container_result=True, value_for_omit={})
 
                 if not isinstance(raw_task_args, dict):
                     # FIXME: needs AnsibleTaggedObject.get_native_type() to avoid displaying internal type names
