@@ -1413,7 +1413,7 @@ def _get_action_arg_defaults(action: str, task: Task) -> dict[str, t.Any]:
     else:
         group_names = action_groups.get(action, [])
 
-    tmp_args = {}
+    tmp_args: dict[str, t.Any] = {}
     module_defaults = {}
 
     # Merge latest defaults into dict, since they are a list of dicts
