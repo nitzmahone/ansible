@@ -49,7 +49,7 @@ from struct import unpack, pack
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleAssertionError, AnsiblePromptInterrupt, AnsiblePromptNoninteractive
 from ansible.module_utils.common.text.converters import to_bytes, to_text
-from ansible.module_utils.datatag import TrustedAsTemplate
+from ansible.module_utils.datatag import NotATemplate, TrustedAsTemplate
 from ansible.module_utils.six import text_type
 from ansible.utils.color import stringc
 from ansible.utils.multiprocessing import context as multiprocessing_context
@@ -678,7 +678,9 @@ class Display(metaclass=Singleton):
         # handle utf-8 chars
         result = to_text(result, errors='surrogate_or_strict')
 
-        if not unsafe:
+        if unsafe:
+            result = NotATemplate().tag(result)
+        else:
             # to maintain backward compatibility, assume these values are safe to template
             result = TrustedAsTemplate().tag(result)
         return result
