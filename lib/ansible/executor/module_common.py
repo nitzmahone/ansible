@@ -1239,7 +1239,7 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
         rlimit_nofile = C.config.get_config_value('PYTHON_MODULE_RLIMIT_NOFILE', variables=task_vars)
 
         if not isinstance(rlimit_nofile, int):
-            rlimit_nofile = int(templar.template(rlimit_nofile))
+            rlimit_nofile = int(templar.template(rlimit_nofile, value_for_omit=0))
 
         if rlimit_nofile:
             rlimit = ANSIBALLZ_RLIMIT_TEMPLATE % dict(
