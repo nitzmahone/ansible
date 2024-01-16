@@ -442,9 +442,7 @@ class Constructable(_BaseInventoryPlugin):
                         raw_parent_name = keyed.get('parent_group', None)
 
                         try:
-                            raw_parent_name = self.templar.template(raw_parent_name)
-                        except AnsibleValueOmittedError:
-                            raw_parent_name = None
+                            raw_parent_name = self.templar.template(raw_parent_name, value_for_omit=None)
                         except Exception as ex:
                             if strict:
                                 raise AnsibleParserError(f'Could not generate parent group {raw_parent_name!r} for group {key!r}: {ex}') from ex
