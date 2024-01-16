@@ -10,6 +10,7 @@ import os.path
 import sys
 import stat
 import tempfile
+import typing as t
 
 from collections import namedtuple
 from collections.abc import Mapping, Sequence
@@ -442,6 +443,10 @@ class ConfigManager(object):
         except Exception as e:
             raise AnsibleError("Unhandled exception when retrieving %s:\n%s" % (config, to_native(e)), orig_exc=e)
         return value
+
+    def get_config_default(self, config: str, plugin_type: str | None = None, plugin_name: str | None = None) -> t.Any:
+        """Return the default value for the specified configuration."""
+        return self.get_configuration_definitions(plugin_type, plugin_name)[config]['default']
 
     def get_config_value_and_origin(self, config, cfile=None, plugin_type=None, plugin_name=None, keys=None, variables=None, direct=None):
         ''' Given a config key figure out the actual value and report on the origin of the settings '''
