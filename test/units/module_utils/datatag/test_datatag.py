@@ -30,7 +30,6 @@ from ansible.module_utils.datatag import (
     Deprecated,
     NotATemplate,
     NotTaggableError,
-    SensitiveData,
     TrustedAsTemplate,
     UndecryptableVaultedValue,
     VaultedValue,
@@ -61,21 +60,21 @@ class CopyProtocol(Protocol):
 
 def test_tag_registration():
     assert AnsibleSerializable._known_type_map.get(Deprecated.__name__) is Deprecated
-    assert AnsibleSerializable._known_type_map.get(SensitiveData.__name__) is SensitiveData
+    assert AnsibleSerializable._known_type_map.get(TrustedAsTemplate.__name__) is TrustedAsTemplate
 
 
 def test_tag_as_dict():
-    nodata = SensitiveData()
+    trusted = TrustedAsTemplate()
     somedata = AnsibleSourcePosition(src="foo", line=1, col=2)
 
-    assert nodata._as_dict() is not nodata._as_dict()  # returning a new dict each time?
-    assert nodata._as_dict() == dict()
+    assert trusted._as_dict() is not trusted._as_dict()  # returning a new dict each time?
+    assert trusted._as_dict() == dict()
     expected_somedata_dict = dict(src="foo", line=1, col=2)
     assert somedata._as_dict() == expected_somedata_dict
 
 
 def test_tag_repr():
-    assert repr(SensitiveData()) == 'SensitiveData()'
+    assert repr(TrustedAsTemplate()) == 'TrustedAsTemplate()'
 
     tag = AnsibleSourcePosition(src="bar", line=42, col=99)
 
@@ -90,7 +89,6 @@ datatag_instances = [
     Deprecated(msg="hi mom, I'm deprecated", removal_date=datetime.date(2023, 1, 2), removal_version="42.42"),
     Deprecated(msg="minimal"),
     NotATemplate(),
-    SensitiveData(),
     TrustedAsTemplate(),
     UndecryptableVaultedValue(),
     VaultedValue(ciphertext="hi mom I'm a secret"),
@@ -242,21 +240,21 @@ def assert_str(tagged_instance, taggable_instance) -> None:
 @pytest.mark.parametrize("taggable_instance", taggable_instances, ids=[type(instance).__name__ for instance in taggable_instances])
 def test_untag(taggable_instance):
     """Ensure tagging and then untagging a taggable instance returns new instances as appropriate, with the correct tags and type."""
-    tagged_instance = SensitiveData().tag(NotATemplate().tag(taggable_instance))
+    tagged_instance = TrustedAsTemplate().tag(NotATemplate().tag(taggable_instance))
 
     one_less_tag = NotATemplate.untag(tagged_instance)
 
     assert one_less_tag is not tagged_instance
     assert type(one_less_tag) is type(tagged_instance)  # pylint: disable=unidiomatic-typecheck
-    assert AnsibleTaggedObject.tags(one_less_tag) == frozenset((SensitiveData(),))
+    assert AnsibleTaggedObject.tags(one_less_tag) == frozenset((TrustedAsTemplate(),))
 
-    no_tags = SensitiveData.untag(one_less_tag)
+    no_tags = TrustedAsTemplate.untag(one_less_tag)
 
     assert no_tags is not one_less_tag
     assert type(no_tags) is type(taggable_instance)
     assert AnsibleTaggedObject.tags(no_tags) is _empty_frozenset
 
-    still_no_tags = SensitiveData.untag(no_tags)
+    still_no_tags = TrustedAsTemplate.untag(no_tags)
 
     assert still_no_tags is no_tags
 
@@ -294,7 +292,7 @@ def test_slots(serializable_type: type) -> None:
     False,
 ])
 def test_silent_untaggable(untaggable_instance):
-    post_tag = SensitiveData().tag(untaggable_instance)
+    post_tag = TrustedAsTemplate().tag(untaggable_instance)
 
     assert post_tag is untaggable_instance
 
@@ -309,7 +307,7 @@ def no_op() -> None:
 ])
 def test_fatal_untaggable(untaggable_instance):
     with pytest.raises(NotTaggableError):
-        SensitiveData().tag(untaggable_instance)
+        TrustedAsTemplate().tag(untaggable_instance)
 
 
 def test_deserialize_unknown_type() -> None:
@@ -388,9 +386,9 @@ def test_tagged_bytes_decode() -> None:
 
 
 def test_tag_types() -> None:
-    value = SensitiveData().tag(NotATemplate().tag("hi"))
+    value = TrustedAsTemplate().tag(NotATemplate().tag("hi"))
 
-    assert AnsibleTaggedObject.tag_types(value) == {SensitiveData, NotATemplate}
+    assert AnsibleTaggedObject.tag_types(value) == {TrustedAsTemplate, NotATemplate}
     assert AnsibleTaggedObject.tag_types("hi") is _empty_frozenset
 
 
@@ -452,7 +450,7 @@ def value_and_types_ids() -> list[str]:
 @pytest.mark.parametrize("value, value_type, type_under_test", values_and_types(), ids=value_and_types_ids())
 def test_tag(value: t.Any, value_type: t.Optional[type], type_under_test: type) -> None:
     """Ensure tagging a value returns the correct type and tags."""
-    tag = SensitiveData()
+    tag = TrustedAsTemplate()
 
     result = AnsibleTaggedObject.tag(value, tags=tag, value_type=value_type)
 
@@ -463,8 +461,8 @@ def test_tag(value: t.Any, value_type: t.Optional[type], type_under_test: type) 
 @pytest.mark.parametrize("value, value_type, type_under_test", values_and_types(), ids=value_and_types_ids())
 def test_tag_copy(value: t.Any, value_type: t.Optional[type], type_under_test: type) -> None:
     """Ensure copying tags returns the correct type and tags."""
-    tag = SensitiveData()
-    src = tag.tag("sensitive")
+    tag = TrustedAsTemplate()
+    src = tag.tag("trusted")
 
     result = AnsibleTaggedObject.tag_copy(src, value, value_type=value_type)
 
@@ -476,23 +474,23 @@ def test_tag_builtins():
     values = [123, 123.45, 'a string value', tuple([1, 2, 3]), [1, 2, 3], {1, 2, 3}, dict(one=1, two=2)]
 
     for original_val in values:
-        tagged_val = SensitiveData().tag(original_val)
+        tagged_val = TrustedAsTemplate().tag(original_val)
         zero_tagged_val = AnsibleTaggedObject.tag(original_val, [])  # should return original value, not an empty tagged obj
 
         assert original_val == tagged_val  # equality should pass
-        assert not SensitiveData.is_tagged_on(original_val)  # immutable original value via bool check
-        assert SensitiveData.get_tag(original_val) is None  # immutable original value via get_tag
+        assert not TrustedAsTemplate.is_tagged_on(original_val)  # immutable original value via bool check
+        assert TrustedAsTemplate.get_tag(original_val) is None  # immutable original value via get_tag
         assert not AnsibleTaggedObject.tags(original_val)  # immutable original value via tags
 
-        assert SensitiveData.is_tagged_on(tagged_val)
-        assert SensitiveData.get_tag(tagged_val) is SensitiveData()  # singleton tag type, should be reference-equal
+        assert TrustedAsTemplate.is_tagged_on(tagged_val)
+        assert TrustedAsTemplate.get_tag(tagged_val) is TrustedAsTemplate()  # singleton tag type, should be reference-equal
         assert original_val is zero_tagged_val  # original value should reference-equal the zero-tagged value
 
         somedata_tag = AnsibleSourcePosition(src="foo", line=12, col=34)
 
         multi_tagged_val = somedata_tag.tag(tagged_val)
         assert tagged_val is not multi_tagged_val
-        assert SensitiveData.is_tagged_on(multi_tagged_val)
+        assert TrustedAsTemplate.is_tagged_on(multi_tagged_val)
         assert AnsibleSourcePosition.is_tagged_on(multi_tagged_val)
-        assert SensitiveData.get_tag(multi_tagged_val) is SensitiveData()  # singleton tag type, should be reference-equal
+        assert TrustedAsTemplate.get_tag(multi_tagged_val) is TrustedAsTemplate()  # singleton tag type, should be reference-equal
         assert AnsibleSourcePosition.get_tag(multi_tagged_val) is somedata_tag

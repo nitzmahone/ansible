@@ -13,7 +13,7 @@ def main():
 
     result = {
         'something_old': something_old_value,
-        # send the module param back to core; since it was no log, AnsibleModule tagged it with SensitiveData
+        # send the module param back to core
         'sensitive_module_arg': mod.params['sensitive_module_arg'],
         # rendering templates from modules is a no-no, core does not trust anything by default
         'untrusted_template': '{{ ["me", "see", "not", "should"] | sort(reverse=true) | join(" ") }}',

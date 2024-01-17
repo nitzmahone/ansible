@@ -22,8 +22,8 @@ import pytest
 from jinja2.exceptions import UndefinedError
 
 import unittest
-from ansible.module_utils.datatag import SensitiveData
 from ansible.parsing import vault
+from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.parsing.yaml import dumper, objects
 from ansible.parsing.yaml.loader import AnsibleLoader
 from ansible.template import AnsibleUndefined
@@ -66,7 +66,7 @@ class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
 
     def test_bytes(self):
         b_text = u'tréma'.encode('utf-8')
-        unsafe_object = SensitiveData().tag(b_text)
+        unsafe_object = TrustedAsTemplate().tag(b_text)
         yaml_out = self._dump_string(unsafe_object, dumper=self.dumper)
 
         stream = self._build_stream(yaml_out)
@@ -80,7 +80,7 @@ class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
 
     def test_unicode(self):
         u_text = u'nöel'
-        unsafe_object = SensitiveData().tag(u_text)
+        unsafe_object = TrustedAsTemplate().tag(u_text)
         yaml_out = self._dump_string(unsafe_object, dumper=self.dumper)
 
         stream = self._build_stream(yaml_out)
