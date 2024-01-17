@@ -202,3 +202,4 @@ test/support/README.md pymarkdown:no-bare-urls
 test/units/cli/test_data/role_skeleton/README.md pymarkdown:line-length
 test/integration/targets/find/files/hello_world.gbk no-smart-quotes
 test/integration/targets/find/files/hello_world.gbk no-unwanted-characters
+test/integration/targets/interpreter_discovery_python/library/test_non_python_interpreter.py shebang  # test needs non-standard shebang
