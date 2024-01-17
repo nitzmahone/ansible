@@ -83,7 +83,7 @@ class TestHeuristicLogSanitize:
 
     def test_hides_parameter_secrets(self):
         output = heuristic_log_sanitize('token="secret", user="person", token_entry="test=secret"', frozenset(['secret']))
-        assert 'secret' in output
+        assert 'secret' not in output
 
     def test_no_password(self):
         assert heuristic_log_sanitize('foo@bar') == 'foo@bar'

@@ -599,12 +599,10 @@
     password: password
   register: sanitize_keys
 
-# FIXME: FDI022
-#- name: assert that keys were sanitized
-#  assert:
-#    that:
-#    - sanitize_keys.json.args['key-********'] == 'value-********'
-
+- name: assert that keys were sanitized
+  assert:
+    that:
+    - sanitize_keys.json.args['key-********'] == 'value-********'
 
 - name: Test gzip encoding
   uri:
