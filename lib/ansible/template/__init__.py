@@ -1019,7 +1019,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
                 # FIXME: better exception type? (same thing in the lazy template wrapper constructors)
                 raise ReferenceError("no TemplateContext is available")
             try:
-                # FIXME: FDI039 - we need to propagate template args like fail_on_undefined and/or move them into a templar/overlay instance
+                # FIXME: we need to propagate template args like undefined_behavior and/or move them into a templar/overlay instance
                 #  also, what happens if Lazy's that survive encounter a different templar and/or override args
                 item = template_context.templar.template(item)
             except (AnsibleUndefinedVariable, UndefinedError) as e:  # FIXME: can we dump this whole thing or preserve just enough?
