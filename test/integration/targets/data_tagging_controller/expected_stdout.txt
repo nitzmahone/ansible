@@ -6,11 +6,11 @@ ok: [localhost] => {
     "changed": false,
     "invocation": {
         "module_args": {
-            "sensitive_module_arg": "***CENSORED***"
+            "sensitive_module_arg": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER"
         }
     },
     "secret_thing": "***CENSORED***",
-    "sensitive_module_arg": "***CENSORED***",
+    "sensitive_module_arg": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER",
     "something_old": "an old thing",
     "untrusted_template": "{{ [\"me\", \"see\", \"not\", \"should\"] | sort(reverse=true) | join(\" \") }}"
 }
@@ -28,7 +28,7 @@ ok: [localhost] => {
 }
 TASK [try to directly display something the module marked as no_log (should be masked)] ***
 ok: [localhost] => {
-    "demo_out.sensitive_module_arg": "***CENSORED***"
+    "demo_out.sensitive_module_arg": "VALUE_SPECIFIED_IN_NO_LOG_PARAMETER"
 }
 TASK [try to render a template returned by the module (we don't allow this, should see the raw template)] ***
 ok: [localhost] => {
