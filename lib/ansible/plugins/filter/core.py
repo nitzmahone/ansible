@@ -25,7 +25,7 @@ from jinja2.filters import pass_environment
 from jinja2.filters import sync_do_groupby
 
 from ansible.errors import AnsibleError, AnsibleFilterError, AnsibleFilterTypeError
-from ansible.module_utils.datatag import SensitiveData, Deprecated
+from ansible.module_utils.datatag import Deprecated
 from ansible.module_utils.six import string_types, integer_types, reraise, text_type
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
@@ -476,10 +476,6 @@ def b64decode(string, encoding='utf-8'):
     return to_text(base64.b64decode(to_bytes(string, errors='surrogate_or_strict')), encoding=encoding)
 
 
-def no_log(value):
-    return SensitiveData().tag(value)
-
-
 def deprecated_FIXME(value):
     return Deprecated(msg='blah', removal_date=datetime.date(2023, 1, 1), removal_version='456').tag(value)
 
@@ -623,9 +619,6 @@ class FilterModule(object):
 
     def filters(self):
         return {
-            # no_log
-            'no_log': no_log,
-
             'deprecated': deprecated_FIXME,
 
             # base 64

@@ -12,7 +12,7 @@ from yaml import YAMLError
 from ansible.errors import AnsibleParserError
 from ansible.errors.yaml_strings import YAML_SYNTAX_ERROR
 from ansible.module_utils.common.text.converters import to_native
-from ansible.module_utils.datatag import AnsibleSourcePosition, SensitiveData
+from ansible.module_utils.datatag import AnsibleSourcePosition
 from ansible.parsing.yaml.loader import AnsibleLoader
 from ansible.module_utils.common.json import AnsibleJSONDecoder
 
@@ -81,18 +81,5 @@ def from_yaml(data, file_name='<string>', show_content=True, vault_secrets=None,
             new_data = _safe_load(data, file_name=file_name, vault_secrets=vault_secrets, trusted_as_template=trusted_as_template)
         except YAMLError as yaml_exc:
             _handle_error(json_exc, yaml_exc, file_name, show_content)
-
-    if not show_content:
-        sd = SensitiveData()
-
-        # FIXME: ick
-        # for containers, mark all top-level values as sensitive
-        if isinstance(new_data, list):
-            new_data = list(map(sd.tag, new_data))
-        elif isinstance(new_data, dict):
-            new_data = {sd.tag(k): sd.tag(v) for k, v in new_data.items()}
-
-        # always tag the root object as sensitive
-        new_data = sd.tag(new_data)
 
     return new_data

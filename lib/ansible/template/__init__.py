@@ -65,7 +65,7 @@ from ansible.errors import (
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
 from ansible.module_utils.common.collections import is_sequence
-from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, SensitiveData, TrustedAsTemplate, NotATemplate
+from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import filter_loader, lookup_loader, test_loader
 from ansible.template.template import AnsibleJ2Template
 from ansible.template.vars import AnsibleJ2Vars
@@ -84,7 +84,6 @@ from ansible.module_utils.datatag.access import (
     AmbientContextBase,
     AnsibleAccessContext,
     POORLY_NAMED_SENTINEL,
-    SensitiveDataAccessTripwire,
     _NotifiableAccessContextBase,
 )
 
@@ -1638,7 +1637,6 @@ class Templar:
         # FIXME: make this a deprecation warning?
         # FIXME: include location info?
         bool_result = bool(result)
-        # FIXME: SensitiveData check here?
         # FIXME: `type(result)` should probably be the base type of the data structure
         # FIXME: add an option to make these errors, enabled by default for integration tests
         display.warning(f'Conditional {_repr_from(conditional)} had result {result!r} of type {type(result)}, '
@@ -1727,24 +1725,19 @@ class Templar:
 
             cur_context = cur_template.new_context(jvars, shared=True)
 
-            with SensitiveDataAccessTripwire() as sensitive:
-                rf = cur_template.root_render_func(cur_context)
+            rf = cur_template.root_render_func(cur_context)
 
-                try:
-                    res = myenv.concat(rf)
-
-                    if sensitive.is_tripped:
-                        res = SensitiveData().tag(res)
-
-                    # FIXME: propagate some/all tags here?
-                except TypeError as te:
-                    if 'AnsibleUndefined' in to_native(te):
-                        errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(data)
-                        errmsg += "Make sure your variable name does not contain invalid characters like '-': %s" % to_native(te)
-                        raise AnsibleUndefinedVariable(errmsg, orig_exc=te)
-                    else:
-                        display.debug("failing because of a type error, template data is: %s" % to_text(data))
-                        raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)), orig_exc=te)
+            try:
+                res = myenv.concat(rf)
+                # FIXME: propagate some/all tags here?
+            except TypeError as te:
+                if 'AnsibleUndefined' in to_native(te):
+                    errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(data)
+                    errmsg += "Make sure your variable name does not contain invalid characters like '-': %s" % to_native(te)
+                    raise AnsibleUndefinedVariable(errmsg, orig_exc=te)
+                else:
+                    display.debug("failing because of a type error, template data is: %s" % to_text(data))
+                    raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)), orig_exc=te)
 
             if isinstance(res, string_types) and preserve_trailing_newlines:
                 # The low level calls above do not preserve the newline

@@ -4,8 +4,6 @@ set -eux
 
 unset ANSIBLE_DEPRECATION_WARNINGS
 
-ansible-playbook -i hosts demo_tagging.yml "$@"
-
 ansible-playbook untrusted_propagation.yml "$@" -e output_dir="${OUTPUT_DIR}"
 
 ANSIBLE_CALLBACK_FORMAT_PRETTY=0 ANSIBLE_WRAP_STDERR=0 ansible-playbook -i hosts output_tests.yml -vvv 2>&1 | tee output.txt

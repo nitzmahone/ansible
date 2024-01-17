@@ -307,11 +307,6 @@ class NotATemplate(AnsibleSingletonTagBase):
     __slots__ = _NO_INSTANCE_STORAGE
 
 
-# FIXME: implement this for our display methods? (eg, tag known sensitive values for no_log behavior in args and module responses as soon as we know about them)
-class SensitiveData(AnsibleSingletonTagBase):
-    __slots__ = _NO_INSTANCE_STORAGE
-
-
 class AnsibleTaggedObject(AnsibleSerializable):
     __slots__ = _NO_INSTANCE_STORAGE
 

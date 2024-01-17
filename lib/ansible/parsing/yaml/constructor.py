@@ -22,7 +22,7 @@ from yaml.nodes import MappingNode
 
 from ansible import constants as C
 from ansible.module_utils.common.text.converters import to_native, to_text
-from ansible.module_utils.datatag import (AnsibleSourcePosition, AnsibleTaggedObject, SensitiveData, UndecryptableVaultedValue,
+from ansible.module_utils.datatag import (AnsibleSourcePosition, AnsibleTaggedObject, UndecryptableVaultedValue,
                                           TrustedAsTemplate, NotATemplate, VaultedValue)
 from ansible.parsing.vault import VaultLib
 from ansible.utils.display import Display
@@ -140,7 +140,6 @@ class AnsibleConstructor(SafeConstructor):
 
         try:
             value = to_text(vault.decrypt(ciphertext))
-            tags.append(SensitiveData())  # always tag anything that was previously encrypted as SensitiveData
         except Exception as ex:
             value = ciphertext
             tags.append(UndecryptableVaultedValue())  # specially tag things we aren't able to decrypt (cheaper than a flag in VaultedValue)

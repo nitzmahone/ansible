@@ -9,7 +9,6 @@ from contextvars import ContextVar
 from . import (
     AnsibleDatatagBase,
     AnsibleTaggedObject,
-    SensitiveData,
 )
 
 POORLY_NAMED_SENTINEL = object()
@@ -123,35 +122,3 @@ class AnsibleAccessContext:
             value = o
 
         return value
-
-
-class SensitiveDataAccessTripwire(_NotifiableAccessContextBase):
-    _tag_type_interest = frozenset([SensitiveData])
-
-    def __init__(self):
-        self._tripped = False
-
-    def _notify(self, o: t.Any) -> t.Any:
-        # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
-        if SensitiveData.is_tagged_on(o):
-            self._tripped = True
-
-        return POORLY_NAMED_SENTINEL
-
-    @property
-    def is_tripped(self) -> bool:
-        return self._tripped
-
-
-class SensitiveDataMask(_MutatingAccessContextBase):
-    _tag_type_interest = frozenset([SensitiveData])
-
-    def __init__(self, mask_message: str = '***CENSORED***') -> None:
-        self._mask_message = mask_message
-
-    def _notify(self, o: t.Any) -> t.Any:
-        # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
-        if SensitiveData.is_tagged_on(o):
-            return self._mask_message
-
-        return POORLY_NAMED_SENTINEL

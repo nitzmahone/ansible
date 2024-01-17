@@ -99,7 +99,6 @@ from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.module_utils.common.collections import is_sequence
 from ansible.module_utils.common.file import is_executable
-from ansible.module_utils.datatag import SensitiveData
 from ansible.parsing.dataloader import DataLoader
 from ansible.parsing.vault import PromptVaultSecret, get_file_vault_secret
 from ansible.plugins.loader import add_all_plugin_dirs, init_plugin_loader
@@ -322,7 +321,7 @@ class CLI(ABC):
 
     @staticmethod
     def _get_secret(prompt):
-        return SensitiveData().tag(getpass.getpass(prompt=prompt))
+        return getpass.getpass(prompt=prompt)
 
     @staticmethod
     def ask_passwords():
@@ -619,7 +618,7 @@ class CLI(ABC):
         if not secret:
             raise AnsibleError('Empty password was provided from file (%s)' % pwd_file)
 
-        return SensitiveData().tag(to_text(secret))
+        return to_text(secret)
 
     @classmethod
     def cli_executor(cls, args=None):
