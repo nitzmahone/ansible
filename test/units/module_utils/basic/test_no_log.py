@@ -125,7 +125,6 @@ class TestRemoveValues:
         for value, no_log_strings in self.dataset_no_remove:
             assert remove_values(value, no_log_strings) == value
 
-    @pytest.mark.xfail(reason="FDI001")
     def test_strings_to_remove(self):
         for value, no_log_strings, expected in self.dataset_remove:
             assert remove_values(value, no_log_strings) == expected
@@ -134,7 +133,6 @@ class TestRemoveValues:
         with pytest.raises(TypeError):
             remove_values(object(), frozenset())
 
-    @pytest.mark.xfail(reason="FDI001")
     def test_hit_recursion_limit(self):
         """ Check that we do not hit a recursion limit"""
         data_list = []
