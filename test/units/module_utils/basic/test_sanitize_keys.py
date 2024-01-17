@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from ansible.module_utils.basic import sanitize_keys
 
 
