@@ -182,6 +182,8 @@ class TestTaskExecutor(unittest.TestCase):
             variable_manager=MagicMock(),
         )
 
+        te._task.loop_control.label = "bob"
+
         def _execute(templar, variables):
             return dict(item=variables.get('item'))
 
