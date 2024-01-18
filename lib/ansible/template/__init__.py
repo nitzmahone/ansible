@@ -1210,14 +1210,10 @@ class Templar:
     def template(self, *args, **kwargs) -> t.Any:
         return self.template_with_result(*args, **kwargs).result
 
-    def template_with_result(self, variable, *, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
+    def template_with_result(self, variable, *, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
                              overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
                              stop_on_container_result=False, value_for_omit=Omit) -> TemplateResult:
-        '''
-        Templates (possibly recursively) any given data as input. If convert_bare is
-        set to True, the given data will be wrapped as a jinja2 variable ('{{foo}}')
-        before being sent through the template engine.
-        '''
+        """Templates (possibly recursively) any given data as input."""
 
         # bail out if we know we're looking at something that's been explicitly tagged as not a template
         if variable is None or NotATemplate.is_tagged_on(variable):
@@ -1228,7 +1224,6 @@ class Templar:
             fail_on_undefined = self._fail_on_undefined_errors
 
         template_kwargs = dict(
-            convert_bare=convert_bare,
             preserve_trailing_newlines=preserve_trailing_newlines,
             escape_backslashes=escape_backslashes,
             fail_on_undefined=fail_on_undefined,
@@ -1288,24 +1283,15 @@ class Templar:
 
         return TemplateResult(result=_template_result)
 
-    def _template_recursive(self, variable, *, undefined_behavior, convert_bare=False, preserve_trailing_newlines=True, escape_backslashes=True,
+    def _template_recursive(self, variable, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True,
                             fail_on_undefined=None, overrides=None, cache=None, disable_lookups=False):
-        '''
-        Templates (possibly recursively) any given data as input. If convert_bare is
-        set to True, the given data will be wrapped as a jinja2 variable ('{{foo}}')
-        before being sent through the template engine.
-        '''
+        """Templates (possibly recursively) any given data as input."""
         # stack the current active var value we're templating; this lets the deprecated tripwire ask for it
         with TemplateContext(template_value=variable, templar=self):
             # FIXME: ensure tag propagation behavior is working for containers
 
             if cache is not None:
                 display.deprecated("The `cache` option to `Templar.template` is no longer functional, and will be removed in a future release.", version='2.18')
-
-            if convert_bare:
-                # FIXME: FDI034 determine if/when we should continue to allow this- all core callers are now passing False
-                # variable = self._convert_bare_variable(variable)
-                raise NotImplementedError('Support for convert_bare has been removed.')
 
             if isinstance(variable, string_types):
                 if not self.is_possibly_template(variable, overrides):
@@ -1355,22 +1341,6 @@ class Templar:
     def is_possibly_template(self, data, overrides=None):
         data, env, has_override_header = _create_overlay(data, overrides, self.environment)
         return has_override_header or is_possibly_template(data, env)
-
-    def _convert_bare_variable(self, variable):
-        '''
-        Wraps a bare string, which may have an attribute portion (ie. foo.bar)
-        in jinja2 variable braces so that it is evaluated properly.
-        '''
-
-        if isinstance(variable, string_types):
-            contains_filters = "|" in variable
-            first_part = variable.split("|")[0].split(".")[0].split("[")[0]
-            if (contains_filters or first_part in self._available_variables) and self.environment.variable_start_string not in variable:
-                return "%s%s%s" % (self.environment.variable_start_string, variable, self.environment.variable_end_string)
-
-        # the variable didn't meet the conditions to be converted,
-        # so just return it as-is
-        return variable
 
     def _fail_lookup(self, name, *args, **kwargs):
         raise AnsibleError("The lookup `%s` was found, however lookups were disabled from templating" % name)

@@ -26,7 +26,7 @@ display = Display()
 __all__ = ['listify_lookup_plugin_terms']
 
 
-def listify_lookup_plugin_terms(terms, templar, loader=None, fail_on_undefined=True, convert_bare=False):
+def listify_lookup_plugin_terms(terms, templar, loader=None, fail_on_undefined=True):
 
     if loader is not None:
         display.deprecated('"listify_lookup_plugin_terms" does not use "dataloader" anymore, the ability to pass it in will be removed in future versions.',
@@ -35,7 +35,7 @@ def listify_lookup_plugin_terms(terms, templar, loader=None, fail_on_undefined=T
     undefined_behavior = FAIL_ON_UNDEFINED if fail_on_undefined else BestEffortOmitUndefined()
 
     if isinstance(terms, str):
-        terms = templar.template(terms.strip(), convert_bare=convert_bare, undefined_behavior=undefined_behavior)
+        terms = templar.template(terms.strip(), undefined_behavior=undefined_behavior)
     else:
         terms = templar.template(terms, undefined_behavior=undefined_behavior)
 

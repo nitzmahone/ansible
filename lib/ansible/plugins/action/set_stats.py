@@ -42,7 +42,7 @@ class ActionModule(ActionBase):
             data = self._task.args.get('data', {})
 
             if not isinstance(data, dict):
-                data = self._templar.template(data, convert_bare=False, fail_on_undefined=True)
+                data = self._templar.template(data, fail_on_undefined=True)
 
             if not isinstance(data, dict):
                 result['failed'] = True

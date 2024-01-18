@@ -135,33 +135,6 @@ class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
         res = self.templar.is_template(None)
         self.assertFalse(res)
 
-    @pytest.mark.xfail(reason="FDI034")
-    def test_template_convert_bare_string(self):
-        res = self.templar.template('foo', convert_bare=True)
-        self.assertEqual(res, 'bar')
-
-    @pytest.mark.xfail(reason="FDI034")
-    def test_template_convert_bare_nested(self):
-        res = self.templar.template('bam', convert_bare=True)
-        self.assertEqual(res, 'bar')
-
-    @pytest.mark.xfail(reason="FDI034")
-    def test_template_convert_bare_unsafe(self):
-        res = self.templar.template('some_unsafe_var', convert_bare=True)
-        self.assertEqual(res, 'unsafe_blip')
-        assert not TrustedAsTemplate.is_tagged_on(res)
-
-    @pytest.mark.xfail(reason="FDI034")
-    def test_template_convert_bare_filter(self):
-        res = self.templar.template('bam|capitalize', convert_bare=True)
-        self.assertEqual(res, 'Bar')
-
-    @pytest.mark.xfail(reason="FDI034")
-    def test_template_convert_bare_filter_unsafe(self):
-        res = self.templar.template('some_unsafe_var|capitalize', convert_bare=True)
-        self.assertEqual(res, 'Unsafe_blip')
-        assert not TrustedAsTemplate.is_tagged_on(res)
-
     def test_template_convert_data(self):
         res = self.templar.template(TrustedAsTemplate().tag('{{foo}}'), convert_data=True)
         self.assertTrue(res)
@@ -181,12 +154,6 @@ class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
         res = self.templar.template(TrustedAsTemplate().tag('{{bam|to_json}}'), convert_data=True)
         self.assertTrue(res)
         self.assertEqual(res, '"bar"')
-
-    @pytest.mark.xfail(reason="FDI034")
-    def test_template_convert_data_convert_bare_data_bare(self):
-        res = self.templar.template('bam', convert_data=True, convert_bare=True)
-        self.assertTrue(res)
-        self.assertEqual(res, 'bar')
 
     def test_template_untagged_string(self):
         unsafe_obj = "Hello"
@@ -221,8 +188,6 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{var_dict}}")), dict(a="b"))
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_dict}}")), "{a='b'")
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{var_list}}")), [1])
-        # FIXME: FDI034
-        # self.assertEqual(templar.template(1, convert_bare=True), 1)
 
         # force errors
         self.assertRaises(AnsibleUndefinedVariable, templar.template, TrustedAsTemplate().tag("{{bad_var}}"))

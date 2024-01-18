@@ -354,7 +354,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         # FIXME: kill this with fire
         def _parse_env_kv(k, v):
             try:
-                env[k] = templar.template(v, convert_bare=False)
+                env[k] = templar.template(v)
             except AnsibleValueOmittedError:
                 # skip this value
                 return
@@ -372,7 +372,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
                     _parse_env_kv(k, env_item[k])
             else:
                 try:
-                    isdict = templar.template(env_item, convert_bare=False)
+                    isdict = templar.template(env_item)
                 except AnsibleValueOmittedError:
                     continue
 
