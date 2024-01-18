@@ -22,7 +22,7 @@ import traceback
 from ansible.errors import AnsibleError, AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.plugins.action import ActionBase
-from ansible.template import Omit, BestEffort
+from ansible.template import Omit, BestEffort, FAIL_ON_UNDEFINED
 
 
 class ActionModule(ActionBase):
@@ -58,7 +58,7 @@ class ActionModule(ActionBase):
 
         # special omit handling; we're popping omitted items, so need to iterate a static copy
         for arg_name, arg in list(raw_task_args.items()):
-            undefined_handler = custom_undefined_handlers.get(arg_name, None)
+            undefined_handler = custom_undefined_handlers.get(arg_name, FAIL_ON_UNDEFINED)
 
             try:
                 result = self._templar.template(arg, undefined_behavior=undefined_handler)
