@@ -6,10 +6,8 @@ from __future__ import annotations
 from ansible.module_utils.six import string_types
 from ansible.playbook.attribute import FieldAttribute
 from ansible.utils.collection_loader import AnsibleCollectionConfig
-from ansible.template import is_template
+from ansible.template import is_template, AnsibleEnvironment
 from ansible.utils.display import Display
-
-from jinja2.nativetypes import NativeEnvironment
 
 display = Display()
 
@@ -53,7 +51,7 @@ class CollectionSearch:
         # because if the user attempts to template a collection name, it may
         # error before it ever gets to the post_validate() warning (e.g. trying
         # to import a role from the collection).
-        env = NativeEnvironment()
+        env = AnsibleEnvironment()
         for collection_name in ds:
             if is_template(collection_name, env):
                 display.warning('"collections" is not templatable, but we found: %s, '

@@ -764,6 +764,10 @@ DEFAULT_JINJA2_NATIVE:
   type: boolean
   yaml: {key: jinja2_native}
   version_added: 2.7
+  deprecated:
+    why: This option is no longer used in the Ansible Core code base.
+    version: "2.21"
+    alternatives: Jinja2 native mode is now the default and only option.
 DEFAULT_KEEP_REMOTE_FILES:
   name: Keep remote files
   default: False

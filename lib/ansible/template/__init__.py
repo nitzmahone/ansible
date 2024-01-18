@@ -39,7 +39,6 @@ from contextlib import contextmanager
 from itertools import islice
 from traceback import format_exc
 
-from jinja2 import Environment
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
 from jinja2.nativetypes import NativeCodeGenerator
@@ -177,7 +176,7 @@ def generate_ansible_template_vars(path, fullpath=None, dest_path=None):
     return temp_vars
 
 
-def _escape_backslashes(data: str, jinja_env: Environment) -> str:
+def _escape_backslashes(data: str, jinja_env: AnsibleEnvironment) -> str:
     """
     Escape backslashes in strings within Jinja template expressions to disable Jinja backslash processing.
 
@@ -226,7 +225,7 @@ def _escape_backslashes(data: str, jinja_env: Environment) -> str:
     return data
 
 
-def _create_overlay(data: str, overrides: dict, jinja_env: AnsibleEnvironment, undefined_behavior=None) -> tuple[str, Environment, bool]:
+def _create_overlay(data: str, overrides: dict, jinja_env: AnsibleEnvironment, undefined_behavior=None) -> tuple[str, AnsibleEnvironment, bool]:
     if overrides is None:
         overrides = {}
 
@@ -958,6 +957,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # See also optimizeconst impl: https://github.com/pallets/jinja/blob/3.1.0/src/jinja2/compiler.py#L48-L49
         self.optimized = False
 
+        self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
+
     def overlay(self, *args, undefined_behavior: t.Callable[..., t.Any] = None, **kwargs):
         res = super().overlay(*args, **kwargs)
         res.undefined_behavior = undefined_behavior or self.undefined_behavior
@@ -1053,10 +1054,6 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         return AnsibleUndefined(hint)
 
 
-class AnsibleNativeEnvironment(AnsibleEnvironment):
-    pass
-
-
 # FIXME: do we still need a class for this?
 @dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
 class TemplateResult:
@@ -1078,13 +1075,10 @@ class Templar:
 
         self._fail_on_undefined_errors = C.DEFAULT_UNDEFINED_VAR_BEHAVIOR
 
-        environment_class = AnsibleNativeEnvironment if C.DEFAULT_JINJA2_NATIVE else AnsibleEnvironment
-
-        self.environment = environment_class(
+        self.environment = AnsibleEnvironment(
             extensions=self._get_extensions(),
             loader=FileSystemLoader(loader.get_basedir() if loader else '.'),
         )
-        self.environment.template_class.environment_class = environment_class
 
         # FIXME: move all this magic under our Jinja environment?
 
@@ -1092,12 +1086,10 @@ class Templar:
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
 
-        self.jinja2_native = C.DEFAULT_JINJA2_NATIVE
-
-    def copy_with_new_env(self, environment_class=AnsibleEnvironment, **kwargs):
+    # FIXME: this needs to die, badly
+    def copy_with_new_env(self, **kwargs):
         r"""Creates a new copy of Templar with a new environment.
 
-        :kwarg environment_class: Environment class used for creating a new environment.
         :kwarg \*\*kwargs: Optional arguments for the new environment that override existing
             environment attributes.
 
@@ -1105,14 +1097,12 @@ class Templar:
         """
         # We need to use __new__ to skip __init__, mainly not to create a new
         # environment there only to override it below
-        new_env = object.__new__(environment_class)
+        new_env = object.__new__(AnsibleEnvironment)
         new_env.__dict__.update(self.environment.__dict__)
 
         new_templar = object.__new__(Templar)
         new_templar.__dict__.update(self.__dict__)
         new_templar.environment = new_env
-
-        new_templar.jinja2_native = environment_class is AnsibleNativeEnvironment
 
         mapping = {
             'available_variables': new_templar,
@@ -1451,7 +1441,7 @@ class Templar:
         if not self._trust_check(expression):
             return expression
 
-        # FIXME: this should ultimately use Environment.compile_expression() once we've factored all the custom
+        # FIXME: this should ultimately use AnsibleEnvironment.compile_expression() once we've factored all the custom
         #  vars setup into an AnsibleTemplate subclass that TemplateExpression can wrap.
         secret_slug = secrets.token_hex(8)
         block_marker = f'~{secret_slug}~'
@@ -1483,7 +1473,7 @@ class Templar:
             #            - something: "{{ test2_name | default(omit) }}"
             result = conditional
         else:
-            # FIXME: this should ultimately use Environment.compile_expression() once we've factored all the custom
+            # FIXME: this should ultimately use AnsibleEnvironment.compile_expression() once we've factored all the custom
             #  vars setup into an AnsibleTemplate subclass that TemplateExpression can wrap.
             secret_slug = secrets.token_hex(8)
             block_marker = f'~{secret_slug}~'
@@ -1652,7 +1642,7 @@ class Templar:
                 # calculate the difference in newlines and append them
                 # to the resulting output for parity
                 #
-                # Using Environment's keep_trailing_newline instead would
+                # Using AnsibleEnvironment's keep_trailing_newline instead would
                 # result in change in behavior when trailing newlines
                 # would be kept also for included templates, for example:
                 # "Hello {% include 'world.txt' %}!" would render as

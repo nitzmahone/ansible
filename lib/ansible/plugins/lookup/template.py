@@ -40,6 +40,10 @@ DOCUMENTATION = """
         default: True
         version_added: '2.11'
         type: bool
+        deprecated:
+          why: This option is no longer used in the Ansible Core code base.
+          version: "2.21"
+          alternatives: Jinja2 native mode is now the default and only option.
       template_vars:
         description: A dictionary, the keys become additional variables available for templating.
         default: {}
@@ -84,13 +88,11 @@ _raw:
 from copy import deepcopy
 import os
 
-import ansible.constants as C
-
 from ansible.errors import AnsibleError
 from ansible.plugins.lookup import LookupBase
 from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.datatag import TrustedAsTemplate
-from ansible.template import generate_ansible_template_vars, AnsibleEnvironment
+from ansible.template import generate_ansible_template_vars
 from ansible.utils.display import Display
 
 
@@ -108,16 +110,12 @@ class LookupModule(LookupBase):
         # capture options
         convert_data_p = self.get_option('convert_data')
         lookup_template_vars = self.get_option('template_vars')
-        jinja2_native = self.get_option('jinja2_native') and C.DEFAULT_JINJA2_NATIVE
         variable_start_string = self.get_option('variable_start_string')
         variable_end_string = self.get_option('variable_end_string')
         comment_start_string = self.get_option('comment_start_string')
         comment_end_string = self.get_option('comment_end_string')
 
-        if jinja2_native:
-            templar = self._templar
-        else:
-            templar = self._templar.copy_with_new_env(environment_class=AnsibleEnvironment)
+        templar = self._templar
 
         for term in terms:
             display.debug("File lookup term: %s" % term)
