@@ -845,7 +845,15 @@ class UndefinedBehavior(metaclass=abc.ABCMeta):
 # FUTURE: do we want an option to let these accumulate so we can report > 1 failure at a time?
 class FailOnUndefined(UndefinedBehavior):
     def handle_undefined(self, value):
-        raise AnsibleUndefinedVariable("undefined BLAH FIXME", obj=value)
+        if isinstance(value, Undefined):
+            hint = value._undefined_hint
+        else:
+            hint = None
+
+        if not hint:
+            hint = '<no hint>'
+
+        raise AnsibleUndefinedVariable(f"undefined BLAH FIXME: {hint}", obj=value)
 
 
 FAIL_ON_UNDEFINED: t.Final = FailOnUndefined()  # no sense in making many instances...
@@ -921,7 +929,6 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.globals["range"] = range  # the sandboxed environment limits range in ways that may cause us problems; use the real Python one
         self.filters = JinjaPluginIntercept(self.filters, filter_loader)
         self.tests = JinjaPluginIntercept(self.tests, test_loader)
 
@@ -934,6 +941,13 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         self.undefined = AnsibleUndefined
         self.finalize = _ansible_finalize
         self.undefined_behavior = FAIL_ON_UNDEFINED
+
+        self.globals.update(
+            range=range,  # the sandboxed environment limits range in ways that may cause us problems; use the real Python one
+            now=self._now,
+            undef=self._undef,
+            omit=Omit,
+        )
 
         # Disabling the optimizer prevents compile-time constant expression folding, which prevents our
         # visit_Const recursive inline template expansion tricks from working in many cases where Jinja's
@@ -1019,6 +1033,25 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         return item
 
+    def _now(self, utc=False, fmt=None):
+        """Jinja2 global function (now) to return current datetime, potentially formatted via strftime."""
+        if utc:
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        else:
+            now = datetime.datetime.now()
+
+        if fmt:
+            return now.strftime(fmt)
+
+        return now
+
+    def _undef(self, hint=None):
+        """Jinja2 global function (undef) for creating custom undefined defaults with custom hints."""
+        if hint is None or isinstance(hint, Undefined) or hint == '':
+            hint = "Mandatory variable has not been overridden"
+
+        return AnsibleUndefined(hint)
+
 
 class AnsibleNativeEnvironment(AnsibleEnvironment):
     pass
@@ -1058,9 +1091,6 @@ class Templar:
         # Custom globals
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
-        self.environment.globals['now'] = self._now_datetime
-        self.environment.globals['undef'] = self._make_undefined
-        self.environment.globals['omit'] = Omit
 
         self.jinja2_native = C.DEFAULT_JINJA2_NATIVE
 
@@ -1162,15 +1192,6 @@ class Templar:
         for key in original:
             obj = mapping.get(key, self.environment)
             setattr(obj, key, original[key])
-
-    # FIXME: maybe ditch this?
-    # def resolve_variable(self, name: str) -> t.Any:
-    #     """Resolve a variable name."""
-    #     stripped_name = name.strip()
-    #     if not isidentifier(stripped_name):
-    #         # FIXME: better exception type here
-    #         raise AnsibleError(f"invalid variable name: {stripped_name}")
-    #     return self.__template_expression(name)
 
     # FIXME: ditch this?
     def resolve_variable_expression(self, expression: str) -> t.Any:
@@ -1343,18 +1364,6 @@ class Templar:
     def _fail_lookup(self, name, *args, **kwargs):
         raise AnsibleError("The lookup `%s` was found, however lookups were disabled from templating" % name)
 
-    def _now_datetime(self, utc=False, fmt=None):
-        '''jinja2 global function to return current datetime, potentially formatted via strftime'''
-        if utc:
-            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-        else:
-            now = datetime.datetime.now()
-
-        if fmt:
-            return now.strftime(fmt)
-
-        return now
-
     def _query_lookup(self, name, /, *args, **kwargs):
         ''' wrapper for lookup, force wantlist true'''
         kwargs['wantlist'] = True
@@ -1434,13 +1443,6 @@ class Templar:
                     raise AnsibleError("The lookup plugin '%s' did not return a list."
                                        % name)
         return ran
-
-    def _make_undefined(self, hint=None):
-        from jinja2.runtime import Undefined
-
-        if hint is None or isinstance(hint, Undefined) or hint == '':
-            hint = "Mandatory variable has not been overridden"
-        return AnsibleUndefined(hint)
 
     def evaluate_expression(self, expression: str, disable_lookups: bool = False) -> t.Any:
         if not isinstance(expression, str):
