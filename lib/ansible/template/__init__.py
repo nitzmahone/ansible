@@ -1747,6 +1747,8 @@ def _finalize_template_result(o: t.Any, undefined_behavior: UndefinedBehavior, r
 
     from ansible.vars.hostvars import HostVars, HostVarsVars  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
 
+    value_type: type[dict | list | tuple | set]
+
     if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
         return o
     elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict):
