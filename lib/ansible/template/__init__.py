@@ -35,7 +35,7 @@ import jinja2
 import ansible.module_utils.compat.typing as t
 
 
-from collections.abc import Iterator, Mapping, Sequence, MappingView, MutableMapping
+from collections.abc import Iterator, Mapping, MappingView, MutableMapping
 from contextlib import contextmanager
 from itertools import islice
 from numbers import Number
@@ -65,7 +65,7 @@ from ansible.errors import (
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
 from ansible.module_utils.common.collections import is_sequence
-from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
+from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError
 from ansible.plugins.loader import filter_loader, lookup_loader, test_loader
 from ansible.template.template import AnsibleJ2Template
 from ansible.template.vars import AnsibleJ2Vars
@@ -78,6 +78,7 @@ from ansible.module_utils.datatag import (
     _AnsibleTaggedTuple,
     _NO_INSTANCE_STORAGE,
     _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES,
+    _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
     _try_get_internal_tags_mapping,
 )
 from ansible.module_utils.datatag.access import (
@@ -89,6 +90,7 @@ from ansible.module_utils.datatag.access import (
 
 from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
+from ansible.utils.datatag import AnsibleVariableTypeError
 
 from collections import ChainMap
 
@@ -562,28 +564,6 @@ class JinjaPluginIntercept(MutableMapping):
         return len(self._delegatee)
 
 
-# FIXME: this recursively templates hostvars/hostvarsvars; is that what we want?
-def _fail_on_undefined(data: t.Any) -> None:
-    """Recursively find an undefined value in a nested data structure
-    and properly raise the undefined exception.
-    """
-    if isinstance(data, Mapping):
-        for value in data.values():
-            _fail_on_undefined(value)
-    elif is_sequence(data):
-        for item in data:
-            _fail_on_undefined(item)
-    else:
-        if isinstance(data, StrictUndefined):
-            # To actually raise the undefined exception we need to
-            # access the undefined object otherwise the exception would
-            # be raised on the next access which might not be properly
-            # handled.
-            # See https://github.com/ansible/ansible/issues/52158
-            # and StrictUndefined implementation in upstream Jinja2.
-            str(data)
-
-
 # NB: we're not actually using this pass_context, but it prevents our finalizer from
 #  being called on constants at template compile time, which also allows our custom
 #  visit_Const override to be used to mark embedded template constants trusted.
@@ -599,8 +579,6 @@ def _ansible_finalize(ctx, thing):
 
     if _is_rolled(thing):
         thing = list(thing)
-
-#    _fail_on_undefined(thing)
 
     # FIXME: do this on the output of do_template?
     return thing if thing is not None else ''
@@ -698,6 +676,7 @@ class _AnsibleLazyTemplateMixin:
                     break
             else:
                 # FIXME: what do we want here? such as HostVars, HostVarsVars
+                # FIXME: we now have strict checking of variable types leaving templating, is this warning redundant?
                 # FIXME: undefined types need to be here too? (prevent warnings from with_first_found loops with undefined values)
                 if not isinstance(item, _AnsibleLazyTemplateMixin._ignore_types):
                     display.warning(f'Encountered unsupported {item_type} type.')
@@ -857,7 +836,6 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
 
 
 # FIXME: bikeshed name/placement/access/singleton
-# FIXME: change post_delazify to be the main entrypoint into _delazify?
 # FIXME: these look an awful lot like Jinja finalizers (which are also owned by the environment); as part of Jinja-normalization, should we wrap this and all
 #  other custom post-templating behavior into a Jinja finalizer?
 class UndefinedBehavior(metaclass=abc.ABCMeta):
@@ -865,7 +843,7 @@ class UndefinedBehavior(metaclass=abc.ABCMeta):
     def handle_undefined(self, value: Undefined) -> t.Any:
         ...
 
-    def post_delazify(self, template_result: t.Any) -> t.Any:
+    def post_finalize(self, template_result: t.Any) -> t.Any:
         return template_result
 
 
@@ -927,13 +905,13 @@ class BestEffortOmitUndefined(BestEffort):
 
         return Omit
 
-    def post_delazify(self, template_result: t.Any) -> t.Any:
+    def post_finalize(self, template_result: t.Any) -> t.Any:
         if not self.has_warnings:
             return template_result
 
         # there were warnings, which means we emitted omits that need omitting into the template result
-        # do another delazify pass to clean it up
-        return _delazify(template_result, undefined_behavior=FAIL_ON_UNDEFINED)
+        # do another finalize pass to clean it up
+        return _finalize_template_result(template_result, undefined_behavior=FAIL_ON_UNDEFINED, raise_on_unsupported_type=False)
 
 
 class AnsibleEnvironment(ImmutableSandboxedEnvironment):
@@ -990,9 +968,9 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             return AnsibleAccessContext.current().access(node_list[0])
 
         # FIXME: need to smuggle undefined_behavior in from the current templating operation (eg, debug and templated task names w/ BestEffort)
-        # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive delazify before we repr (otherwise we can end up
+        # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive finalize before we repr (otherwise we can end up
         # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
-        node_list = _delazify(node_list, undefined_behavior=self.undefined_behavior)
+        node_list = _finalize_template_result(node_list, undefined_behavior=self.undefined_behavior, raise_on_unsupported_type=False)
 
         # FIXME: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
         return ''.join([to_text(v) for v in node_list])
@@ -1051,6 +1029,7 @@ class AnsibleNativeEnvironment(AnsibleEnvironment):
     pass
 
 
+# FIXME: do we still need a class for this?
 @dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
 class TemplateResult:
     result: t.Any
@@ -1235,21 +1214,6 @@ class Templar:
         templar = Templar(self._loader, variables=variables)
         return templar.template(expression_template)
 
-    # FIXME: ditch this and/or
-    def _verify_delazified(self, o: t.Any) -> t.Any:
-        from jinja2 import Undefined
-        try:
-            match o:
-                case dict():
-                    list(self._verify_delazified(v) for v in o.values())
-                case list() | tuple() | set():
-                    list(self._verify_delazified(v) for v in o)
-                case _AnsibleLazyTemplateMixin():  # | Undefined():
-                    raise Exception(f"BANG: an unsupported type {type(o)} tried to escape from templating...")
-
-        except Exception as ex:
-            raise
-
     # FIXME: wrap tripwires in a template decorator so we can preserve/propagate args automatically
     # FIXME: static_vars is dead (long live NotATemplate); kill it from intermediate signatures and (possibly?) deprecation warning
     def template(self, *args, **kwargs) -> t.Any:
@@ -1266,7 +1230,7 @@ class Templar:
 
         # bail out if we know we're looking at something that's been explicitly tagged as not a template
         if variable is None or NotATemplate.is_tagged_on(variable):
-            return TemplateResult(result=variable)
+            return TemplateResult(result=variable)  # input was not manipulated, trust that it contains only allowed types
 
         # FIXME: nuke
         if fail_on_undefined is None:
@@ -1297,26 +1261,28 @@ class Templar:
             # ensure that we never allow containers with untemplated strings to escape the template system, and that any
             # embedded Undefined values we encounter will raise AnsibleUndefinedError if fail_on_undefined is set (FIXME once we actually do that).
             if not TemplateContext.current():
-                # FIXME: make this check cheaper
-                if not isinstance(_template_result, str) and isinstance(_template_result, (Mapping, Sequence, set, Undefined)):
-                    if stop_on_container_result:
-                        return TemplateResult(result=_template_result.native_copy() if isinstance(_template_result, AnsibleTaggedObject) else _template_result)
-
-                    # data is our only positional arg, everything else is kwargs-only
-                    with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
-                        _template_result = undefined_behavior.post_delazify(_delazify(_template_result, undefined_behavior=undefined_behavior))
-                elif _template_result is Omit:
+                if _template_result is Omit:
                     if value_for_omit is Omit:
                         raise AnsibleValueOmittedError()
 
-                    return TemplateResult(result=value_for_omit)
+                    return TemplateResult(result=value_for_omit)  # value_for_omit was not manipulated, trust that it contains only allowed types
 
-                if undecryptable.is_tripped:
-                    # we encountered at least one UndecryptableVaultedValue; raise an error if any remain in the result
-                    self._detonate_vault_bombs(_template_result)
+                if stop_on_container_result and type(_template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
+                    # Use of stop_on_container_result implies the caller will perform necessary checks on values,
+                    # most likely by passing them back into the templating system.
+                    return TemplateResult(
+                        result=_template_result.native_copy() if _template_result in AnsibleTaggedObject._collection_types else _template_result,
+                    )
 
-                # FIXME: remove this, or make it conditional on a debugging thing?
-                self._verify_delazified(_template_result)
+                # data is our only positional arg, everything else is kwargs-only
+                with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
+                    _template_result = _finalize_template_result(_template_result, undefined_behavior=undefined_behavior, raise_on_unsupported_type=True)
+                    _template_result = undefined_behavior.post_finalize(_template_result)
+
+                # FIXME: this may not be needed now that we always finalize, trying it commented out
+                # if undecryptable.is_tripped:
+                #     # we encountered at least one UndecryptableVaultedValue; raise an error if any remain in the result
+                #     self._detonate_vault_bombs(_template_result)
 
         # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
         for deprecation_template, deprecation in deprecated.deprecated_access:
@@ -1387,7 +1353,10 @@ class Templar:
                 # FIXME: should there be some form of recursive application here?
                 # if the input string template was source-tagged and the result is not, propagate the source tag to the new value
                 if (src_pos := AnsibleSourcePosition.get_tag(variable)) and not AnsibleSourcePosition.is_tagged_on(result):
-                    result = src_pos.tag(result)
+                    try:
+                        result = src_pos.tag(result)
+                    except NotTaggableError:
+                        pass  # FIXME: determine if there are cases where this error should not be suppressed
 
                 return result
 
@@ -1769,28 +1738,42 @@ class Templar:
     _do_template = do_template
 
 
-def _delazify(o: t.Any, undefined_behavior: UndefinedBehavior) -> t.Any:
-    # FIXME: isn't this going to over-fire managed access?
+# FIXME: add tests to ensure this doesn't drift from allowed types
+def _finalize_template_result(o: t.Any, undefined_behavior: UndefinedBehavior, raise_on_unsupported_type: bool) -> t.Any:
+    """
+    Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions.
+    """
+    o_type = type(o)
 
-    from jinja2 import Undefined
+    from ansible.vars.hostvars import HostVars, HostVarsVars  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
 
-    # FIXME: is this using isinstance or something cheaper?
-    match o:
-        case str():
-            return o
-        case dict():
-            return AnsibleTaggedObject.tag_copy(o, ((k, _delazify(v, undefined_behavior=undefined_behavior)) for k, v in o.items() if v is not Omit),
-                                                value_type=dict)
-        case list():
-            return AnsibleTaggedObject.tag_copy(o, (_delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=list)
-        case tuple():
-            return AnsibleTaggedObject.tag_copy(o, (_delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=tuple)
-        case set():
-            return AnsibleTaggedObject.tag_copy(o, (_delazify(v, undefined_behavior=undefined_behavior) for v in o if v is not Omit), value_type=set)
-        case Undefined():
-            return undefined_behavior.handle_undefined(o)
-        case _:
-            return o
+    if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
+        return o
+    elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict):
+        value_expression = (_finalize_template_result((k, v), undefined_behavior, raise_on_unsupported_type) for k, v in o.items() if v is not Omit)
+        value_type = dict
+    elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
+        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_type = list
+    elif o_type in (tuple, _AnsibleTaggedTuple, _AnsibleLazyTemplateTuple):
+        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_type = tuple
+    elif o_type in (set, _AnsibleTaggedSet, _AnsibleLazyTemplateSet):
+        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_type = set
+    elif o_type is AnsibleUndefined:
+        return undefined_behavior.handle_undefined(o)  # FIXME: this assumes handle_undefined follows our variable type rules
+    elif o_type in (HostVars, HostVarsVars):
+        return o  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
+    elif raise_on_unsupported_type:  # unsupported type (raise)
+        if o_type is _AnsibleTaggedVaultBomb:
+            o.detonate()
+
+        raise AnsibleVariableTypeError(variable_type=o_type)
+    else:  # unsupported type (do not raise)
+        return o
+
+    return AnsibleTaggedObject.tag_copy(o, value_expression, value_type=value_type)
 
 
 # FIXME: decide if these should be taggable; do we need to support other kinds of Undefineds, etc

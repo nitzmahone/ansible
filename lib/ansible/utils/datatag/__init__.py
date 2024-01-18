@@ -29,7 +29,7 @@ class AnsibleVariableVisitor:
         value_type = type(value)
 
         if value_type not in _ANSIBLE_ALLOWED_VAR_TYPES:
-            raise AnsibleVariableTypeError(f'variables of type {value_type} are not supported')
+            raise AnsibleVariableTypeError(variable_type=value_type)
 
         if value_type in (str, _AnsibleTaggedStr):
             # apply compatibility behavior

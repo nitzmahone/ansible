@@ -381,6 +381,10 @@ class AnsibleConditionalError(AnsibleRuntimeError):
 
 class AnsibleVariableTypeError(AnsibleRuntimeError):
     """An error due to attempted storage of an unsupported variable type."""
+    def __init__(self, *, variable_type: type) -> None:
+        # FIXME: what else can we include here to guide users?
+        #        in cases where the value is "simple" we could possibly show the value, not just the type
+        super().__init__(f'Variables of type {variable_type} are not supported.')
 
 
 class AnsibleValueOmittedError(Exception):

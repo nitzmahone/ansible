@@ -68,9 +68,9 @@ class ActionModule(ActionBase):
             except Exception as ex:
                 return dict(
                     # FIXME: better error message and location?
-                    msg=NotATemplate().tag(f'Error while templating arg {arg!r}: {ex}'),
+                    msg=NotATemplate().tag(f'Error while templating arg {arg_name!r} containing {arg!r}: {ex}'),
                     exception=NotATemplate().tag(str(traceback.format_exc())),
-                    failed=True,
+                    failed=True,  # FIXME: should debug fail in this case?
                 )
 
             raw_task_args[arg_name] = result
