@@ -113,11 +113,8 @@ class _AnsibleTaggedVaultBomb(_VaultBomb, AnsibleTaggedObject):
 
 
 # tracks undecryptable values encountered while templating
-class UndecryptableAccessTripwire(_MutatingAccessContextBase):
+class UndecryptableAccessMutator(_MutatingAccessContextBase):
     _tag_type_interest = frozenset([UndecryptableVaultedValue])
-
-    def __init__(self):
-        self._tripped = False
 
     def _notify(self, o: t.Any) -> t.Any:
         # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
@@ -126,10 +123,6 @@ class UndecryptableAccessTripwire(_MutatingAccessContextBase):
             return _VaultBomb.arm(o)
 
         return POORLY_NAMED_SENTINEL
-
-    @property
-    def is_tripped(self) -> bool:
-        return self._tripped
 
 
 class DetonateVaultBombsTripwire(_MutatingAccessContextBase):

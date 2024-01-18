@@ -25,7 +25,6 @@ import datetime
 import functools
 import os
 import pwd
-import re
 import secrets
 import time
 import types
@@ -38,7 +37,6 @@ import ansible.module_utils.compat.typing as t
 from collections.abc import Iterator, Mapping, MappingView, MutableMapping
 from contextlib import contextmanager
 from itertools import islice
-from numbers import Number
 from traceback import format_exc
 
 from jinja2 import Environment
@@ -69,7 +67,7 @@ from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObj
 from ansible.plugins.loader import filter_loader, lookup_loader, test_loader
 from ansible.template.template import AnsibleJ2Template
 from ansible.template.vars import AnsibleJ2Vars
-from ansible.template.vault import _AnsibleTaggedVaultBomb, DetonateVaultBombsTripwire, UndecryptableAccessTripwire
+from ansible.template.vault import _AnsibleTaggedVaultBomb, DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from ansible.module_utils.datatag import (
     Deprecated,
     _AnsibleTaggedDict,
@@ -1237,7 +1235,7 @@ class Templar:
 
         # track access to items that are tagged Deprecated during templating, handle accordingly
         with (
-                UndecryptableAccessTripwire() as undecryptable,
+                UndecryptableAccessMutator(),  # trigger injection of VaultBomb
                 DeprecatedAccessAuditContext() as deprecated,
         ):
             _template_result = self._template_recursive(variable, **template_kwargs)
