@@ -918,6 +918,10 @@ DEFAULT_NULL_REPRESENTATION:
   ini:
   - {key: null_representation, section: defaults}
   type: raw
+  deprecated:
+    why: This option is no longer used in the Ansible Core code base.
+    version: "2.21"
+    alternatives: There is no alternative at the moment. A different mechanism would have to be implemented in the current code base.
 DEFAULT_POLL_INTERVAL:
   name: Async poll interval
   default: 15

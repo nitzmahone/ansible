@@ -101,9 +101,6 @@ display = Display()
 # FIXME: change this when overhauling the API
 __all__ = ['Templar', 'generate_ansible_template_vars']
 
-# Primitive Types which we don't want Jinja to convert to strings.
-NON_TEMPLATED_TYPES = (bool, Number)
-
 JINJA2_OVERRIDE = '#jinja2:'
 
 JINJA2_BEGIN_TOKENS = frozenset(('variable_begin', 'block_begin', 'comment_begin', 'raw_begin'))
@@ -1067,13 +1064,7 @@ class Templar:
         self.environment.globals['undef'] = self._make_undefined
         self.environment.globals['omit'] = Omit
 
-        # this regex is re-compiled each time variable_start_string and variable_end_string are possibly changed
-        self._compile_single_var(self.environment)
-
         self.jinja2_native = C.DEFAULT_JINJA2_NATIVE
-
-    def _compile_single_var(self, env):
-        self.SINGLE_VAR = re.compile(r"^%s\s*(\w*)\s*%s$" % (env.variable_start_string, env.variable_end_string))
 
     def copy_with_new_env(self, environment_class=AnsibleEnvironment, **kwargs):
         r"""Creates a new copy of Templar with a new environment.
@@ -1320,24 +1311,6 @@ class Templar:
                 if not self.is_possibly_template(variable, overrides):
                     return variable
 
-                # Check to see if the string we are trying to render is just referencing a single
-                # var.  In this case we don't want to accidentally change the type of the variable
-                # to a string by using the jinja template renderer. We just want to pass it.
-
-                # FIXME: this short circuit could be a lot fancier
-                only_one = self.SINGLE_VAR.match(variable)
-                if only_one:
-                    var_name = only_one.group(1)
-                    if var_name in self._available_variables:
-                        # FIXME: not sure if this should count as a managed access, but probably?
-                        resolved_val = AnsibleAccessContext().access(self._available_variables[var_name])
-
-                        if isinstance(resolved_val, NON_TEMPLATED_TYPES):
-                            return resolved_val
-                        elif resolved_val is None:
-                            # FIXME: isn't this sometimes at odds with the default finalizer?
-                            return C.DEFAULT_NULL_REPRESENTATION
-
                 result = self.do_template(
                     variable,
                     preserve_trailing_newlines=preserve_trailing_newlines,
@@ -1347,8 +1320,6 @@ class Templar:
                     disable_lookups=disable_lookups,
                     undefined_behavior=undefined_behavior,
                 )
-
-                self._compile_single_var(self.environment)
 
                 # FIXME: should there be some form of recursive application here?
                 # if the input string template was source-tagged and the result is not, propagate the source tag to the new value
@@ -1670,9 +1641,6 @@ class Templar:
             # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
             # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
             data, myenv, _has_override_header = _create_overlay(data, overrides, self.environment, undefined_behavior=undefined_behavior)
-
-            # in case delimiters change
-            self._compile_single_var(myenv)
 
             if escape_backslashes:
                 data = _escape_backslashes(data, myenv)
