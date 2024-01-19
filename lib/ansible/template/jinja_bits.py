@@ -278,16 +278,14 @@ def _ansible_finalize(ctx, thing):
     """
     This function is called by Jinja with the result of each
     variable template block (eg {{ }}) encountered in a template. It
-    converts iterator results into lists, (recursively) ensures that no Undefined
-    values exist in the result, and coalesces None to empty string (for backward
-    compatibility).
+    converts iterator results into lists.
     """
 
     if _is_rolled(thing):
+        # FIXME: make sure this handles lazy lists properly
         thing = list(thing)
 
-    # FIXME: do this on the output of do_template?
-    return thing if thing is not None else ''
+    return thing
 
 
 class AnsibleEnvironment(ImmutableSandboxedEnvironment):
@@ -340,21 +338,19 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     def concat(self, nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
         node_list = list(nodes)
-        if not node_list:
-            return ''
 
-        # this code is complemented by our tweaked CodeGenerator _output_const_repr that ensures that literal constants
-        # in templates aren't double-repr'd in the generated code
-        if len(node_list) == 1:
-            # FIXME: do we WANT to allow nulls? FDI025
-            if node_list[0] is None:
-                return ''
-            return AnsibleAccessContext.current().access(node_list[0])
+        if not node_list:
+            return None
 
         # FIXME: need to smuggle undefined_behavior in from the current templating operation (eg, debug and templated task names w/ BestEffort)
         # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive finalize before we repr (otherwise we can end up
         # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
         node_list = _finalize_template_result(node_list, undefined_behavior=self.undefined_behavior, raise_on_unsupported_type=False)
+
+        # this code is complemented by our tweaked CodeGenerator _output_const_repr that ensures that literal constants
+        # in templates aren't double-repr'd in the generated code
+        if len(node_list) == 1:
+            return node_list[0]
 
         # FIXME: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
         return ''.join([to_text(v) for v in node_list])
