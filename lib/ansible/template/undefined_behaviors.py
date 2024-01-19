@@ -76,16 +76,13 @@ class BestEffort(UndefinedBehavior):
         return bool(self._undefined_templates)
 
     def warnings(self, max_count: int | None = None) -> c.Generator[str, None, None]:
-        try:
-            # blah = list(f'FIXME busted template {self._hint(w)}' for w in islice(self._undefined_templates, max_count))
-            # yield from blah
-            for w in itertools.islice(self._undefined_templates, max_count):
-                try:
-                    yield NotATemplate().tag(f'FIXME busted template {self._hint(w)}')
-                except Exception as exi:
-                    raise
-        except Exception as e:
-            raise
+        # blah = list(f'FIXME busted template {self._hint(w)}' for w in islice(self._undefined_templates, max_count))
+        # yield from blah
+        for w in itertools.islice(self._undefined_templates, max_count):
+            try:
+                yield NotATemplate().tag(f'FIXME busted template {self._hint(w)}')
+            except Exception as exi:
+                raise
 
 
 class BestEffortOmitUndefined(BestEffort):
