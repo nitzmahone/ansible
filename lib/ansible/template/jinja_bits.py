@@ -342,17 +342,17 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         if not node_list:
             return None
 
+        # this code is complemented by our tweaked CodeGenerator _output_const_repr that ensures that literal constants
+        # in templates aren't double-repr'd in the generated code
+        if len(node_list) == 1:
+            # FIXME: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
+            return node_list[0]
+
         # FIXME: need to smuggle undefined_behavior in from the current templating operation (eg, debug and templated task names w/ BestEffort)
         # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive finalize before we repr (otherwise we can end up
         # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
         node_list = _finalize_template_result(node_list, undefined_behavior=self.undefined_behavior, raise_on_unsupported_type=False)
 
-        # this code is complemented by our tweaked CodeGenerator _output_const_repr that ensures that literal constants
-        # in templates aren't double-repr'd in the generated code
-        if len(node_list) == 1:
-            return node_list[0]
-
-        # FIXME: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
         return ''.join([to_text(v) for v in node_list])
 
     # NB: this method is for exclusive use of the template compiler to render embedded constant templates

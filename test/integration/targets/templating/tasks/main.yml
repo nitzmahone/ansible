@@ -45,3 +45,31 @@
     that:
       - r is failed
       - "'keyword argument repeated' in r.msg"
+
+- name: ensure nested indirect templating is lazy (only recurse to render containers with templated when one is leaving the template system)
+  vars:
+    tripwire_file: "{{ output_dir ~ '/bang' }}"
+    top_level: '{{ intermediate }}'
+    intermediate: '{{ lowest }}'
+    lowest:
+      key1: static data
+      key2:
+        subdict2:
+          unused_value_with_tripwire: '{{ lookup("pipe", "touch " ~ output_dir ~ "/bang") }}'
+  block:
+    - name: ensure tripwire file is missing
+      raw: rm -f {{ tripwire_file }}
+
+    - name: manipulate a var with nested indirected templates and ensure that only the areas we access are templated
+      set_fact:
+        am_i_lazy: '{{ top_level.key1 }}'
+
+    - name: check presence of tripwire
+      stat:
+        path: '{{ tripwire_file }}'
+      register: stat_res
+
+    - assert:
+        that:
+        - am_i_lazy == "static data"
+        - not stat_res.stat.exists
