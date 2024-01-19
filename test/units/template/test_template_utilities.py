@@ -20,7 +20,9 @@ from __future__ import annotations
 import jinja2
 import unittest
 
-from ansible.template import AnsibleUndefined, _escape_backslashes, _count_newlines_from_end
+from ansible.template import AnsibleUndefined
+from ansible.template.old_init import _count_newlines_from_end, _escape_backslashes
+
 
 # These are internal utility functions only needed for templating.  They're
 # algorithmic so good candidates for unittesting by themselves

@@ -9,11 +9,9 @@ from ansible.module_utils.datatag import (
     AnsibleSerializable,
 )
 
-from ansible.template import (
-    Templar,
-    TemplateContext,
-    _AnsibleLazyTemplateMixin,
-)
+from ansible.template import Templar
+from ansible.template.utils import TemplateContext
+from ansible.template.lazy_containers import _AnsibleLazyTemplateMixin
 
 from ..module_utils.datatag.test_datatag import (
     container_values_and_types,
