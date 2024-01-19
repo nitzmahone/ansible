@@ -348,7 +348,7 @@ class InventoryModule(BaseFileInventoryPlugin):
             return self._source_pos.tag([self._recursive_apply_tags(v) for v in value])
         if isinstance(value, dict):
             # FIXME: enforce keys are strings
-            return self._source_pos.tag({self._source_pos.tag(k): self._recursive_apply_tags(v) for k, v in value})
+            return self._source_pos.tag({self._source_pos.tag(k): self._recursive_apply_tags(v) for k, v in value.items()})
         return self._source_pos.tag(value)
 
     def _parse_value(self, v: str) -> t.Any:
