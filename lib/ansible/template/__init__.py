@@ -27,7 +27,6 @@ import os
 import pwd
 import secrets
 import time
-import types
 
 import jinja2
 
@@ -42,11 +41,10 @@ from traceback import format_exc
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
 from jinja2.nativetypes import NativeCodeGenerator
-from jinja2.runtime import Context, StrictUndefined, Undefined
+from jinja2.runtime import Context, Undefined
 from jinja2.nodes import Const
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.compiler import Frame
-from jinja2.utils import missing
 
 from ansible import constants as C
 from ansible.errors import (
@@ -72,13 +70,10 @@ from ansible.module_utils.datatag import (
     _AnsibleTaggedList,
     _AnsibleTaggedSet,
     _AnsibleTaggedTuple,
-    _NO_INSTANCE_STORAGE,
     _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES,
     _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
-    _try_get_internal_tags_mapping,
 )
 from ansible.module_utils.datatag.access import (
-    AmbientContextBase,
     AnsibleAccessContext,
     POORLY_NAMED_SENTINEL,
     _NotifiableAccessContextBase,
@@ -90,6 +85,8 @@ from ansible.utils.datatag import AnsibleVariableTypeError
 
 from collections import ChainMap
 
+from .utils import Omit, TemplateContext, AnsibleUndefined
+from .lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateList, _AnsibleLazyTemplateSet, _AnsibleLazyTemplateDict, _AnsibleLazyTemplateTuple
 
 display = Display()
 
@@ -103,8 +100,6 @@ JINJA2_BEGIN_TOKENS = frozenset(('variable_begin', 'block_begin', 'comment_begin
 JINJA2_END_TOKENS = frozenset(('variable_end', 'block_end', 'comment_end', 'raw_end'))
 
 RANGE_TYPE = type(range(0))
-
-_ANSIBLE_LAZY_TEMPLATE_SLOTS = tuple(('_templar',))
 
 # FIXME: remove/harden- just here for development backstop for now
 if tuple(map(int, jinja2.__version__.split('.'))) < (3, 1):
@@ -122,20 +117,6 @@ def _repr_from(value: t.Any) -> str:
         return f'{value!r} from {str(src_pos)!r}'
 
     return f'{value!r}'
-
-
-class TemplateContext(AmbientContextBase):
-    def __init__(self, *, template_value: t.Any, templar: Templar):
-        self._template_value = template_value
-        self._templar = templar
-
-    @property
-    def template_value(self) -> t.Any:
-        return self._template_value
-
-    @property
-    def templar(self) -> Templar:
-        return self._templar
 
 
 def generate_ansible_template_vars(path, fullpath=None, dest_path=None):
@@ -357,50 +338,6 @@ def _unroll_iterator(func):
     return functools.update_wrapper(wrapper, func)
 
 
-class AnsibleUndefined(StrictUndefined):
-    '''
-    A custom Undefined class, which returns further Undefined objects on access,
-    rather than throwing an exception.
-    '''
-    __slots__ = ('_undefined_template_source',)
-
-    def __init__(
-            self,
-            hint: t.Optional[str] = None,
-            obj: t.Any = missing,
-            name: t.Optional[str] = None,
-            *args,
-            template_source: str | None = None,
-            **kwargs,
-    ):
-        if not hint and name and obj is not missing:
-            obj_type_name = (obj.native_type if isinstance(obj, AnsibleTaggedObject) else type(obj)).__name__
-            hint = f"object of type {obj_type_name!r} has no attribute {name!r}"
-
-        kwargs.update(hint=hint, obj=obj, name=name)
-        super().__init__(*args, **kwargs)
-        self._undefined_template_source = template_source
-
-    def __getattr__(self, name):
-        # Return original Undefined object to preserve the first failure context
-        return self
-
-    def __getitem__(self, key):
-        # Return original Undefined object to preserve the first failure context
-        return self
-
-    def __repr__(self):
-        return 'AnsibleUndefined(hint={0!r}, obj={1!r}, name={2!r})'.format(
-            self._undefined_hint,
-            self._undefined_obj,
-            self._undefined_name
-        )
-
-    def __contains__(self, item):
-        # Return original Undefined object to preserve the first failure context
-        return self
-
-
 class AnsibleContext(Context):
     """
     A custom context which intercepts resolve_or_missing() calls and
@@ -561,227 +498,6 @@ def _ansible_finalize(ctx, thing):
 
     # FIXME: do this on the output of do_template?
     return thing if thing is not None else ''
-
-
-# FIXME: find this a better home?
-class _OmitType:
-    """
-    A placeholder singleton used to dynamically omit items from a dict/list/tuple/set when the value is `Omit`.
-
-    The Omit singleton value is accessible from all Ansible templating contexts via the Jinja global
-    name `omit`. Item removal occurs during final recursive processing of template results. The singleton
-    `Omit` placeholder value will be visible to plugins during templating. The only time a template result
-    will include `Omit` outside a templating context is when the template renders to the scalar value `Omit`.
-    """
-    __slots__ = ()
-
-    # FIXME: this keeps pickle happy, but not JSON/YAML for callbacks; just teach them about it?
-    def __new__(cls):
-        return Omit
-
-    def __repr__(self):
-        return "<<Omit>>"
-
-
-Omit = object.__new__(_OmitType)
-
-
-class _AnsibleLazyTemplateMixin:
-    __slots__ = _NO_INSTANCE_STORAGE
-
-    # static dispatch entries for scalar types are listed here
-    # additional dispatch entries for container types are populated by our __init_subclass__
-    _dispatch_types: dict[type, type[AnsibleTaggedObject] | None] = {scalar_type: None for scalar_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES}
-
-    # due to the way Jinja handles globals, we may encounter things like functions/methods in hooked getitem/getattr that
-    # always pass through this mixin; we want to silently ignore those types
-    # FIXME: optimize this list by separating base types (using isinstance) from exact types using a set lookup
-    _ignore_types = (
-        types.MethodType,
-        # FIXME: is there a better way to include callables like these, so we're not playing whack-a-mole
-        type(''.startswith),  # builtin_function_or_method
-        type(Omit),
-        Undefined,
-        StrictUndefined,
-        AnsibleUndefined,
-    )
-
-    _container_types: set[type] = set()  # populated by our __init_subclass__
-
-    def __init_subclass__(cls, **kwargs) -> None:
-        # FIXME: this determination is very fragile to new layers added to the hierarchy
-        tagged_type = cls.__mro__[1]
-        native_type = tagged_type.__mro__[1]
-
-        cls._dispatch_types[native_type] = t.cast(type[AnsibleTaggedObject], cls)
-        cls._dispatch_types[tagged_type] = t.cast(type[AnsibleTaggedObject], cls)
-        cls._dispatch_types[cls] = None
-
-        cls._container_types.add(native_type)
-        cls._empty_tags_as_native = False  # never revert to the native type when no tags remain
-
-    def __init__(self):
-        if not (tc := TemplateContext.current()):
-            # FIXME: better exception type?
-            raise ReferenceError("no TemplateContext is available")
-
-        self._templar = tc.templar  # pylint: disable=assigning-non-slot  # slot defined in derived type
-
-    @staticmethod
-    def try_create(item: t.Any) -> t.Any:
-        # FIXME: should we be supporting arbitrary sequences and mappings here?
-
-        # FIXME: this double-copy is very wasteful- optimize with a new "wrap_with_type" classmethod on
-        #  AnsibleTaggedObject or ? Also, maybe augment AnsibleTaggedObject._tag_value with the ability to force the wrapper
-        #  type or an alternate type map instead?
-
-        # FIXME: add an optimization to avoid looking at tagged types for entire categories of things we're not interested in
-        # FIXME: consider optimizing empty container case (return input)?
-
-        item_type = type(item)
-
-        # try to use exact type match first to determine which wrapper (if any) to apply; isinstance checks
-        # are extremely expensive, so try to avoid them for our commonly-supported types
-        if not (dispatcher := _AnsibleLazyTemplateMixin._dispatch_types.get(item_type, ...)):
-            return item
-
-        # from this point on, we're always going to create a taggable type
-        if dispatcher is ...:
-            # we've deferred the expensive isinstance checks as late as possible
-            for container_type in _AnsibleLazyTemplateMixin._container_types:
-                if isinstance(item, container_type):
-                    display.warning(f'Converting unsupported {item_type} to {container_type}.')
-                    dispatcher = _AnsibleLazyTemplateMixin._dispatch_types[container_type]
-                    break
-            else:
-                # FIXME: what do we want here? such as HostVars, HostVarsVars
-                # FIXME: we now have strict checking of variable types leaving templating, is this warning redundant?
-                # FIXME: undefined types need to be here too? (prevent warnings from with_first_found loops with undefined values)
-                if not isinstance(item, _AnsibleLazyTemplateMixin._ignore_types):
-                    display.warning(f'Encountered unsupported {item_type} type.')
-
-                return item
-
-        tags_mapping = _try_get_internal_tags_mapping(item)
-        value = dispatcher._instance_factory(item, tags_mapping)
-
-        return value
-
-
-@t.final
-class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
-    __slots__ = _ANSIBLE_LAZY_TEMPLATE_SLOTS
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        _AnsibleLazyTemplateMixin.__init__(self)
-
-    def __getitem__(self, item: t.Any) -> t.Any:
-        # FIXME: better access pattern for this?
-        # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
-        #  template the same values?
-        return self._templar.environment._proxy_or_render_template(super().__getitem__(item), item)
-
-    # FIXME: fully implement iteration support
-    # FIXME: do we need to implement templated key support?
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        # delegate to the base class __repr__ impl
-        return dict.__repr__(dict(self.items()))
-
-    def items(self):
-        for key, value in super().items():
-            # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
-            #  template the same values?
-            yield key, self._templar.environment._proxy_or_render_template(value, key)
-
-    def native_copy(self) -> dict:
-        return dict(dict.items(self))
-
-
-@t.final
-class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
-    __slots__ = _ANSIBLE_LAZY_TEMPLATE_SLOTS
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        _AnsibleLazyTemplateMixin.__init__(self)
-
-    def __getitem__(self, item):
-        # FIXME: better access pattern for this?
-        # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
-        #  template the same values?
-        return self._templar.environment._proxy_or_render_template(super().__getitem__(item), item)
-
-    def __iter__(self):
-        for value in super().__iter__():
-            yield self._templar.environment._proxy_or_render_template(value)
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        # delegate to the base class __repr__ impl
-        return list.__repr__(list(self.__iter__()))
-
-    def native_copy(self) -> list:
-        return list(list.__iter__(self))
-
-
-@t.final
-class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
-    # nonempty __slots__ not supported for subtype of 'tuple'
-
-    def __init__(self, *args, **kwargs):
-        # NB: we're explicitly not calling super().__init__ here, since our hierarchy doesn't need it, and tuple's init is
-        # object.__init__, which accepts no args beyond "self"
-        _AnsibleLazyTemplateMixin.__init__(self)
-
-    def __getitem__(self, item):
-        # FIXME: better access pattern for this?
-        # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
-        #  template the same values?
-        return self._templar.environment._proxy_or_render_template(super().__getitem__(item), item)
-
-    def __iter__(self):
-        for value in super().__iter__():
-            yield self._templar.environment._proxy_or_render_template(value)
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        # delegate to the base class __repr__ impl
-        return tuple.__repr__(tuple(self.__iter__()))
-
-    def native_copy(self) -> tuple:
-        return tuple(tuple.__iter__(self))
-
-
-@t.final
-class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
-    __slots__ = _ANSIBLE_LAZY_TEMPLATE_SLOTS
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        _AnsibleLazyTemplateMixin.__init__(self)
-
-    def __iter__(self):
-        for value in super().__iter__():
-            yield self._templar.environment._proxy_or_render_template(value)
-
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        # delegate to the base class __repr__ impl
-        return set.__repr__(set(self.__iter__()))
-
-    def native_copy(self) -> set:
-        return set(set.__iter__(self))
 
 
 class AnsibleNativeCodeGenerator(NativeCodeGenerator):
