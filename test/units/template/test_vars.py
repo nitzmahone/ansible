@@ -17,8 +17,7 @@
 
 from __future__ import annotations
 
-from ansible.template import Templar, TemplateContext
-from ansible.template.vars import AnsibleJ2Vars
+from ansible.template import Templar, TemplateContext, AnsibleJ2Vars
 
 
 def test_globals_empty():

@@ -20,7 +20,6 @@ from __future__ import annotations
 import ast
 import dataclasses
 import datetime
-import functools
 import os
 import pwd
 import secrets
@@ -30,17 +29,12 @@ import jinja2
 
 import ansible.module_utils.compat.typing as t
 
-from collections.abc import Iterator, Mapping, MappingView, MutableMapping
+from collections.abc import Mapping
 from contextlib import contextmanager
 from traceback import format_exc
 
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
-from jinja2.nativetypes import NativeCodeGenerator
-from jinja2.runtime import Context, Undefined
-from jinja2.nodes import Const
-from jinja2.sandbox import ImmutableSandboxedEnvironment
-from jinja2.compiler import Frame
 
 from ansible import constants as C
 from ansible.errors import (
@@ -55,19 +49,18 @@ from ansible.errors import (
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
 from ansible.module_utils.common.collections import is_sequence
-from ansible.plugins.loader import filter_loader, lookup_loader, test_loader
-from ansible.template.template import AnsibleJ2Template
-from ansible.template.vars import AnsibleJ2Vars
+from ansible.plugins.loader import lookup_loader
 from ansible.template.vault import _AnsibleTaggedVaultBomb, DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from ansible.module_utils.datatag import (
     AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError, Deprecated, _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
 )
-from ansible.module_utils.datatag.access import AnsibleAccessContext, POORLY_NAMED_SENTINEL, _NotifiableAccessContextBase
+from ansible.module_utils.datatag.access import POORLY_NAMED_SENTINEL, _NotifiableAccessContextBase
 
 from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
 
 from collections import ChainMap
+from .jinja_bits import AnsibleEnvironment, AnsibleJ2Vars
 
 from .utils import Omit, TemplateContext, AnsibleUndefined
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
@@ -83,8 +76,6 @@ JINJA2_OVERRIDE = '#jinja2:'
 
 JINJA2_BEGIN_TOKENS = frozenset(('variable_begin', 'block_begin', 'comment_begin', 'raw_begin'))
 JINJA2_END_TOKENS = frozenset(('variable_end', 'block_end', 'comment_end', 'raw_end'))
-
-RANGE_TYPE = type(range(0))
 
 # FIXME: remove/harden- just here for development backstop for now
 if tuple(map(int, jinja2.__version__.split('.'))) < (3, 1):
@@ -298,78 +289,6 @@ def _count_newlines_from_end(in_str):
         return i
 
 
-def _is_rolled(value):
-    """Helper method to determine if something is an unrolled generator,
-    iterator, or similar object
-    """
-    return (
-        isinstance(value, Iterator) or
-        isinstance(value, MappingView) or
-        isinstance(value, RANGE_TYPE)
-    )
-
-
-def _unroll_iterator(func):
-    """Wrapper function, that intercepts the result of a templating
-    and auto unrolls a generator, so that users are not required to
-    explicitly use ``|list`` to unroll.
-    """
-    def wrapper(*args, **kwargs):
-        ret = func(*args, **kwargs)
-        if _is_rolled(ret):
-            return list(ret)
-        return ret
-
-    return functools.update_wrapper(wrapper, func)
-
-
-class AnsibleContext(Context):
-    """
-    A custom context which intercepts resolve_or_missing() calls and
-    runs them through AnsibleAccessContext. This allows usage of variables
-    to be tracked. If needed, values can also be modified before being returned.
-    """
-    def __init__(self, *args, **kwargs):
-        super(AnsibleContext, self).__init__(*args, **kwargs)
-
-    def resolve_or_missing(self, key):
-        val = super(AnsibleContext, self).resolve_or_missing(key)
-        return AnsibleAccessContext.current().access(val)
-
-    def get_all(self):
-        """Return the complete context as a dict including the exported
-        variables. For optimizations reasons this might not return an
-        actual copy so be careful with using it.
-
-        This is to prevent from running ``AnsibleJ2Vars`` through dict():
-
-            ``dict(self.parent, **self.vars)``
-
-        In Ansible this means that ALL variables would be templated in the
-        process of re-creating the parent because ``AnsibleJ2Vars`` templates
-        each variable in its ``__getitem__`` method. Instead we re-create the
-        parent via ``AnsibleJ2Vars.add_locals`` that creates a new
-        ``AnsibleJ2Vars`` copy without templating each variable.
-
-        This will prevent unnecessarily templating unused variables in cases
-        like setting a local variable and passing it to {% include %}
-        in a template.
-
-        Also see ``AnsibleJ2Template``and
-        https://github.com/pallets/jinja/commit/d67f0fd4cc2a4af08f51f4466150d49da7798729
-        """
-        if not self.vars:
-            return self.parent
-        if not self.parent:
-            return self.vars
-
-        if isinstance(self.parent, AnsibleJ2Vars):
-            return self.parent.add_locals(self.vars)
-        else:
-            # can this happen in Ansible?
-            return dict(self.parent, **self.vars)
-
-
 class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):
     _tag_type_interest = frozenset([Deprecated])
 
@@ -391,266 +310,9 @@ class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):
         return tuple(self._tripped_deprecation_info)
 
 
-class JinjaPluginIntercept(MutableMapping):
-    ''' Simulated dict class that loads Jinja2Plugins at request
-        otherwise all plugins would need to be loaded a priori.
-
-        NOTE: plugin_loader still loads all 'builtin/legacy' at
-        start so only collection plugins are really at request.
-    '''
-
-    def __init__(self, delegatee, pluginloader, *args, **kwargs):
-
-        super(JinjaPluginIntercept, self).__init__(*args, **kwargs)
-
-        self._pluginloader = pluginloader
-
-        # Jinja environment's mapping of known names (initially just J2 builtins)
-        self._delegatee = delegatee
-
-        # our names take precedence over Jinja's, but let things we've tried to resolve skip the pluginloader
-        self._seen_it = set()
-
-    def __getitem__(self, key):
-        if not isinstance(key, string_types):
-            raise ValueError('key must be a string, got %s instead' % type(key))
-
-        original_exc = None
-        if key not in self._seen_it:
-            # this looks too early to set this- it isn't. Setting it here keeps requests for Jinja builtins from
-            # going through the pluginloader more than once, which is extremely slow for something that won't ever succeed.
-            self._seen_it.add(key)
-            plugin = None
-            try:
-                plugin = self._pluginloader.get(key)
-            except (AnsibleError, KeyError) as e:
-                original_exc = e
-            except Exception as e:
-                display.vvvv('Unexpected plugin load (%s) exception: %s' % (key, to_native(e)))
-                raise e
-
-            # if a plugin was found/loaded
-            if plugin:
-                # set in filter cache and avoid expensive plugin load
-                self._delegatee[key] = plugin.j2_function
-
-        # raise template syntax error if we could not find ours or jinja2 one
-        try:
-            func = self._delegatee[key]
-        except KeyError as e:
-            self._seen_it.remove(key)
-            raise TemplateSyntaxError('Could not load "%s": %s' % (key, to_native(original_exc or e)), 0)
-
-        # FIXME: can/should we handle this in finalize instead, or at least allow plugins to opt into/out of this behavior?
-        # if i do have func and it is a filter, it needs wrapping
-        if self._pluginloader.type == 'filter':
-            # deprecated: description="deprecate STRING_TYPE_FILTERS config entry (formerly used here) once 2.18 is EOL" core_version="2.19"
-            # conditionally unroll iterators/generators to avoid having to use `|list` after every filter
-            func = _unroll_iterator(func)
-
-        return func
-
-    def __setitem__(self, key, value):
-        return self._delegatee.__setitem__(key, value)
-
-    def __delitem__(self, key):
-        raise NotImplementedError()
-
-    def __iter__(self):
-        # not strictly accurate since we're not counting dynamically-loaded values
-        return iter(self._delegatee)
-
-    def __len__(self):
-        # not strictly accurate since we're not counting dynamically-loaded values
-        return len(self._delegatee)
-
-
 # NB: we're not actually using this pass_context, but it prevents our finalizer from
 #  being called on constants at template compile time, which also allows our custom
 #  visit_Const override to be used to mark embedded template constants trusted.
-@jinja2.pass_context
-def _ansible_finalize(ctx, thing):
-    """
-    This function is called by Jinja with the result of each
-    variable template block (eg {{ }}) encountered in a template. It
-    converts iterator results into lists, (recursively) ensures that no Undefined
-    values exist in the result, and coalesces None to empty string (for backward
-    compatibility).
-    """
-
-    if _is_rolled(thing):
-        thing = list(thing)
-
-    # FIXME: do this on the output of do_template?
-    return thing if thing is not None else ''
-
-
-class AnsibleNativeCodeGenerator(NativeCodeGenerator):
-    # prevent Jinja's code generation from stringifying single nodes before generating its repr
-    # (this complements the behavioral change in our concat)
-    # FIXME: contribute this back upstream as a fix to Jinja's native support?
-    def _output_const_repr(self, group: t.Iterable[t.Any]) -> str:
-        group_list = list(group)
-
-        if len(group_list) == 1:
-            return repr(group_list[0])
-        return repr("".join(map(str, group_list)))
-
-    # this override causes embedded inline template strings to be marked TrustedAsTemplate at runtime
-    # so that some inline templates can be processed with multiple passes, eg, {{ lookup("file", "{{output_dir}}/bla") }}
-    def visit_Const(self, node: Const, frame: Frame) -> None:
-        # FIXME: shortcut "is maybe template", then blindly wrap with TrustedAsTemplate if so
-        # FIXME: this needs to consult the variable marker overrides
-        is_template = type(node.value) is str and '{{' in node.value  # pylint: disable=unidiomatic-typecheck
-
-        val = node.as_const(frame.eval_ctx)
-        if isinstance(val, float):
-            self.write(str(val))
-        elif is_template:
-            # FIXME: propagate other tags from parent template (for forensic/debug)?
-            # FIXME: if lookup nerfing is restored, this could end up assigning trust to an embedded constant we don't want to trust.
-            #  Keep this note until we're sure it's not coming back.
-            self.write(f'environment._render_inline_template({val!r})')
-        else:
-            self.write(repr(val))
-
-
-class AnsibleEnvironment(ImmutableSandboxedEnvironment):
-    '''
-    Our custom environment, which simply allows us to override the class-level
-    values for the Template and Context classes used by jinja2 internally.
-    '''
-    context_class = AnsibleContext
-    template_class = AnsibleJ2Template
-    code_generator_class = AnsibleNativeCodeGenerator
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.filters = JinjaPluginIntercept(self.filters, filter_loader)
-        self.tests = JinjaPluginIntercept(self.tests, test_loader)
-
-        # future Jinja releases may default-enable autoescape; force-disable to prevent the problems it could cause
-        # see https://github.com/pallets/jinja/blob/3.1.2/docs/api.rst?plain=1#L69
-        self.autoescape = False
-
-        self.trim_blocks = True
-
-        self.undefined = AnsibleUndefined
-        self.finalize = _ansible_finalize
-        self.undefined_behavior = FAIL_ON_UNDEFINED
-
-        self.globals.update(
-            range=range,  # the sandboxed environment limits range in ways that may cause us problems; use the real Python one
-            now=self._now,
-            undef=self._undef,
-            omit=Omit,
-        )
-
-        # Disabling the optimizer prevents compile-time constant expression folding, which prevents our
-        # visit_Const recursive inline template expansion tricks from working in many cases where Jinja's
-        # ignorance of our embedded templates are optimized away as fully-constant expressions,
-        # eg {{ "{{'hi'}}" == "hi" }}. As of Jinja ~3.1, this specifically avoids cases where the @optimizeconst
-        # visitor decorator performs constant folding, which bypasses our visit_Const impl and causes embedded
-        # templates to be lost.
-        # See also optimizeconst impl: https://github.com/pallets/jinja/blob/3.1.0/src/jinja2/compiler.py#L48-L49
-        self.optimized = False
-
-        self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
-
-    def overlay(self, *args, undefined_behavior: t.Callable[..., t.Any] = None, **kwargs):
-        res = super().overlay(*args, **kwargs)
-        res.undefined_behavior = undefined_behavior or self.undefined_behavior
-        return res
-
-    def concat(self, nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
-        node_list = list(nodes)
-        if not node_list:
-            return ''
-
-        # this code is complemented by our tweaked CodeGenerator _output_const_repr that ensures that literal constants
-        # in templates aren't double-repr'd in the generated code
-        if len(node_list) == 1:
-            # FIXME: do we WANT to allow nulls? FDI025
-            if node_list[0] is None:
-                return ''
-            return AnsibleAccessContext.current().access(node_list[0])
-
-        # FIXME: need to smuggle undefined_behavior in from the current templating operation (eg, debug and templated task names w/ BestEffort)
-        # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive finalize before we repr (otherwise we can end up
-        # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
-        node_list = _finalize_template_result(node_list, undefined_behavior=self.undefined_behavior, raise_on_unsupported_type=False)
-
-        # FIXME: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
-        return ''.join([to_text(v) for v in node_list])
-
-    # NB: this method is for exclusive use of the template compiler to render embedded constant templates
-    def _render_inline_template(self, const_template: str) -> t.Any:
-        const_template = TrustedAsTemplate().tag(const_template)
-        result = self._proxy_or_render_template(const_template)
-        return result
-
-    def getitem(self, obj, argument):
-        # FIXME: do we actually need to managed-access both sides of templates/strings here?
-        return self._proxy_or_render_template(super().getitem(obj, argument), argument)
-
-    def getattr(self, obj, attribute):
-        return self._proxy_or_render_template(super().getattr(obj, attribute), attribute)
-
-    def _proxy_or_render_template(self, item: t.Any, key: str | None = None):
-        # FIXME: always blindly access item here?
-        item = AnsibleAccessContext.current().access(item)
-        if isinstance(item, str):
-            # in case the item is a template, render it first
-            if not (template_context := TemplateContext.current()):
-                # FIXME: better exception type? (same thing in the lazy template wrapper constructors)
-                raise ReferenceError("no TemplateContext is available")
-            try:
-                # FIXME: we need to propagate template args like undefined_behavior and/or move them into a templar/overlay instance
-                #  also, what happens if Lazy's that survive encounter a different templar and/or override args
-                item = template_context.templar.template(item)
-            except (AnsibleUndefinedVariable, UndefinedError) as e:  # FIXME: can we dump this whole thing or preserve just enough?
-                # Instead of failing here prematurely, return an Undefined
-                # object which fails only after its first usage allowing us to
-                # do lazy evaluation and passing it into filters/tests that
-                # operate on such objects.
-                return AnsibleUndefined(
-                    template_source=item,
-                    hint=e.message,  # FIXME: what should this actually be?
-                    name=key,
-                    exc=AnsibleUndefinedVariable,
-                )
-            except Exception as e:
-                msg = getattr(e, 'message', None) or to_native(e)
-                raise AnsibleError(
-                    f"An unhandled exception occurred while templating '{to_native(item)}'. "
-                    f"Error was a {type(e)}, original message: {msg}"
-                )
-
-        # FIXME: this can return an empty lazy container, is that what we want?
-        if (lazy := _AnsibleLazyTemplateMixin.try_create(item)) is not None:
-            return lazy
-
-        return item
-
-    def _now(self, utc=False, fmt=None):
-        """Jinja2 global function (now) to return current datetime, potentially formatted via strftime."""
-        if utc:
-            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-        else:
-            now = datetime.datetime.now()
-
-        if fmt:
-            return now.strftime(fmt)
-
-        return now
-
-    def _undef(self, hint=None):
-        """Jinja2 global function (undef) for creating custom undefined defaults with custom hints."""
-        if hint is None or isinstance(hint, Undefined) or hint == '':
-            hint = "Mandatory variable has not been overridden"
-
-        return AnsibleUndefined(hint)
 
 
 # FIXME: do we still need a class for this?
