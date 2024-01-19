@@ -53,7 +53,6 @@ from ansible.errors import (
     AnsibleAssertionError,
     AnsibleConditionalError,
     AnsibleError,
-    AnsibleFilterError,
     AnsibleLookupError,
     AnsibleValueOmittedError,
     AnsibleOptionsError,
@@ -331,20 +330,6 @@ def _count_newlines_from_end(in_str):
     except IndexError:
         # Uncommon cases: zero length string and string containing only newlines
         return i
-
-
-def recursive_check_defined(item):
-    from jinja2.runtime import Undefined
-
-    if isinstance(item, MutableMapping):
-        for key in item:
-            recursive_check_defined(item[key])
-    elif isinstance(item, list):
-        for i in item:
-            recursive_check_defined(i)
-    else:
-        if isinstance(item, Undefined):
-            raise AnsibleFilterError("{0} is undefined".format(item))
 
 
 def _is_rolled(value):

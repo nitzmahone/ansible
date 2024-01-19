@@ -32,7 +32,6 @@ from ansible.module_utils.common.collections import is_sequence
 from ansible.module_utils.common.yaml import yaml_load, yaml_load_all
 from ansible.module_utils.common.json import AnsibleJSONEncoder
 from ansible.parsing.yaml.dumper import AnsibleDumper
-from ansible.template import recursive_check_defined
 from ansible.utils.display import Display
 from ansible.utils.encrypt import do_encrypt, PASSLIB_AVAILABLE
 from ansible.utils.hashing import md5s, checksum_s
@@ -344,9 +343,6 @@ def combine(*terms, **kwargs):
 
     # allow the user to do `[dict1, dict2, ...] | combine`
     dictionaries = flatten(terms, levels=1)
-
-    # recursively check that every elements are defined (for jinja2)
-    recursive_check_defined(dictionaries)
 
     if not dictionaries:
         return {}
