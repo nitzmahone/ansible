@@ -270,6 +270,9 @@ class JinjaPluginIntercept(MutableMapping):
         return len(self._delegatee)
 
 
+# NB: we're not actually using this pass_context, but it prevents our finalizer from
+#  being called on constants at template compile time, which also allows our custom
+#  visit_Const override to be used to mark embedded template constants trusted.
 @jinja2.pass_context
 def _ansible_finalize(ctx, thing):
     """

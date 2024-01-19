@@ -92,7 +92,7 @@ from ansible.errors import AnsibleError
 from ansible.plugins.lookup import LookupBase
 from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.datatag import TrustedAsTemplate
-from ansible.template import generate_ansible_template_vars
+from ansible.plugin_utils.template import generate_ansible_template_vars
 from ansible.utils.display import Display
 
 

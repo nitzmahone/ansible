@@ -26,7 +26,7 @@ from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.six import string_types
 from ansible.plugins.action import ActionBase
-from ansible.template import generate_ansible_template_vars
+from ansible.plugin_utils.template import generate_ansible_template_vars
 
 
 class ActionModule(ActionBase):
@@ -132,8 +132,7 @@ class ActionModule(ActionBase):
 
                 # force templar to use AnsibleEnvironment to prevent issues with native types
                 # https://github.com/ansible/ansible/issues/46169
-                templar = self._templar.copy_with_new_env(
-                                                          searchpath=searchpath,
+                templar = self._templar.copy_with_new_env(searchpath=searchpath,
                                                           newline_sequence=newline_sequence,
                                                           available_variables=temp_vars)
                 overrides = dict(

@@ -19,11 +19,7 @@ from __future__ import annotations
 
 import ast
 import dataclasses
-import datetime
-import os
-import pwd
 import secrets
-import time
 
 import jinja2
 
@@ -47,19 +43,20 @@ from ansible.errors import (
     AnsibleUndefinedVariable,
 )
 from ansible.module_utils.six import string_types
-from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
+from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
 from ansible.plugins.loader import lookup_loader
 from ansible.template.vault import _AnsibleTaggedVaultBomb, DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from ansible.module_utils.datatag import (
-    AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError, Deprecated, _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
+    AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError, _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
 )
-from ansible.module_utils.datatag.access import POORLY_NAMED_SENTINEL, _NotifiableAccessContextBase
 
 from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
 
 from collections import ChainMap
+
+from .datatag import DeprecatedAccessAuditContext
 from .jinja_bits import AnsibleEnvironment, AnsibleJ2Vars
 
 from .utils import Omit, TemplateContext, AnsibleUndefined
@@ -93,43 +90,6 @@ def _repr_from(value: t.Any) -> str:
         return f'{value!r} from {str(src_pos)!r}'
 
     return f'{value!r}'
-
-
-def generate_ansible_template_vars(path, fullpath=None, dest_path=None):
-
-    if fullpath is None:
-        b_path = to_bytes(path)
-    else:
-        b_path = to_bytes(fullpath)
-
-    try:
-        template_uid = pwd.getpwuid(os.stat(b_path).st_uid).pw_name
-    except (KeyError, TypeError):
-        template_uid = os.stat(b_path).st_uid
-
-    temp_vars = {
-        'template_host': to_text(os.uname()[1]),
-        'template_path': path,
-        'template_mtime': datetime.datetime.fromtimestamp(os.path.getmtime(b_path)),
-        'template_uid': to_text(template_uid),
-        'template_run_date': datetime.datetime.now(),
-        'template_destpath': to_native(dest_path) if dest_path else None,
-    }
-
-    if fullpath is None:
-        temp_vars['template_fullpath'] = os.path.abspath(path)
-    else:
-        temp_vars['template_fullpath'] = fullpath
-
-    managed_default = C.DEFAULT_MANAGED_STR
-    managed_str = managed_default.format(
-        host=temp_vars['template_host'],
-        uid=temp_vars['template_uid'],
-        file=temp_vars['template_path'].replace('%', '%%'),
-    )
-    temp_vars['ansible_managed'] = time.strftime(to_native(managed_str), time.localtime(os.path.getmtime(b_path)))
-
-    return temp_vars
 
 
 def _escape_backslashes(data: str, jinja_env: AnsibleEnvironment) -> str:
@@ -287,32 +247,6 @@ def _count_newlines_from_end(in_str):
     except IndexError:
         # Uncommon cases: zero length string and string containing only newlines
         return i
-
-
-class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):
-    _tag_type_interest = frozenset([Deprecated])
-
-    def __init__(self) -> None:
-        self._tripped_deprecation_info: t.List[t.Tuple[t.Any, Deprecated]] = []
-
-    def _notify(self, o: t.Any) -> t.Any:
-        deprecated = Deprecated.get_tag(o)
-
-        if deprecated:
-            current_template = TemplateContext.current()
-            template = current_template.template_value if current_template else None
-            self._tripped_deprecation_info.append((template, deprecated))
-
-        return POORLY_NAMED_SENTINEL
-
-    @property
-    def deprecated_access(self) -> t.Tuple[t.Tuple[t.Any, Deprecated], ...]:
-        return tuple(self._tripped_deprecation_info)
-
-
-# NB: we're not actually using this pass_context, but it prevents our finalizer from
-#  being called on constants at template compile time, which also allows our custom
-#  visit_Const override to be used to mark embedded template constants trusted.
 
 
 # FIXME: do we still need a class for this?
