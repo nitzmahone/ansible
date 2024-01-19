@@ -13,11 +13,11 @@
     - assert:
         that:
           - string_var == 'no'
-          - this_is_string == True
+          - this_is_string == 'yes'  # NOTE: In 2.16 and earlier, this would have become a bool (True).
           - this_is_not_string == True
-          - this_is_also_string == False
-          - this_is_another_string == False
-          - this_is_more_strings == False
+          - this_is_also_string == 'no'  # NOTE: In 2.16 and earlier, this would have become a bool (False).
+          - this_is_another_string == 'no'  # NOTE: In 2.16 and earlier, this would have become a bool (False).
+          - this_is_more_strings == 'no'  # NOTE: In 2.16 and earlier, this would have become a bool (False).
 
     - ansible.builtin.set_fact:
         this_is_string_fqcn: "yes"
@@ -28,8 +28,8 @@
 
     - assert:
         that:
-          - this_is_string_fqcn == True
+          - this_is_string_fqcn == 'yes'  # NOTE: In 2.16 and earlier, this would have become a bool (True).
           - this_is_not_string_fqcn == True
-          - this_is_also_string_fqcn == False
-          - this_is_another_string_fqcn == False
-          - this_is_more_strings_fqcn == False
+          - this_is_also_string_fqcn == 'no'  # NOTE: In 2.16 and earlier, this would have become a bool (False).
+          - this_is_another_string_fqcn == 'no'  # NOTE: In 2.16 and earlier, this would have become a bool (False).
+          - this_is_more_strings_fqcn == 'no'  # NOTE: In 2.16 and earlier, this would have become a bool (False).
