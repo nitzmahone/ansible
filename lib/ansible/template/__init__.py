@@ -17,9 +17,7 @@
 
 from __future__ import annotations
 
-import abc
 import ast
-import collections.abc as c
 import dataclasses
 import datetime
 import functools
@@ -32,10 +30,8 @@ import jinja2
 
 import ansible.module_utils.compat.typing as t
 
-
 from collections.abc import Iterator, Mapping, MappingView, MutableMapping
 from contextlib import contextmanager
-from itertools import islice
 from traceback import format_exc
 
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
@@ -59,34 +55,26 @@ from ansible.errors import (
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
 from ansible.module_utils.common.collections import is_sequence
-from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError
 from ansible.plugins.loader import filter_loader, lookup_loader, test_loader
 from ansible.template.template import AnsibleJ2Template
 from ansible.template.vars import AnsibleJ2Vars
 from ansible.template.vault import _AnsibleTaggedVaultBomb, DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from ansible.module_utils.datatag import (
-    Deprecated,
-    _AnsibleTaggedDict,
-    _AnsibleTaggedList,
-    _AnsibleTaggedSet,
-    _AnsibleTaggedTuple,
-    _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES,
-    _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
+    AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError, Deprecated, _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
 )
-from ansible.module_utils.datatag.access import (
-    AnsibleAccessContext,
-    POORLY_NAMED_SENTINEL,
-    _NotifiableAccessContextBase,
-)
+from ansible.module_utils.datatag.access import AnsibleAccessContext, POORLY_NAMED_SENTINEL, _NotifiableAccessContextBase
 
 from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
-from ansible.utils.datatag import AnsibleVariableTypeError
 
 from collections import ChainMap
 
 from .utils import Omit, TemplateContext, AnsibleUndefined
-from .lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateList, _AnsibleLazyTemplateSet, _AnsibleLazyTemplateDict, _AnsibleLazyTemplateTuple
+from .lazy_containers import (
+    _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateList, _AnsibleLazyTemplateSet, _AnsibleLazyTemplateDict, _AnsibleLazyTemplateTuple,
+    _finalize_template_result,
+)
+from .undefined_behaviors import FAIL_ON_UNDEFINED
 
 display = Display()
 
@@ -528,93 +516,6 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
             self.write(f'environment._render_inline_template({val!r})')
         else:
             self.write(repr(val))
-
-
-# FIXME: bikeshed name/placement/access/singleton
-# FIXME: these look an awful lot like Jinja finalizers (which are also owned by the environment); as part of Jinja-normalization, should we wrap this and all
-#  other custom post-templating behavior into a Jinja finalizer?
-class UndefinedBehavior(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def handle_undefined(self, value: Undefined) -> t.Any:
-        ...
-
-    def post_finalize(self, template_result: t.Any) -> t.Any:
-        return template_result
-
-
-# FUTURE: do we want an option to let these accumulate so we can report > 1 failure at a time?
-class FailOnUndefined(UndefinedBehavior):
-    def handle_undefined(self, value):
-        if isinstance(value, Undefined):
-            hint = value._undefined_hint
-        else:
-            hint = None
-
-        if not hint:
-            hint = '<no hint>'
-
-        raise AnsibleUndefinedVariable(f"undefined BLAH FIXME: {hint}", obj=value)
-
-
-FAIL_ON_UNDEFINED: t.Final = FailOnUndefined()  # no sense in making many instances...
-
-
-class BestEffort(UndefinedBehavior):
-    def __init__(self) -> None:
-        self._undefined_templates: list[Undefined] = []
-
-    @staticmethod
-    def _hint(value: Undefined):
-        try:
-            # FIXME: need to come up with a better way to capture the context when Jinja gives us not much to go on, or maybe inject our own
-            hint = value._undefined_template_source or value._undefined_hint
-
-            if not hint and (hint := value._undefined_name):
-                hint = f'{{{{ {hint} }}}}'
-        except AttributeError:
-            hint = None
-
-        if not hint:
-            hint = "FIXME shrug"
-
-        return hint
-
-    def handle_undefined(self, value: Undefined) -> t.Any:
-        self._undefined_templates.append(value)
-        # FIXME: figure out how/where to propagate this as a failure to the TemplateResult
-
-        return NotATemplate().tag(self._hint(value))
-
-    @property
-    def has_warnings(self) -> bool:
-        return bool(self._undefined_templates)
-
-    def warnings(self, max_count: int | None = None) -> c.Generator[str, None, None]:
-        try:
-            # blah = list(f'FIXME busted template {self._hint(w)}' for w in islice(self._undefined_templates, max_count))
-            # yield from blah
-            for w in islice(self._undefined_templates, max_count):
-                try:
-                    yield NotATemplate().tag(f'FIXME busted template {self._hint(w)}')
-                except Exception as exi:
-                    raise
-        except Exception as e:
-            raise
-
-
-class BestEffortOmitUndefined(BestEffort):
-    def handle_undefined(self, value: Undefined) -> t.Any:
-        self._undefined_templates.append(value)
-
-        return Omit
-
-    def post_finalize(self, template_result: t.Any) -> t.Any:
-        if not self.has_warnings:
-            return template_result
-
-        # there were warnings, which means we emitted omits that need omitting into the template result
-        # do another finalize pass to clean it up
-        return _finalize_template_result(template_result, undefined_behavior=FAIL_ON_UNDEFINED, raise_on_unsupported_type=False)
 
 
 class AnsibleEnvironment(ImmutableSandboxedEnvironment):
@@ -1365,46 +1266,6 @@ class Templar:
 
     # for backwards compatibility in case anyone is using old private method directly
     _do_template = do_template
-
-
-# FIXME: add tests to ensure this doesn't drift from allowed types
-def _finalize_template_result(o: t.Any, undefined_behavior: UndefinedBehavior, raise_on_unsupported_type: bool) -> t.Any:
-    """
-    Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions.
-    """
-    o_type = type(o)
-
-    from ansible.vars.hostvars import HostVars, HostVarsVars  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
-
-    value_type: type[dict | list | tuple | set]
-
-    if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
-        return o
-    elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict):
-        value_expression = (_finalize_template_result((k, v), undefined_behavior, raise_on_unsupported_type) for k, v in o.items() if v is not Omit)
-        value_type = dict
-    elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
-        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
-        value_type = list
-    elif o_type in (tuple, _AnsibleTaggedTuple, _AnsibleLazyTemplateTuple):
-        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
-        value_type = tuple
-    elif o_type in (set, _AnsibleTaggedSet, _AnsibleLazyTemplateSet):
-        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
-        value_type = set
-    elif o_type is AnsibleUndefined:
-        return undefined_behavior.handle_undefined(o)  # FIXME: this assumes handle_undefined follows our variable type rules
-    elif o_type in (HostVars, HostVarsVars):
-        return o  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
-    elif raise_on_unsupported_type:  # unsupported type (raise)
-        if o_type is _AnsibleTaggedVaultBomb:
-            o.detonate()
-
-        raise AnsibleVariableTypeError(variable_type=o_type)
-    else:  # unsupported type (do not raise)
-        return o
-
-    return AnsibleTaggedObject.tag_copy(o, value_expression, value_type=value_type)
 
 
 # FIXME: decide if these should be taggable; do we need to support other kinds of Undefineds, etc

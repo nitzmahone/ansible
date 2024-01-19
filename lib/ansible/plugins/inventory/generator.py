@@ -77,7 +77,7 @@ from itertools import product
 from ansible import constants as C
 from ansible.errors import AnsibleParserError
 from ansible.plugins.inventory import BaseInventoryPlugin
-from ansible.template import FAIL_ON_UNDEFINED
+from ansible.template.undefined_behaviors import FAIL_ON_UNDEFINED
 
 
 class InventoryModule(BaseInventoryPlugin):

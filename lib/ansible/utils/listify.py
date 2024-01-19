@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from ansible.template import FAIL_ON_UNDEFINED, BestEffortOmitUndefined
+from ansible.template.undefined_behaviors import FAIL_ON_UNDEFINED, BestEffortOmitUndefined
 from ansible.utils.display import Display
 
 display = Display()

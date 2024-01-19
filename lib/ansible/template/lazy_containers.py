@@ -18,8 +18,13 @@ from ansible.module_utils.datatag import (
 )
 
 from .utils import Omit, AnsibleUndefined, TemplateContext
+from .vault import _AnsibleTaggedVaultBomb
 
+from ansible.errors import AnsibleVariableTypeError
 from ansible.utils.display import Display
+
+if t.TYPE_CHECKING:
+    from .undefined_behaviors import UndefinedBehavior
 
 _ANSIBLE_LAZY_TEMPLATE_SLOTS = tuple(('_templar',))
 
@@ -222,3 +227,43 @@ class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
 
     def native_copy(self) -> set:
         return set(set.__iter__(self))
+
+
+# FIXME: add tests to ensure this doesn't drift from allowed types
+def _finalize_template_result(o: t.Any, undefined_behavior: UndefinedBehavior, raise_on_unsupported_type: bool) -> t.Any:
+    """
+    Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions.
+    """
+    o_type = type(o)
+
+    from ansible.vars.hostvars import HostVars, HostVarsVars  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
+
+    value_type: type[dict | list | tuple | set]
+
+    if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
+        return o
+    elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict):
+        value_expression = (_finalize_template_result((k, v), undefined_behavior, raise_on_unsupported_type) for k, v in o.items() if v is not Omit)
+        value_type = dict
+    elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
+        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_type = list
+    elif o_type in (tuple, _AnsibleTaggedTuple, _AnsibleLazyTemplateTuple):
+        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_type = tuple
+    elif o_type in (set, _AnsibleTaggedSet, _AnsibleLazyTemplateSet):
+        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_type = set
+    elif o_type is AnsibleUndefined:
+        return undefined_behavior.handle_undefined(o)  # FIXME: this assumes handle_undefined follows our variable type rules
+    elif o_type in (HostVars, HostVarsVars):
+        return o  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
+    elif raise_on_unsupported_type:  # unsupported type (raise)
+        if o_type is _AnsibleTaggedVaultBomb:
+            o.detonate()
+
+        raise AnsibleVariableTypeError(variable_type=o_type)
+    else:  # unsupported type (do not raise)
+        return o
+
+    return AnsibleTaggedObject.tag_copy(o, value_expression, value_type=value_type)
