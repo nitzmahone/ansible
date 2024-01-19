@@ -272,11 +272,11 @@ def is_template(data, jinja_env):
 
 
 def _count_newlines_from_end(in_str):
-    '''
+    """
     Counts the number of newlines at the end of a string. This is used during
     the jinja2 templating to ensure the count matches the input, since some newlines
     may be thrown away during the templating.
-    '''
+    """
 
     try:
         i = len(in_str)
@@ -326,9 +326,9 @@ class TemplateResult:
 
 
 class Templar:
-    '''
+    """
     The main class for templating, with the main entry-point of template().
-    '''
+    """
 
     def __init__(self, loader, variables=None):
         self._loader = loader
@@ -382,12 +382,12 @@ class Templar:
         return new_templar
 
     def _get_extensions(self):
-        '''
+        """
         Return jinja2 extensions to load.
 
         If some extensions are set via jinja_extensions in ansible.cfg, we try
         to load them with the jinja environment.
-        '''
+        """
 
         jinja_exts = []
         if C.DEFAULT_JINJA2_EXTENSIONS:
@@ -403,12 +403,12 @@ class Templar:
 
     @available_variables.setter
     def available_variables(self, variables):
-        '''
+        """
         Sets the list of template variables this Templar instance will use
         to template things, so we don't have to pass them around between
         internal methods. We also clear the template cache here, as the variables
         are being changed.
-        '''
+        """
 
         if not isinstance(variables, Mapping):
             raise AnsibleAssertionError("the type of 'variables' should be a Mapping but was a %s" % (type(variables)))
@@ -593,7 +593,7 @@ class Templar:
                 return variable
 
     def is_template(self, data):
-        '''lets us know if data has a template'''
+        """lets us know if data has a template"""
         if isinstance(data, string_types):
             return is_template(data, self.environment)
         elif isinstance(data, (list, tuple)):
@@ -616,7 +616,7 @@ class Templar:
         raise AnsibleError("The lookup `%s` was found, however lookups were disabled from templating" % name)
 
     def _query_lookup(self, name, /, *args, **kwargs):
-        ''' wrapper for lookup, force wantlist true'''
+        """wrapper for lookup, force wantlist true"""
         kwargs['wantlist'] = True
         return self._lookup(name, *args, **kwargs)
 

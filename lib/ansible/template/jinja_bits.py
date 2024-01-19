@@ -79,12 +79,12 @@ class AnsibleContext(Context):
 
 
 class AnsibleJ2Template(NativeTemplate):
-    '''
+    """
     A helper class, which prevents Jinja2 from running AnsibleJ2Vars through dict().
     Without this, {% include %} and similar will create new contexts unlike the special
     one created in Templar.template. This ensures they are all alike, except for
     potential locals.
-    '''
+    """
 
     def new_context(self, vars=None, shared=False, locals=None):
         if vars is None:
@@ -196,12 +196,13 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
 
 
 class JinjaPluginIntercept(MutableMapping):
-    ''' Simulated dict class that loads Jinja2Plugins at request
-        otherwise all plugins would need to be loaded a priori.
+    """
+    Simulated dict class that loads Jinja2Plugins at request
+    otherwise all plugins would need to be loaded a priori.
 
-        NOTE: plugin_loader still loads all 'builtin/legacy' at
-        start so only collection plugins are really at request.
-    '''
+    NOTE: plugin_loader still loads all 'builtin/legacy' at
+    start so only collection plugins are really at request.
+    """
 
     def __init__(self, delegatee, pluginloader, *args, **kwargs):
 
@@ -287,10 +288,10 @@ def _ansible_finalize(ctx, thing):
 
 
 class AnsibleEnvironment(ImmutableSandboxedEnvironment):
-    '''
+    """
     Our custom environment, which simply allows us to override the class-level
     values for the Template and Context classes used by jinja2 internally.
-    '''
+    """
     context_class = AnsibleContext
     template_class = AnsibleJ2Template
     code_generator_class = AnsibleNativeCodeGenerator
