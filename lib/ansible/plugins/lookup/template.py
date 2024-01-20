@@ -20,6 +20,10 @@ DOCUMENTATION = """
             - Whether to convert YAML into data. If False, strings that are YAML will be left untouched.
             - Mutually exclusive with the jinja2_native option.
         default: true
+        deprecated:
+          why: This option is no longer used in the Ansible Core code base.
+          version: "2.21"
+          alternatives: Jinja2 native mode is now the default and only option, which is mutually exclusive with this option.
       variable_start_string:
         description: The string marking the beginning of a print statement.
         default: '{{'
@@ -36,7 +40,6 @@ DOCUMENTATION = """
             - It is off by default even if global jinja2_native is True.
             - Has no effect if global jinja2_native is False.
             - This offers more flexibility than the template module which does not use Jinja2 native types at all.
-            - Mutually exclusive with the convert_data option.
         default: True
         version_added: '2.11'
         type: bool
@@ -108,7 +111,6 @@ class LookupModule(LookupBase):
         self.set_options(var_options=variables, direct=kwargs)
 
         # capture options
-        convert_data_p = self.get_option('convert_data')
         lookup_template_vars = self.get_option('template_vars')
         variable_start_string = self.get_option('variable_start_string')
         variable_end_string = self.get_option('variable_end_string')
@@ -155,9 +157,7 @@ class LookupModule(LookupBase):
                         comment_start_string=comment_start_string,
                         comment_end_string=comment_end_string
                     )
-                    res = templar.template(template_data, preserve_trailing_newlines=True,
-                                           convert_data=convert_data_p, escape_backslashes=False,
-                                           overrides=overrides)
+                    res = templar.template(template_data, preserve_trailing_newlines=True, escape_backslashes=False, overrides=overrides)
 
                 ret.append(res)
             else:

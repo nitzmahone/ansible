@@ -415,7 +415,7 @@ class Templar:
         return self.template_with_result(*args, **kwargs).result
 
     def template_with_result(self, variable, *, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
-                             overrides=None, convert_data=True, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
+                             overrides=None, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
                              stop_on_container_result=False, value_for_omit=Omit) -> TemplateResult:
         """Templates (possibly recursively) any given data as input."""
 

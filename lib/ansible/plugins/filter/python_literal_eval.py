@@ -2,7 +2,7 @@ from ast import literal_eval
 
 
 class FilterModule(object):
-    """Python literal eval filter (replaces convert_data=True)"""
+    """Python literal eval filter."""
 
     def filters(self):
         return {
