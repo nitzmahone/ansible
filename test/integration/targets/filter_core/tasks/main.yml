@@ -293,9 +293,9 @@
 - name: regex_search check
   assert:
     that:
-      - match_case == ''
+      - match_case is none
       - ignore_case == 'hello'
-      - single_line == ''
+      - single_line is none
       - multi_line == 'world'
       - named_groups == ['bye', 'good']
       - numbered_groups == ['bye', 'good']

@@ -40,5 +40,7 @@ EXAMPLES: |
 
 RETURN:
   _value:
-    description: Matched string or empty string if no match.
+    # FIXME: how to represent null/None in prose?
+    description: Matched string or None if no match.
+    # FIXME: how to represent nullable string in `type`?
     type: str
