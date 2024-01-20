@@ -1,0 +1,14 @@
+major_changes:
+-
+minor_changes:
+-
+breaking_changes:
+  - templating - templates resulting in None are no longer automatically converted to empty string
+security_fixes:
+-
+known_issues:
+-
+bugfixes:
+  - regex_search - corrected return value documentation to reflect None (not empty string) for no match
+deprecated_features:
+  -
