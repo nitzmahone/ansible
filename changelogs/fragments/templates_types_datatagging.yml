@@ -31,5 +31,3 @@ deprecated_features:
   - DEFAULT_JINJA2_NATIVE config - This option is no longer used in the Ansible Core code base. Jinja2 native mode is now the default and only option.
   - DEFAULT_NULL_REPRESENTATION - This option is no longer used in the Ansible Core code base. Null values are no longer automatically converted to another value during templating of single variable references.
   - template lookup - The jinja2_native option is no longer used in the Ansible Core code base. Jinja2 native mode is now the default and only option.
-
-
