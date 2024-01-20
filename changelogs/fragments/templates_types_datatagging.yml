@@ -1,15 +1,35 @@
 major_changes:
--
+  - variables - The type system underlying Ansible's variable storage has been significantly overhauled and formalized. Attempts to store unsupported Python object types in variables will now result in an error.  # FIXME: link to type system docs TBD
+  - variables - To support new Ansible features, many variable objects are now represented by subclasses of their respective native Python types. In most cases, they behave indistinguishably from their original types, but some Python libraries do not handle builtin object subclasses properly. Custom plugins that interact with such libraries may require changes to convert and pass the native types.  # FIXME: link to plugin/data tagging API docs TBD
+
+
 minor_changes:
--
+  - debug - # FIXME: Explain how debug handles templating on its own now.
+  - templating - Templating errors now provide more information about both the location and context of the error, especially for deeply-nested and/or indirected templating scenarios.
+  - vault - Vault-encrypted strings are now decrypted immediately when loaded (if the relevant secrets are available), instead of being repeatedly decrypted on each access.
+  - templating - Template evaluation is lazier than in previous versions. Template expressions which resolve only portions of a data structure no longer result in the entire structure being templated.
+
 breaking_changes:
-  - templating - templates resulting in None are no longer automatically converted to empty string
+  - templating - Templates are always rendered in Jinja2 native mode. As a result, non-string values are no longer automatically converted to strings.
+  - templating - Templates resulting in ``None`` are no longer automatically converted to an empty string.
+  - set_fact - The string values "yes", "no", "true" and "false" were previously converted (ignoring case) to boolean values when not using Jinja2 native mode. Since Jinja2 native mode is always used, this conversion no longer occurs. When boolean values are required, native boolean syntax should be used where variables are defined, such as in YAML. When native boolean syntax is not an option, the ``bool`` filter can be used to parse string values into booleans.
+
 security_fixes:
--
+  - templating - Ansible's template engine no longer processes Jinja templates in strings unless they are marked as coming from a trusted source. Untrusted strings containing Jinja template markers are ignored with a warning. Examples of trusted sources include playbooks, vars files, and many inventory sources. Examples of untrusted sources include module results and facts. Plugins which have not been updated to preserve trust while manipulating strings may inadvertently cause them to lose their trusted status.
+  - templating - Changes to conditional expression handling removed numerous instances of insecure multi-pass templating (which could result in execution of untrusted template expressions).
+
 known_issues:
--
+  - variables - The values ``None``, ``True`` and ``False`` cannot be tagged because they are singletons. Attempts to apply tags to these values will be silently ignored.
+  - variables - Tagged values cannot be used for dictionary keys in many circumstances. # FIXME: Explain this in more detail.
+
 bugfixes:
-  - regex_search filter - corrected return value documentation to reflect None (not empty string) for no match
-  - first_found lookup - corrected return value documentation to reflect None (not empty string) for no files found
+  - regex_search filter - Corrected return value documentation to reflect None (not empty string) for no match.
+  - first_found lookup - Corrected return value documentation to reflect None (not empty string) for no files found.
+
 deprecated_features:
-  -
+  - facts - In a future Ansible release, gathered facts will no longer be accessible as top-level host variables; they must be accessed via `ansible_facts`. For example, `ansible_distribution` should now be accessed as `ansible_facts.ansible_distribution`. Accessing the fact as a top-level variable will generate a deprecation warning.
+  - DEFAULT_JINJA2_NATIVE config - This option is no longer used in the Ansible Core code base. Jinja2 native mode is now the default and only option.
+  - DEFAULT_NULL_REPRESENTATION - This option is no longer used in the Ansible Core code base. Null values are no longer automatically converted to another value during templating of single variable references.
+  - template lookup - The jinja2_native option is no longer used in the Ansible Core code base. Jinja2 native mode is now the default and only option.
+
+
