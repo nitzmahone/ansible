@@ -9,6 +9,7 @@ security_fixes:
 known_issues:
 -
 bugfixes:
-  - regex_search - corrected return value documentation to reflect None (not empty string) for no match
+  - regex_search filter - corrected return value documentation to reflect None (not empty string) for no match
+  - first_found lookup - corrected return value documentation to reflect None (not empty string) for no files found
 deprecated_features:
   -

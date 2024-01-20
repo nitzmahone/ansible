@@ -30,7 +30,7 @@
     that:
       - "first_found_var == []"
 
-- name: test lookup(first_found) with no files produces empty string
+- name: test lookup(first_found) with no files produces none
   set_fact:
     first_found_var: "{{ lookup('first_found', params, errors='ignore') }}"
   vars:
@@ -40,7 +40,7 @@
 - name: verify lookup(first_found) result
   assert:
     that:
-      - "first_found_var == ''"
+      - "first_found_var is none"
 
 # NOTE: skip: True deprecated e17a2b502d6601be53c60d7ba1c627df419460c9, remove 2.12
 - name: test first_found with no matches and skip=True does nothing
