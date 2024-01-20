@@ -87,6 +87,9 @@ def to_bool(a):
         a = a.lower()
     if a in ('yes', 'on', '1', 'true', 1):
         return True
+    # FIXME: This should warn about unrecognized falsey values.
+    #        It should also have a strict-mode tri-state that defaults to False now and in the future becomes True.
+    #        Failure to specify strict should result in a deprecation warning if the fallthrough case occurs.
     return False
 
 
