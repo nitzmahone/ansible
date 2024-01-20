@@ -410,12 +410,11 @@ class Templar:
         return templar.template(expression_template)
 
     # FIXME: wrap tripwires in a template decorator so we can preserve/propagate args automatically
-    # FIXME: static_vars is dead (long live NotATemplate); kill it from intermediate signatures and (possibly?) deprecation warning
     def template(self, *args, **kwargs) -> t.Any:
         return self.template_with_result(*args, **kwargs).result
 
     def template_with_result(self, variable, *, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
-                             overrides=None, static_vars=None, cache=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
+                             overrides=None, cache=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
                              stop_on_container_result=False, value_for_omit=Omit) -> TemplateResult:
         """Templates (possibly recursively) any given data as input."""
 
