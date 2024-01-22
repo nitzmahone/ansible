@@ -369,7 +369,7 @@ def test_unsafe_lookup():
     res = Templar(
         None,
         variables={
-            'var0': '{{ var1 }}',
+            'var0': TrustedAsTemplate().tag('{{ var1 }}'),
             'var1': ['unsafe'],
         }
     ).template(TrustedAsTemplate().tag('{{ lookup("list", var0) }}'))
@@ -380,11 +380,11 @@ def test_unsafe_lookup_no_conversion():
     res = Templar(
         None,
         variables={
-            'var0': '{{ var1 }}',
+            'var0': TrustedAsTemplate().tag('{{ var1 }}'),
             'var1': ['unsafe'],
         }
     ).template(
-        '{{ lookup("list", var0) }}',
+        TrustedAsTemplate().tag('{{ lookup("list", var0) }}'),
     )
     assert not TrustedAsTemplate.is_tagged_on(res)
 
