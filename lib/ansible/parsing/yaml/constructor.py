@@ -99,6 +99,28 @@ class AnsibleConstructor(SafeConstructor):
         value = super().construct_yaml_timestamp(node)
         return self._node_position_info(node).tag(value)
 
+    def construct_yaml_omap(self, node):
+        src_pos = self._node_position_info(node)
+        display.deprecated(
+            # FIXME: another source position use case, this time without value
+            msg=f'YAML !!omap tag found at {str(src_pos)!r} is deprecated. Use a standard mapping instead, as key order is always preserved.',
+            version='2.21',
+        )
+        items = list(super().construct_yaml_omap(node))[0]
+        items = [src_pos.tag(item) for item in items]
+        yield src_pos.tag(items)
+
+    def construct_yaml_pairs(self, node):
+        src_pos = self._node_position_info(node)
+        display.deprecated(
+            # FIXME: another source position use case, this time without value
+            msg=f'YAML !!pairs tag found at {str(src_pos)!r} is deprecated.',
+            version='2.21',
+        )
+        items = list(super().construct_yaml_pairs(node))[0]
+        items = [src_pos.tag(item) for item in items]
+        yield src_pos.tag(items)
+
     def construct_yaml_str(self, node):
         # Override the default string handling function
         # to always return unicode objects
@@ -218,6 +240,14 @@ AnsibleConstructor.add_constructor(
 AnsibleConstructor.add_constructor(
     u'tag:yaml.org,2002:set',
     AnsibleConstructor.construct_yaml_set)
+
+AnsibleConstructor.add_constructor(
+    u'tag:yaml.org,2002:omap',
+    AnsibleConstructor.construct_yaml_omap)
+
+AnsibleConstructor.add_constructor(
+    u'tag:yaml.org,2002:pairs',
+    AnsibleConstructor.construct_yaml_pairs)
 
 # FIXME: do we actually want to tag int/float/etc?
 AnsibleConstructor.add_constructor(
