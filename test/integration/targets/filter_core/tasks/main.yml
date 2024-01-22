@@ -527,6 +527,14 @@
       - mandatory_2 is failed
       - '"You did not give me a variable. I am a sad wolf." is in mandatory_2.msg'
 
+- name: Verify undef throws if resolved (default message)
+  set_fact:
+    foo: '{{ fail_foo }}'
+  vars:
+    fail_foo: '{{ undef() }}'
+  ignore_errors: yes
+  register: fail_default
+
 - name: Verify undef throws if resolved
   set_fact:
     foo: '{{ fail_foo }}'
@@ -556,7 +564,10 @@
 - name: Verify undef
   assert:
     that:
+      - fail_default is failed
+      - fail_default.msg is contains('Mandatory variable has not been overridden')  # FIXME: this message should indicate the variable name
       - fail_1 is failed
+      - fail_1.msg is contains('Expected failure')
       - not (fail_2 is failed)
       - not (fail_3 is failed)
 
