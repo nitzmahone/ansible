@@ -151,31 +151,6 @@ class TaskExecutor:
             if 'changed' not in res:
                 res['changed'] = False
 
-            def _clean_res(res, errors='surrogate_or_strict'):
-                if isinstance(res, bytes):
-                    return to_text(res, errors=errors)
-                elif isinstance(res, dict):
-                    for k in res:
-                        try:
-                            res[k] = _clean_res(res[k], errors=errors)
-                        except UnicodeError:
-                            if k == 'diff':
-                                # If this is a diff, substitute a replacement character if the value
-                                # is undecodable as utf8.  (Fix #21804)
-                                display.warning("We were unable to decode all characters in the module return data."
-                                                " Replaced some in an effort to return as much as possible")
-                                res[k] = _clean_res(res[k], errors='surrogate_then_replace')
-                            else:
-                                raise
-                elif isinstance(res, list):
-                    for idx, item in enumerate(res):
-                        res[idx] = _clean_res(item, errors=errors)
-                return res
-
-            display.debug("dumping result to json")
-            # FIXME: is this still necessary, or can we merge this with any of the other numerous recursive traversals we do?
-            res = _clean_res(res)
-            display.debug("done dumping result, returning")
             return res
         except AnsibleError as e:
             return dict(
