@@ -499,7 +499,7 @@ class TestBaseSubClass(TestBase):
         self.assertRaises(AnsibleParserError)
 
     def test_attr_name_undefined(self):
-        ds = {'name': '{{ some_var_that_shouldnt_exist_to_test_omit }}'}
+        ds = {'name': TrustedAsTemplate().tag('{{ some_var_that_shouldnt_exist_to_test_omit }}')}
         bsc = self._base_validate(ds)
         # the attribute 'name' is special cases in post_validate
         self.assertEqual(bsc.name, '{{ some_var_that_shouldnt_exist_to_test_omit }}')

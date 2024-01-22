@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import mock
 from jinja2.runtime import Context, UndefinedError
 
 import unittest
@@ -28,6 +29,7 @@ from ansible.plugins.loader import init_plugin_loader
 from ansible.template import Templar
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext
 from ansible.template.undefined_behaviors import BestEffort
+from ansible.utils.display import Display
 from units.mock.loader import DictDataLoader
 
 import pytest
@@ -62,6 +64,28 @@ class BaseTemplar(object):
 
 
 class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
+    def test_trust_fail_raises_in_tests(self):
+        """Ensure template trust check failures default to fatal for unit tests (set in units/conftest.py)"""
+        from ansible.template.old_init import _TemplateTrustCheckFailedError
+
+        assert Templar._raise_on_trust_check_fail is True
+
+        with pytest.raises(_TemplateTrustCheckFailedError):
+            self.templar.template("{{ i_am_not_trusted }}")
+
+    def test_trust_fail_warning_behavior(self):
+        """Validate that trust checks are non-fatal when Templar's _raise_on_trust_check_fail is False"""
+        untrusted_template = "{{ i_am_not_trusted }}"
+
+        with (mock.patch.object(Templar, '_raise_on_trust_check_fail', False),
+              mock.patch.object(Display, 'warning', return_value=None) as mock_warning):
+            assert self.templar.template(untrusted_template) is untrusted_template
+
+        assert mock_warning.call_count > 0
+        all_args = repr(mock_warning.call_args)
+        assert "skipped untrusted template" in all_args
+        assert untrusted_template in all_args
+
     def test_is_possibly_template_true(self):
         tests = [
             '{{ foo }}',

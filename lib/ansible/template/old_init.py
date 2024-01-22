@@ -259,10 +259,17 @@ class TemplateResult:
         return AnsibleTaggedObject.tag(str(result), AnsibleTaggedObject.tags(result) | {NotATemplate()})
 
 
+class _TemplateTrustCheckFailedError(Exception):
+    pass
+
+
 class Templar:
     """
     The main class for templating, with the main entry-point of template().
     """
+
+    # allow unit tests to easily patch trust check failures to raise instead of just warn
+    _raise_on_trust_check_fail = False
 
     def __init__(self, loader, variables=None):
         self._loader = loader
@@ -738,6 +745,7 @@ class Templar:
 
         return bool_result
 
+    # FIXME: even though the current impl is static, maybe not safe to assume it always will be?
     @staticmethod
     def _trust_check(data: str) -> bool:
         """
@@ -749,12 +757,15 @@ class Templar:
             return False
 
         if not TrustedAsTemplate.is_tagged_on(data):
-            # display.warning(f'skipped untrusted template {data=}')
             from traceback import format_stack
 
             # FIXME: make traceback optional
             tb = "\n".join(format_stack())
             display.warning(f'skipped untrusted template {_repr_from(data)}; execution stack:\n{tb}')
+
+            if Templar._raise_on_trust_check_fail:
+                # FIXME: explicit exception type?
+                raise _TemplateTrustCheckFailedError(f'failing on untrusted template {_repr_from(data)}')
 
             return False
 
