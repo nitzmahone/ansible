@@ -137,23 +137,23 @@ class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
         res = self.templar.is_template(None)
         self.assertFalse(res)
 
-    def test_template_convert_data(self):
-        res = self.templar.template(TrustedAsTemplate().tag('{{foo}}'), convert_data=True)
+    def test_template(self):
+        res = self.templar.template(TrustedAsTemplate().tag('{{foo}}'))
         self.assertTrue(res)
         self.assertEqual(res, 'bar')
 
-    def test_template_convert_data_template_in_data(self):
-        res = self.templar.template(TrustedAsTemplate().tag('{{bam}}'), convert_data=True)
+    def test_template_in_data(self):
+        res = self.templar.template(TrustedAsTemplate().tag('{{bam}}'))
         self.assertTrue(res)
         self.assertEqual(res, 'bar')
 
-    def test_template_convert_data_bare(self):
-        res = self.templar.template('bam', convert_data=True)
+    def test_template_bare(self):
+        res = self.templar.template('bam')
         self.assertTrue(res)
         self.assertEqual(res, 'bam')
 
-    def test_template_convert_data_to_json(self):
-        res = self.templar.template(TrustedAsTemplate().tag('{{bam|to_json}}'), convert_data=True)
+    def test_template_to_json(self):
+        res = self.templar.template(TrustedAsTemplate().tag('{{bam|to_json}}'))
         self.assertTrue(res)
         self.assertEqual(res, '"bar"')
 
@@ -385,7 +385,6 @@ def test_unsafe_lookup_no_conversion():
         }
     ).template(
         '{{ lookup("list", var0) }}',
-        convert_data=False,
     )
     assert not TrustedAsTemplate.is_tagged_on(res)
 
