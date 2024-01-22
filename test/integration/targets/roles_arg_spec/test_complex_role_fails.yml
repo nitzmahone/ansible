@@ -23,7 +23,7 @@
                   "argument 'some_dict' is of type <class 'ansible.module_utils.datatag._AnsibleTaggedList'> and we were unable to convert to dict: <class 'ansible.module_utils.datatag._AnsibleTaggedList'> cannot be converted to a dict",
                   "argument 'some_int' is of type <class 'ansible.module_utils.datatag._AnsibleTaggedFloat'> and we were unable to convert to int: <class 'ansible.module_utils.datatag._AnsibleTaggedFloat'> cannot be converted to an int",
                   "argument 'some_float' is of type <class 'ansible.module_utils.datatag._AnsibleTaggedStr'> and we were unable to convert to float: <class 'ansible.module_utils.datatag._AnsibleTaggedStr'> cannot be converted to a float",
-                  "argument 'some_bytes' is of type <class 'bytes'> and we were unable to convert to bytes: <class 'bytes'> cannot be converted to a Byte value",
+                  "argument 'some_bytes' is of type <class 'ansible.module_utils.datatag._AnsibleTaggedBytes'> and we were unable to convert to bytes: <class 'ansible.module_utils.datatag._AnsibleTaggedBytes'> cannot be converted to a Byte value",
                   "argument 'some_bits' is of type <class 'ansible.module_utils.datatag._AnsibleTaggedStr'> and we were unable to convert to bits: <class 'ansible.module_utils.datatag._AnsibleTaggedStr'> cannot be converted to a Bit value",
                   "value of test1_choices must be one of: this paddle game, the astray, this remote control, the chair, got: My dog",
                   "value of some_choices must be one of: choice1, choice2, got: choice4",
