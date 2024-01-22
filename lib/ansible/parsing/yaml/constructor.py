@@ -116,6 +116,17 @@ class AnsibleConstructor(SafeConstructor):
         # FIXME: optimize this to support non-conditional list construction and a shared instance of TrustedAsTemplate
         return AnsibleTaggedObject.tag(value, tags)
 
+    def construct_yaml_binary(self, node):
+        value = super().construct_yaml_binary(node)
+
+        return AnsibleTaggedObject.tag(value, self._node_position_info(node))
+
+    def construct_yaml_set(self, node):
+        data = AnsibleTaggedObject.tag(set(), self._node_position_info(node))
+        yield data
+        value = self.construct_mapping(node)
+        data.update(value)
+
     def construct_vault_encrypted_unicode(self, node):
         ciphertext = self.construct_scalar(node)
 
@@ -199,6 +210,14 @@ AnsibleConstructor.add_constructor(
 AnsibleConstructor.add_constructor(
     u'tag:yaml.org,2002:str',
     AnsibleConstructor.construct_yaml_str)
+
+AnsibleConstructor.add_constructor(
+    u'tag:yaml.org,2002:binary',
+    AnsibleConstructor.construct_yaml_binary)
+
+AnsibleConstructor.add_constructor(
+    u'tag:yaml.org,2002:set',
+    AnsibleConstructor.construct_yaml_set)
 
 # FIXME: do we actually want to tag int/float/etc?
 AnsibleConstructor.add_constructor(
