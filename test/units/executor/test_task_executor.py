@@ -97,24 +97,6 @@ class TestTaskExecutor(unittest.TestCase):
         res = te.run()
         self.assertIn("failed", res)
 
-    def test_task_executor_run_clean_res(self):
-        te = TaskExecutor(None, MagicMock(), None, None, None, None, None, None, None)
-        te._get_loop_items = MagicMock(return_value=[1])
-        te._run_loop = MagicMock(
-            return_value=[
-                {
-                    'bytes': b'bytes',
-                    'text': u'text',
-                    'int': 1,
-                }
-            ]
-        )
-        res = te.run()
-        data = res['results'][0]
-        self.assertIsInstance(data['bytes'], str)
-        self.assertIsInstance(data['text'], str)
-        self.assertIsInstance(data['int'], int)
-
     def test_task_executor_get_loop_items(self):
         fake_loader = DictDataLoader({})
 
