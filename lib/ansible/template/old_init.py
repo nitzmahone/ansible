@@ -58,7 +58,7 @@ from collections import ChainMap
 from .datatag import DeprecatedAccessAuditContext
 from .jinja_bits import AnsibleEnvironment, AnsibleJ2Vars
 
-from .utils import Omit, TemplateContext, AnsibleUndefined
+from .utils import Omit, TemplateContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
 from .undefined_behaviors import FAIL_ON_UNDEFINED
 
@@ -98,8 +98,6 @@ class Templar:
     def __init__(self, loader, variables=None):
         self._loader = loader
         self._available_variables = {} if variables is None else variables
-
-        self._fail_on_undefined_errors = C.DEFAULT_UNDEFINED_VAR_BEHAVIOR
 
         self.environment = AnsibleEnvironment(
             extensions=self._get_extensions(),
@@ -415,7 +413,7 @@ class Templar:
     def template(self, *args, **kwargs) -> t.Any:
         return self.template_with_result(*args, **kwargs).result
 
-    def template_with_result(self, variable, *, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None,
+    def template_with_result(self, variable, *, preserve_trailing_newlines=True, escape_backslashes=True,
                              overrides=None, cache=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
                              stop_on_container_result=False, value_for_omit=Omit) -> TemplateResult:
         """Templates (possibly recursively) any given data as input."""
@@ -424,20 +422,6 @@ class Templar:
         if variable is None or NotATemplate.is_tagged_on(variable):
             return TemplateResult(result=variable)  # input was not manipulated, trust that it contains only allowed types
 
-        # FIXME: nuke
-        if fail_on_undefined is None:
-            fail_on_undefined = self._fail_on_undefined_errors
-
-        template_kwargs = dict(
-            preserve_trailing_newlines=preserve_trailing_newlines,
-            escape_backslashes=escape_backslashes,
-            fail_on_undefined=fail_on_undefined,
-            overrides=overrides,
-            cache=cache,
-            disable_lookups=disable_lookups,
-            undefined_behavior=undefined_behavior,
-        )
-
         # FIXME: early exit on empty collections
 
         # track access to items that are tagged Deprecated during templating, handle accordingly
@@ -445,12 +429,18 @@ class Templar:
                 UndecryptableAccessMutator(),  # trigger injection of VaultBomb
                 DeprecatedAccessAuditContext() as deprecated,
         ):
-            _template_result = self._template_recursive(variable, **template_kwargs)
+            _template_result = self._template_recursive(
+                variable,
+                preserve_trailing_newlines=preserve_trailing_newlines,
+                escape_backslashes=escape_backslashes,
+                overrides=overrides,
+                cache=cache,
+                disable_lookups=disable_lookups,
+                undefined_behavior=undefined_behavior,
+            )
 
-            # If we're the outermost template operation, and our input was a string template whose result was NOT a string,
-            # we need to do one last recursive template pass over the resulting container (since we're not doing it on Jinja resolve anymore). This will
-            # ensure that we never allow containers with untemplated strings to escape the template system, and that any
-            # embedded Undefined values we encounter will raise AnsibleUndefinedError if fail_on_undefined is set (FIXME once we actually do that).
+            # If we're the outermost template operation, we need to recursively finalize the template result.
+            # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
             if not TemplateContext.current():
                 if _template_result is Omit:
                     if value_for_omit is Omit:
@@ -489,7 +479,7 @@ class Templar:
         return TemplateResult(result=_template_result)
 
     def _template_recursive(self, variable, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True,
-                            fail_on_undefined=None, overrides=None, cache=None, disable_lookups=False):
+                            overrides=None, cache=None, disable_lookups=False):
         """Templates (possibly recursively) any given data as input."""
         # stack the current active var value we're templating; this lets the deprecated tripwire ask for it
         with TemplateContext(template_value=variable, templar=self):
@@ -506,7 +496,6 @@ class Templar:
                     variable,
                     preserve_trailing_newlines=preserve_trailing_newlines,
                     escape_backslashes=escape_backslashes,
-                    fail_on_undefined=fail_on_undefined,
                     overrides=overrides,
                     disable_lookups=disable_lookups,
                     undefined_behavior=undefined_behavior,
@@ -775,8 +764,7 @@ class Templar:
             for x in value.values():
                 self._detonate_vault_bombs(x)
 
-    def do_template(self, data, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True, fail_on_undefined=None, overrides=None,
-                    disable_lookups=False):
+    def do_template(self, data, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True, overrides=None, disable_lookups=False):
         if not TemplateContext.current():
             # FIXME: deprecation? Also, probably include a stacktrace...
             _display.warning('missing TemplateContext (direct call to do_template?)')
@@ -789,9 +777,6 @@ class Templar:
             return data
 
         original_data = data
-
-        if fail_on_undefined is None:
-            fail_on_undefined = self._fail_on_undefined_errors
 
         # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
         # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.

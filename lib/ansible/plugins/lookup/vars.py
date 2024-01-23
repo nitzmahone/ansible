@@ -95,7 +95,7 @@ class LookupModule(LookupBase):
                     except KeyError:
                         raise AnsibleUndefinedVariable('No variable found with this name: %s' % term)
 
-                ret.append(self._templar.template(value, fail_on_undefined=True))
+                ret.append(self._templar.template(value))
             except AnsibleUndefinedVariable:
                 if default is not None:
                     ret.append(default)

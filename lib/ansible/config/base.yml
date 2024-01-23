@@ -1125,6 +1125,10 @@ DEFAULT_UNDEFINED_VAR_BEHAVIOR:
   ini:
   - {key: error_on_undefined_vars, section: defaults}
   type: boolean
+  deprecated:
+    why: This option is no longer used in the Ansible Core code base.
+    version: "2.21"
+    alternatives: There is no alternative at the moment. A different mechanism would have to be implemented in the current code base.
 DEFAULT_VARS_PLUGIN_PATH:
   name: Vars Plugins Path
   default: '{{ ANSIBLE_HOME ~ "/plugins/vars:/usr/share/ansible/plugins/vars" }}'
