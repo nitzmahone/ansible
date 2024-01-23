@@ -340,8 +340,7 @@ class Templar:
         """
         Sets the list of template variables this Templar instance will use
         to template things, so we don't have to pass them around between
-        internal methods. We also clear the template cache here, as the variables
-        are being changed.
+        internal methods.
         """
 
         if not isinstance(variables, Mapping):
@@ -414,7 +413,7 @@ class Templar:
         return self.template_with_result(*args, **kwargs).result
 
     def template_with_result(self, variable, *, preserve_trailing_newlines=True, escape_backslashes=True,
-                             overrides=None, cache=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
+                             overrides=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
                              stop_on_container_result=False, value_for_omit=Omit) -> TemplateResult:
         """Templates (possibly recursively) any given data as input."""
 
@@ -434,7 +433,6 @@ class Templar:
                 preserve_trailing_newlines=preserve_trailing_newlines,
                 escape_backslashes=escape_backslashes,
                 overrides=overrides,
-                cache=cache,
                 disable_lookups=disable_lookups,
                 undefined_behavior=undefined_behavior,
             )
@@ -479,17 +477,11 @@ class Templar:
         return TemplateResult(result=_template_result)
 
     def _template_recursive(self, variable, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True,
-                            overrides=None, cache=None, disable_lookups=False):
+                            overrides=None, disable_lookups=False):
         """Templates (possibly recursively) any given data as input."""
         # stack the current active var value we're templating; this lets the deprecated tripwire ask for it
         with TemplateContext(template_value=variable, templar=self):
             # FIXME: ensure tag propagation behavior is working for containers
-
-            if cache is not None:
-                _display.deprecated(
-                    msg="The `cache` option to `Templar.template` is no longer functional, and will be removed in a future release.",
-                    version='2.18',
-                )
 
             if isinstance(variable, str):
                 if not self.is_possibly_template(variable, overrides):
