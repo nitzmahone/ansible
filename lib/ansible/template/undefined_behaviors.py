@@ -69,7 +69,7 @@ class BestEffort(UndefinedBehavior):
 BEST_EFFORT: t.Final = BestEffort()  # no sense in making many instances...
 
 
-class BestEffortWithWarnings(UndefinedBehavior):
+class BestEffortWithWarnings(BestEffort):
     def __init__(self) -> None:
         self._undefined_templates: list[Undefined] = []
 
