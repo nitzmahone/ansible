@@ -26,7 +26,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleUndefinedVariable
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate
 from ansible.plugins.loader import init_plugin_loader
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext
 from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display

@@ -29,7 +29,7 @@ from ansible.utils.collection_loader._collection_finder import _get_collection_m
 from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
 from ansible.utils.vars import combine_vars, isidentifier, get_unique_id
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 
 display = Display()
 

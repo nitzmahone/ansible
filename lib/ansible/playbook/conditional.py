@@ -24,7 +24,7 @@ from jinja2.exceptions import UndefinedError
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.text.converters import to_native
 from ansible.playbook.attribute import FieldAttribute
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 from ansible.utils.display import Display
 
 display = Display()

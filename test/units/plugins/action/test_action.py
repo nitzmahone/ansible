@@ -36,7 +36,7 @@ from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.playbook.play_context import PlayContext
 from ansible.plugins.action import ActionBase
 from ansible.plugins.loader import init_plugin_loader
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 from ansible.vars.clean import clean_facts
 
 from units.mock.loader import DictDataLoader

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from ansible.playbook.conditional import Conditional
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 from ansible.module_utils.datatag import TrustedAsTemplate
 
 from units.mock.loader import DictDataLoader

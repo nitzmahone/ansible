@@ -25,7 +25,7 @@ from ansible.errors import AnsibleParserError
 from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.plugins.inventory.constructed import InventoryModule
 from ansible.inventory.data import InventoryData
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 
 
 @pytest.fixture()

@@ -28,7 +28,7 @@ from ansible.playbook.base import Base
 from ansible.playbook.collectionsearch import CollectionSearch
 from ansible.playbook.conditional import Conditional
 from ansible.playbook.taggable import Taggable
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 from ansible.utils.collection_loader import AnsibleCollectionRef
 from ansible.utils.collection_loader._collection_finder import _get_collection_role_path
 from ansible.utils.path import unfrackpath

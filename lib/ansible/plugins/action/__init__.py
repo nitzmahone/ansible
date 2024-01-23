@@ -29,7 +29,7 @@ from ansible.module_utils.six import binary_type, string_types, text_type
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
 from ansible.module_utils.common.json import AnsibleJSONEncoder, AnsibleJSONDecoder
 from ansible.release import __version__
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 from ansible.utils.collection_loader import resource_from_fqcr
 from ansible.utils.display import Display
 from ansible.vars.clean import remove_internal_keys

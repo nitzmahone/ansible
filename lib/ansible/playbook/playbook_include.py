@@ -31,7 +31,7 @@ from ansible.playbook.conditional import Conditional
 from ansible.playbook.taggable import Taggable
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.collection_loader._collection_finder import _get_collection_name_from_path, _get_collection_playbook_path
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 from ansible.utils.display import Display
 
 display = Display()

@@ -25,7 +25,7 @@ from ansible.module_utils.common.text.converters import to_text
 from ansible.playbook.handler import Handler
 from ansible.playbook.task_include import TaskInclude
 from ansible.playbook.role_include import IncludeRole
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 from ansible.utils.display import Display
 
 display = Display()

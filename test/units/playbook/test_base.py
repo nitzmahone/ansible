@@ -22,7 +22,7 @@ import unittest
 from ansible.errors import AnsibleParserError, AnsibleAssertionError
 from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.playbook.attribute import FieldAttribute, NonInheritableFieldAttribute
-from ansible.template import Templar
+from ansible.template.old_init import Templar
 from ansible.playbook import base
 
 from units.mock.loader import DictDataLoader
