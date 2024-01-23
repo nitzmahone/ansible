@@ -77,7 +77,6 @@ from itertools import product
 from ansible import constants as C
 from ansible.errors import AnsibleParserError
 from ansible.plugins.inventory import BaseInventoryPlugin
-from ansible.template.undefined_behaviors import FAIL_ON_UNDEFINED
 
 
 class InventoryModule(BaseInventoryPlugin):
@@ -103,16 +102,19 @@ class InventoryModule(BaseInventoryPlugin):
         return valid
 
     def template(self, pattern, variables):
+        # Allow pass-through of data structures for templating later (if applicable).
+        # This limitation was part of the original plugin implementation and was updated to maintain feature parity with the new templating API.
+        if not isinstance(pattern, str):
+            return pattern
         # FIXME: don't clobber variables
         self.templar.available_variables = variables
-        return self.templar.template(pattern, undefined_behavior=FAIL_ON_UNDEFINED)
+        return self.templar.template(pattern)
 
     def add_parents(self, inventory, child, parents, template_vars):
         for parent in parents:
-            try:
-                groupname = self.template(parent['name'], template_vars)
-            except (AttributeError, ValueError):
-                raise AnsibleParserError("Element %s has a parent with no name element" % child['name'])
+            groupname = self.template(parent.get('name'), template_vars)
+            if not groupname:
+                raise AnsibleParserError(f"Element {child} has a parent with no name.")
             if groupname not in inventory.groups:
                 inventory.add_group(groupname)
             group = inventory.groups[groupname]
