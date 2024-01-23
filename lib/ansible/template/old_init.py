@@ -64,26 +64,13 @@ from .undefined_behaviors import FAIL_ON_UNDEFINED
 
 display = Display()
 
-JINJA2_OVERRIDE = '#jinja2:'
-JINJA2_BEGIN_TOKENS = frozenset(('variable_begin', 'block_begin', 'comment_begin', 'raw_begin'))
-JINJA2_END_TOKENS = frozenset(('variable_end', 'block_end', 'comment_end', 'raw_end'))
+_JINJA2_OVERRIDE = '#jinja2:'
+_JINJA2_BEGIN_TOKENS = frozenset(('variable_begin', 'block_begin', 'comment_begin', 'raw_begin'))
+_JINJA2_END_TOKENS = frozenset(('variable_end', 'block_end', 'comment_end', 'raw_end'))
 
 # FIXME: remove/harden- just here for development backstop for now
 if tuple(map(int, jinja2.__version__.split('.'))) < (3, 1):
     raise RuntimeError('Jinja 3.1+ required')
-
-
-# FIXME: FDI028 - initial prototype, is this what we want?
-#        should it be part of our public interface?
-#        should this be part of AnsibleSourcePosition or otherwise in the datatag module_utils?
-def _repr_from(value: t.Any) -> str:
-    """Return the repr() of the given value, appending attribution of the source position, if available."""
-    src_pos = AnsibleSourcePosition.get_tag(value)
-
-    if src_pos:
-        return f'{value!r} from {str(src_pos)!r}'
-
-    return f'{value!r}'
 
 
 # FIXME: do we still need a class for this?
@@ -125,6 +112,19 @@ class Templar:
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
 
+    # FIXME: FDI028 - initial prototype, is this what we want?
+    #        should it be part of our public interface?
+    #        should this be part of AnsibleSourcePosition or otherwise in the datatag module_utils?
+    @staticmethod
+    def _repr_from(value: t.Any) -> str:
+        """Return the repr() of the given value, appending attribution of the source position, if available."""
+        src_pos = AnsibleSourcePosition.get_tag(value)
+
+        if src_pos:
+            return f'{value!r} from {str(src_pos)!r}'
+
+        return f'{value!r}'
+
     @staticmethod
     def _is_possibly_template_internal(data, jinja_env):
         """Determines if a string looks like a template, by seeing if it
@@ -164,14 +164,14 @@ class Templar:
         # so we may get an exception at any part of the loop
         try:
             for token in env.lex(d2):
-                if token[1] in JINJA2_BEGIN_TOKENS:
+                if token[1] in _JINJA2_BEGIN_TOKENS:
                     if start and token[1] == 'comment_begin':
                         # Comments can wrap other token types
                         comment = True
                     start = False
                     # Example: variable_end -> variable
                     found = token[1].split('_')[0]
-                elif token[1] in JINJA2_END_TOKENS:
+                elif token[1] in _JINJA2_END_TOKENS:
                     if token[1].split('_')[0] == found:
                         return True
                     elif comment:
@@ -187,7 +187,7 @@ class Templar:
             overrides = {}
 
         try:
-            has_override_header = data.startswith(JINJA2_OVERRIDE)
+            has_override_header = data.startswith(_JINJA2_OVERRIDE)
         except (TypeError, AttributeError):
             has_override_header = False
 
@@ -199,7 +199,7 @@ class Templar:
         # Get jinja env overrides from template
         if has_override_header:
             eol = data.find('\n')
-            line = data[len(JINJA2_OVERRIDE):eol]
+            line = data[len(_JINJA2_OVERRIDE):eol]
             data = data[eol + 1:]
             for pair in line.split(','):
                 if ':' not in pair:
@@ -482,7 +482,7 @@ class Templar:
             message = deprecation.msg
 
             if deprecation_template is not None:
-                message += f' while templating {_repr_from(deprecation_template)}'
+                message += f' while templating {self._repr_from(deprecation_template)}'
 
             display.deprecated(message, version=deprecation.removal_version, date=deprecation.removal_date)
 
@@ -686,7 +686,7 @@ class Templar:
 
             if not TrustedAsTemplate.is_tagged_on(conditional):
                 raise AnsibleConditionalError(
-                    f'Conditional {_repr_from(conditional)} is not trusted. '
+                    f'Conditional {self._repr_from(conditional)} is not trusted. '
                     'Conditionals must be defined by trusted sources such as playbooks, roles, etc., '
                     'and not untrusted sources such as module results.'
                 )
@@ -708,7 +708,7 @@ class Templar:
                 overrides = {}
                 display.warning(
                     # FIXME: should we deprecate and/or remove this capability?
-                    f'Conditional {_repr_from(conditional)} could not be parsed as a Jinja2 expression, and will be '
+                    f'Conditional {self._repr_from(conditional)} could not be parsed as a Jinja2 expression, and will be '
                     'evaluated as a template instead. Conditionals should not include templating delimiters '
                     'such as {{ }} or {% %}.'
                 )
@@ -721,7 +721,7 @@ class Templar:
                 # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
                 #  at least the warning allows us a place to consistently present useful forensic information about the problem
 
-                conditional_repr = _repr_from(conditional)
+                conditional_repr = self._repr_from(conditional)
 
                 display.warning(f'Conditional {conditional_repr} evaluation failed: {e}')
 
@@ -735,14 +735,12 @@ class Templar:
         bool_result = bool(result)
         # FIXME: `type(result)` should probably be the base type of the data structure
         # FIXME: add an option to make these errors, enabled by default for integration tests
-        display.warning(f'Conditional {_repr_from(conditional)} had result {result!r} of type {type(result)}, '
+        display.warning(f'Conditional {self._repr_from(conditional)} had result {result!r} of type {type(result)}, '
                         f'which evaluates to {bool_result}. Conditionals should always have a boolean result.')
 
         return bool_result
 
-    # FIXME: even though the current impl is static, maybe not safe to assume it always will be?
-    @staticmethod
-    def _trust_check(data: str) -> bool:
+    def _trust_check(self, data: str) -> bool:
         """
         Return True if the given template data is trusted for templating, otherwise return False.
 
@@ -756,11 +754,11 @@ class Templar:
 
             # FIXME: make traceback optional
             tb = "\n".join(format_stack())
-            display.warning(f'skipped untrusted template {_repr_from(data)}; execution stack:\n{tb}')
+            display.warning(f'skipped untrusted template {self._repr_from(data)}; execution stack:\n{tb}')
 
             if Templar._raise_on_trust_check_fail:
                 # FIXME: explicit exception type?
-                raise _TemplateTrustCheckFailedError(f'failing on untrusted template {_repr_from(data)}')
+                raise _TemplateTrustCheckFailedError(f'failing on untrusted template {self._repr_from(data)}')
 
             return False
 
