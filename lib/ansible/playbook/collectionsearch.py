@@ -6,8 +6,6 @@ from __future__ import annotations
 from ansible.module_utils.six import string_types
 from ansible.playbook.attribute import FieldAttribute
 from ansible.utils.collection_loader import AnsibleCollectionConfig
-from ansible.template import is_template
-from ansible.template.jinja_bits import AnsibleEnvironment
 from ansible.utils.display import Display
 
 display = Display()
@@ -47,15 +45,5 @@ class CollectionSearch:
 
         if not ds:  # don't return an empty collection list, just return None
             return None
-
-        # This duplicates static attr checking logic from post_validate()
-        # because if the user attempts to template a collection name, it may
-        # error before it ever gets to the post_validate() warning (e.g. trying
-        # to import a role from the collection).
-        env = AnsibleEnvironment()
-        for collection_name in ds:
-            if is_template(collection_name, env):
-                display.warning('"collections" is not templatable, but we found: %s, '
-                                'it will not be templated and will be used "as is".' % (collection_name))
 
         return ds
