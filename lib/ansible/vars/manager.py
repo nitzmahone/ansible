@@ -518,7 +518,7 @@ class VariableManager:
 
         if task.delegate_to:
             try:
-                delegated_host_name = templar.template(task.delegate_to, fail_on_undefined=False)
+                delegated_host_name = templar.template(task.delegate_to)
             except AnsibleValueOmittedError:
                 pass
 
@@ -634,7 +634,7 @@ class VariableManager:
                 vars_copy[item_var] = item
 
             templar.available_variables = vars_copy
-            delegated_host_name = templar.template(task.delegate_to, fail_on_undefined=False)
+            delegated_host_name = templar.template(task.delegate_to)
             if delegated_host_name != task.delegate_to:
                 cache_items = True
             if delegated_host_name is None:

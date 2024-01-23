@@ -222,9 +222,6 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         self.assertRaises(AnsibleError, templar.template, TrustedAsTemplate().tag("{{recursive}}"))
         self.assertRaises(UndefinedError, templar.template, TrustedAsTemplate().tag("{{foo-bar}}"))  # FIXME: what's the correct exception type to expect here?
 
-        # test with fail_on_undefined=False
-        # FIXME: restore this test when/if we restore fail_on_undefined (for API backwards compat)
-        # self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), fail_on_undefined=False), "{{bad_var}}")
         # FIXME: this currently expects the best effort result to match the hint, which is a reconstructed version of the original template with additional
         #        spaces, which may not be what we want (or what we end up with after refactoring)
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), undefined_behavior=BEST_EFFORT), "{{ bad_var }}")

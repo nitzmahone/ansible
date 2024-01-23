@@ -76,7 +76,7 @@ class HostVarsVars(Mapping):
         self._host = host
 
     def __getitem__(self, key: str) -> t.Any:
-        return self._templar.template(self._vars[key], fail_on_undefined=False)
+        return self._templar.template(self._vars[key])
 
     def __contains__(self, item: object) -> bool:
         return item in self._vars
