@@ -45,7 +45,7 @@ from ansible.errors import (
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
 from ansible.plugins.loader import lookup_loader
-from ansible.template.vault import _AnsibleTaggedVaultBomb, DetonateVaultBombsTripwire, UndecryptableAccessMutator
+from ansible.template.vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from ansible.module_utils.datatag import (
     AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError, _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
 )
@@ -458,11 +458,6 @@ class Templar:
                     _template_result = _finalize_template_result(_template_result, undefined_behavior=undefined_behavior, raise_on_unsupported_type=True)
                     _template_result = undefined_behavior.post_finalize(_template_result)
 
-                # FIXME: this may not be needed now that we always finalize, trying it commented out
-                # if undecryptable.is_tripped:
-                #     # we encountered at least one UndecryptableVaultedValue; raise an error if any remain in the result
-                #     self._detonate_vault_bombs(_template_result)
-
         # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
         for deprecation_template, deprecation in deprecated.deprecated_access:
             # FIXME: if we're in a worker, propagate deprecated access warnings back to the controller for deduplication
@@ -747,17 +742,6 @@ class Templar:
             return False
 
         return True
-
-    def _detonate_vault_bombs(self, value: t.Any) -> None:
-        if type(value) is _AnsibleTaggedVaultBomb:  # pylint: disable=unidiomatic-typecheck
-            value.detonate()
-        elif is_sequence(value):
-            for x in value:
-                self._detonate_vault_bombs(x)
-        elif isinstance(value, Mapping):
-            # FIXME: any worry about keys?
-            for x in value.values():
-                self._detonate_vault_bombs(x)
 
     def do_template(self, data, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True, overrides=None, disable_lookups=False):
         if not TemplateContext.current():
