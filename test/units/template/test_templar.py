@@ -28,7 +28,7 @@ from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObj
 from ansible.plugins.loader import init_plugin_loader
 from ansible.template import Templar
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext
-from ansible.template.undefined_behaviors import BestEffort
+from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display
 from units.mock.loader import DictDataLoader
 
@@ -227,7 +227,7 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         # self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), fail_on_undefined=False), "{{bad_var}}")
         # FIXME: this currently expects the best effort result to match the hint, which is a reconstructed version of the original template with additional
         #        spaces, which may not be what we want (or what we end up with after refactoring)
-        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), undefined_behavior=BestEffort()), "{{ bad_var }}")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), undefined_behavior=BEST_EFFORT), "{{ bad_var }}")
 
         # test setting available_variables
         templar.available_variables = dict(foo="bam")

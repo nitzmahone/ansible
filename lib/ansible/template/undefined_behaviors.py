@@ -46,9 +46,6 @@ FAIL_ON_UNDEFINED: t.Final = FailOnUndefined()  # no sense in making many instan
 
 
 class BestEffort(UndefinedBehavior):
-    def __init__(self) -> None:
-        self._undefined_templates: list[Undefined] = []
-
     @staticmethod
     def _hint(value: Undefined):
         try:
@@ -66,10 +63,21 @@ class BestEffort(UndefinedBehavior):
         return hint
 
     def handle_undefined(self, value: Undefined) -> t.Any:
+        return NotATemplate().tag(self._hint(value))
+
+
+BEST_EFFORT: t.Final = BestEffort()  # no sense in making many instances...
+
+
+class BestEffortWithWarnings(UndefinedBehavior):
+    def __init__(self) -> None:
+        self._undefined_templates: list[Undefined] = []
+
+    def handle_undefined(self, value: Undefined) -> t.Any:
         self._undefined_templates.append(value)
         # FIXME: figure out how/where to propagate this as a failure to the TemplateResult
 
-        return NotATemplate().tag(self._hint(value))
+        return super().handle_undefined(value)
 
     @property
     def has_warnings(self) -> bool:
@@ -85,7 +93,7 @@ class BestEffort(UndefinedBehavior):
                 raise
 
 
-class BestEffortOmitUndefined(BestEffort):
+class BestEffortOmitUndefined(BestEffortWithWarnings):
     def handle_undefined(self, value: Undefined) -> t.Any:
         self._undefined_templates.append(value)
 

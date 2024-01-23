@@ -39,7 +39,7 @@ from ansible.playbook.task import Task
 from ansible.plugins.loader import action_loader
 from ansible.plugins.strategy import StrategyBase
 from ansible.template import Templar
-from ansible.template.undefined_behaviors import BestEffort
+from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display
 
 display = Display()
@@ -223,7 +223,7 @@ class StrategyModule(StrategyBase):
                             display.debug("done copying, going to template now")
                             try:
                                 # FIXME: should a failure here be a warning?
-                                task.name = templar.template_with_result(task.name, undefined_behavior=BestEffort()).as_text()
+                                task.name = templar.template_with_result(task.name, undefined_behavior=BEST_EFFORT).as_text()
                                 display.debug("done templating")
                             except Exception:
                                 # just ignore any errors during task name templating,

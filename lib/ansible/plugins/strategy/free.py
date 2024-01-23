@@ -38,7 +38,7 @@ from ansible.playbook.included_file import IncludedFile
 from ansible.plugins.loader import action_loader
 from ansible.plugins.strategy import StrategyBase
 from ansible.template import Templar
-from ansible.template.undefined_behaviors import BestEffort
+from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.module_utils.common.text.converters import to_text
 from ansible.utils.display import Display
 
@@ -157,7 +157,7 @@ class StrategyModule(StrategyBase):
 
                         try:
                             # FIXME: should a failure here be a warning?
-                            task.name = templar.template_with_result(task.name, undefined_behavior=BestEffort()).as_text()
+                            task.name = templar.template_with_result(task.name, undefined_behavior=BEST_EFFORT).as_text()
                             display.debug("done templating", host=host_name)
                         except Exception:
                             # just ignore any errors during task name templating,
