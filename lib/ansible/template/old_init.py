@@ -91,39 +91,6 @@ def _repr_from(value: t.Any) -> str:
     return f'{value!r}'
 
 
-def _create_overlay(data: str, overrides: dict, jinja_env: AnsibleEnvironment, undefined_behavior=None) -> tuple[str, AnsibleEnvironment, bool]:
-    if overrides is None:
-        overrides = {}
-
-    try:
-        has_override_header = data.startswith(JINJA2_OVERRIDE)
-    except (TypeError, AttributeError):
-        has_override_header = False
-
-    if overrides or has_override_header or undefined_behavior:
-        overlay = jinja_env.overlay(**overrides, undefined_behavior=undefined_behavior)
-    else:
-        overlay = jinja_env
-
-    # Get jinja env overrides from template
-    if has_override_header:
-        eol = data.find('\n')
-        line = data[len(JINJA2_OVERRIDE):eol]
-        data = data[eol + 1:]
-        for pair in line.split(','):
-            if ':' not in pair:
-                raise AnsibleError("failed to parse jinja2 override '%s'."
-                                   " Did you use something different from colon as key-value separator?" % pair.strip())
-            (key, val) = pair.split(':', 1)
-            key = key.strip()
-            if hasattr(overlay, key):
-                setattr(overlay, key, ast.literal_eval(val.strip()))
-            else:
-                display.warning(f"Could not find Jinja2 environment setting to override: '{key}'")
-
-    return data, overlay, has_override_header
-
-
 def is_possibly_template(data, jinja_env):
     """Determines if a string looks like a template, by seeing if it
     contains a jinja2 start delimiter. Does not guarantee that the string
@@ -219,6 +186,38 @@ class Templar:
         # Custom globals
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
+
+    def _create_overlay(self, data: str, overrides: dict, undefined_behavior=None) -> tuple[str, AnsibleEnvironment, bool]:
+        if overrides is None:
+            overrides = {}
+
+        try:
+            has_override_header = data.startswith(JINJA2_OVERRIDE)
+        except (TypeError, AttributeError):
+            has_override_header = False
+
+        if overrides or has_override_header or undefined_behavior:
+            overlay = self.environment.overlay(**overrides, undefined_behavior=undefined_behavior)
+        else:
+            overlay = self.environment
+
+        # Get jinja env overrides from template
+        if has_override_header:
+            eol = data.find('\n')
+            line = data[len(JINJA2_OVERRIDE):eol]
+            data = data[eol + 1:]
+            for pair in line.split(','):
+                if ':' not in pair:
+                    raise AnsibleError("failed to parse jinja2 override '%s'."
+                                       " Did you use something different from colon as key-value separator?" % pair.strip())
+                (key, val) = pair.split(':', 1)
+                key = key.strip()
+                if hasattr(overlay, key):
+                    setattr(overlay, key, ast.literal_eval(val.strip()))
+                else:
+                    display.warning(f"Could not find Jinja2 environment setting to override: '{key}'")
+
+        return data, overlay, has_override_header
 
     @staticmethod
     def _escape_backslashes(data: str, jinja_env: AnsibleEnvironment) -> str:
@@ -550,7 +549,7 @@ class Templar:
     templatable = is_template
 
     def is_possibly_template(self, data, overrides=None):
-        data, env, has_override_header = _create_overlay(data, overrides, self.environment)
+        data, env, has_override_header = self._create_overlay(data, overrides)
         return has_override_header or is_possibly_template(data, env)
 
     def _fail_lookup(self, name, *args, **kwargs):
@@ -804,7 +803,7 @@ class Templar:
         try:
             # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
             # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
-            data, myenv, _has_override_header = _create_overlay(data, overrides, self.environment, undefined_behavior=undefined_behavior)
+            data, myenv, _has_override_header = self._create_overlay(data, overrides, undefined_behavior=undefined_behavior)
 
             if escape_backslashes:
                 data = self._escape_backslashes(data, myenv)
