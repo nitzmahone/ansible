@@ -37,7 +37,7 @@ from ansible.playbook.handler import Handler
 from ansible.playbook.included_file import IncludedFile
 from ansible.plugins.loader import action_loader
 from ansible.plugins.strategy import StrategyBase
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.module_utils.common.text.converters import to_text
 from ansible.utils.display import Display

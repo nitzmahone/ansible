@@ -26,7 +26,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleUndefinedVariable
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate
 from ansible.plugins.loader import init_plugin_loader
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext
 from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display
@@ -66,7 +66,7 @@ class BaseTemplar(object):
 class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
     def test_trust_fail_raises_in_tests(self):
         """Ensure template trust check failures default to fatal for unit tests (set in units/conftest.py)"""
-        from ansible.template.old_init import _TemplateTrustCheckFailedError
+        from ansible.template.templar import _TemplateTrustCheckFailedError
 
         assert Templar._raise_on_trust_check_fail is True
 

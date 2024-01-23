@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 from ansible import constants as C
 from ansible.playbook.task import Task
 from ansible.plugins.action.gather_facts import ActionModule as GatherFactsAction
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 from ansible.executor import module_common
 
 from units.mock.loader import DictDataLoader

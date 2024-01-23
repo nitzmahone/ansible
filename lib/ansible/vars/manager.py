@@ -36,7 +36,7 @@ from ansible.module_utils.six import text_type, string_types
 from ansible.module_utils.datatag import Deprecated, NotATemplate
 from ansible.plugins.loader import lookup_loader
 from ansible.vars.fact_cache import FactCache
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 from ansible.utils.display import Display
 from ansible.utils.listify import listify_lookup_plugin_terms
 from ansible.utils.vars import combine_vars, load_extra_vars, load_options_vars

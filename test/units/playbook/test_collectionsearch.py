@@ -21,7 +21,7 @@ from ansible.errors import AnsibleParserError
 from ansible.playbook.play import Play
 from ansible.playbook.task import Task
 from ansible.playbook.block import Block
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 
 import pytest
 

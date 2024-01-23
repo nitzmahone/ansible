@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 from ansible.template.jinja_bits import AnsibleJ2Vars
 from ansible.template.utils import TemplateContext
 

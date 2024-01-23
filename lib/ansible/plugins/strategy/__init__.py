@@ -49,7 +49,7 @@ from ansible.playbook.helpers import load_list_of_blocks
 from ansible.playbook.task import Task
 from ansible.playbook.task_include import TaskInclude
 from ansible.plugins import loader as plugin_loader
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 from ansible.utils.display import Display
 from ansible.utils.fqcn import add_internal_fqcns
 from ansible.utils.sentinel import Sentinel

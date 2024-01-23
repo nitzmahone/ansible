@@ -22,7 +22,7 @@ import unittest
 from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.template.utils import AnsibleUndefined
 from ansible.template.jinja_bits import AnsibleEnvironment
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 
 
 # These are internal utility functions only needed for templating.  They're

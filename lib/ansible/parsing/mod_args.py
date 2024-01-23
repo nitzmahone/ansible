@@ -24,7 +24,7 @@ from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_text
 from ansible.parsing.splitter import parse_kv, split_args
 from ansible.plugins.loader import module_loader, action_loader
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 from ansible.utils.fqcn import add_internal_fqcns
 from ansible.utils.sentinel import Sentinel
 

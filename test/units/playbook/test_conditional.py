@@ -5,7 +5,7 @@ import unittest
 from units.mock.loader import DictDataLoader
 from unittest.mock import MagicMock
 
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible import errors
 

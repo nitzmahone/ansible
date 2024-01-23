@@ -22,7 +22,7 @@ from unittest.mock import MagicMock
 
 from ansible.executor.playbook_executor import PlaybookExecutor
 from ansible.playbook import Playbook
-from ansible.template.old_init import Templar
+from ansible.template.templar import Templar
 from ansible.utils import context_objects as co
 
 from units.mock.loader import DictDataLoader
