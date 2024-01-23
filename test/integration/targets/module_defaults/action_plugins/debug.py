@@ -23,7 +23,7 @@ from ansible.errors import AnsibleError, AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.plugins.action import ActionBase
 from ansible.template.utils import Omit
-from ansible.template.undefined_behaviors import BestEffort, FAIL_ON_UNDEFINED
+from ansible.template.undefined_behaviors import BestEffortWithWarnings, FAIL_ON_UNDEFINED
 
 
 class ActionModule(ActionBase):
@@ -33,7 +33,7 @@ class ActionModule(ActionBase):
     _requires_connection = False
 
     def run(self, tmp=None, task_vars=None):
-        best_effort = BestEffort()
+        best_effort = BestEffortWithWarnings()
 
         raw_task_args = self._task.untemplated_args
 
