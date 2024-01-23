@@ -86,25 +86,6 @@ def _repr_from(value: t.Any) -> str:
     return f'{value!r}'
 
 
-def is_possibly_template(data, jinja_env):
-    """Determines if a string looks like a template, by seeing if it
-    contains a jinja2 start delimiter. Does not guarantee that the string
-    is actually a template.
-
-    This is different than ``is_template`` which is more strict.
-    This method may return ``True`` on a string that is not templatable.
-
-    Useful when guarding passing a string for templating, but when
-    you want to allow the templating engine to make the final
-    assessment which may result in ``TemplateSyntaxError``.
-    """
-    if isinstance(data, str):
-        for marker in (jinja_env.block_start_string, jinja_env.variable_start_string, jinja_env.comment_start_string):
-            if marker in data:
-                return True
-    return False
-
-
 # FIXME: do we still need a class for this?
 @dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
 class TemplateResult:
@@ -144,6 +125,25 @@ class Templar:
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
 
+    @staticmethod
+    def _is_possibly_template_internal(data, jinja_env):
+        """Determines if a string looks like a template, by seeing if it
+        contains a jinja2 start delimiter. Does not guarantee that the string
+        is actually a template.
+
+        This is different than ``is_template`` which is more strict.
+        This method may return ``True`` on a string that is not templatable.
+
+        Useful when guarding passing a string for templating, but when
+        you want to allow the templating engine to make the final
+        assessment which may result in ``TemplateSyntaxError``.
+        """
+        if isinstance(data, str):
+            for marker in (jinja_env.block_start_string, jinja_env.variable_start_string, jinja_env.comment_start_string):
+                if marker in data:
+                    return True
+        return False
+
     def _is_template_internal(self, data):
         """This function attempts to quickly detect whether a value is a jinja2
         template. To do so, we look for the first 2 matching jinja2 tokens for
@@ -157,7 +157,7 @@ class Templar:
 
         # Quick check to see if this is remotely like a template before doing
         # more expensive investigation.
-        if not is_possibly_template(d2, env):
+        if not self._is_possibly_template_internal(d2, env):
             return False
 
         # This wraps a lot of code, but this is due to lex returning a generator
@@ -545,7 +545,7 @@ class Templar:
 
     def is_possibly_template(self, data, overrides=None):
         data, env, has_override_header = self._create_overlay(data, overrides)
-        return has_override_header or is_possibly_template(data, env)
+        return has_override_header or self._is_possibly_template_internal(data, env)
 
     def _fail_lookup(self, name, *args, **kwargs):
         raise AnsibleError("The lookup `%s` was found, however lookups were disabled from templating" % name)
