@@ -23,7 +23,8 @@ from collections.abc import Mapping
 
 from ansible.inventory.manager import InventoryManager
 from ansible.parsing.dataloader import DataLoader
-from ansible.template import Templar, AnsibleUndefined
+from ansible.template.old_init import Templar
+from ansible.template.utils import AnsibleUndefined
 from ansible.vars.manager import VariableManager
 
 __all__ = ['HostVars', 'HostVarsVars']
