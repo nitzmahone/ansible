@@ -64,12 +64,7 @@ from .undefined_behaviors import FAIL_ON_UNDEFINED
 
 display = Display()
 
-
-# FIXME: change this when overhauling the API
-# __all__ = ['Templar', 'generate_ansible_template_vars']
-
 JINJA2_OVERRIDE = '#jinja2:'
-
 JINJA2_BEGIN_TOKENS = frozenset(('variable_begin', 'block_begin', 'comment_begin', 'raw_begin'))
 JINJA2_END_TOKENS = frozenset(('variable_end', 'block_end', 'comment_end', 'raw_end'))
 
