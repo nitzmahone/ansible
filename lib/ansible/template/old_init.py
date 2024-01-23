@@ -858,12 +858,3 @@ class Templar:
         #     else:
         #         _display.debug("Ignoring undefined failure: %s" % to_text(e))
         #         return data
-
-    # for backwards compatibility in case anyone is using old private method directly
-    _do_template = do_template
-
-
-# FIXME: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
-from ansible.module_utils import datatag
-
-datatag._untaggable_types |= {AnsibleUndefined, type(Omit)}

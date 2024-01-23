@@ -21,6 +21,7 @@ from ansible.errors import AnsibleParserError
 from ansible.playbook.play import Play
 from ansible.playbook.task import Task
 from ansible.playbook.block import Block
+from ansible.template.old_init import Templar
 
 import pytest
 
@@ -38,9 +39,12 @@ def test_collection_static_warning(capsys):
         connection='local',
         collections=collection_name,
     ))
+    templar = Templar(None, {})
+    p.post_validate(templar)
     assert collection_name in p.collections
     std_out, std_err = capsys.readouterr()
-    assert '[WARNING]: "collections" is not templatable, but we found: %s' % collection_name in std_err
+    assert '[WARNING]: "collections" is not templatable, but we found' in std_err
+    assert collection_name in std_err
     assert '' == std_out
 
 

@@ -5,6 +5,7 @@ import typing as t
 from jinja2.utils import missing
 from jinja2.runtime import StrictUndefined
 
+from ansible.module_utils import datatag
 from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.datatag.access import AmbientContextBase
 
@@ -88,3 +89,6 @@ class _OmitType:
 
 
 Omit = object.__new__(_OmitType)
+
+# FIXME: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
+datatag._untaggable_types |= {AnsibleUndefined, type(Omit)}
