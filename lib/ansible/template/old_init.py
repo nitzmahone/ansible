@@ -227,8 +227,8 @@ class Templar:
         - debug:
             msg: "Test Case 1\\3; {{ test1_name | regex_replace('^(.*)_name$', '\\1')}}"
 
-        Since the outermost YAML string is double-quoted, the YAML parser converts the double backslashes to single backslashes. Without escaping, Jinja would see
-        only a single backslash ('\1') while processing the embedded template expression, interpret it as an escape sequence, and convert it to '\x01'
+        Since the outermost YAML string is double-quoted, the YAML parser converts the double backslashes to single backslashes. Without escaping, Jinja would
+        see only a single backslash ('\1') while processing the embedded template expression, interpret it as an escape sequence, and convert it to '\x01'
         (ASCII "SOH"). This is clearly not the intended `\1` backreference argument to the `regex_replace` filter (which would require the double-escaped string
         '\\\\1' to yield the intended result).
 
@@ -486,7 +486,10 @@ class Templar:
             # FIXME: ensure tag propagation behavior is working for containers
 
             if cache is not None:
-                _display.deprecated("The `cache` option to `Templar.template` is no longer functional, and will be removed in a future release.", version='2.18')
+                _display.deprecated(
+                    msg="The `cache` option to `Templar.template` is no longer functional, and will be removed in a future release.",
+                    version='2.18',
+                )
 
             if isinstance(variable, str):
                 if not self.is_possibly_template(variable, overrides):
@@ -725,7 +728,7 @@ class Templar:
         # FIXME: `type(result)` should probably be the base type of the data structure
         # FIXME: add an option to make these errors, enabled by default for integration tests
         _display.warning(f'Conditional {self._repr_from(conditional)} had result {result!r} of type {type(result)}, '
-                        f'which evaluates to {bool_result}. Conditionals should always have a boolean result.')
+                         f'which evaluates to {bool_result}. Conditionals should always have a boolean result.')
 
         return bool_result
 
