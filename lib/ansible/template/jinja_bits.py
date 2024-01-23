@@ -5,8 +5,7 @@ import functools
 from collections import ChainMap
 from typing import MutableMapping, Iterator, MappingView
 
-import jinja2
-from jinja2 import UndefinedError, Undefined, TemplateSyntaxError
+from jinja2 import pass_context, UndefinedError, Undefined, TemplateSyntaxError
 from jinja2.compiler import Frame
 from jinja2.nativetypes import NativeTemplate, NativeCodeGenerator
 from jinja2.nodes import Const
@@ -273,7 +272,7 @@ class JinjaPluginIntercept(MutableMapping):
 # NB: we're not actually using this pass_context, but it prevents our finalizer from
 #  being called on constants at template compile time, which also allows our custom
 #  visit_Const override to be used to mark embedded template constants trusted.
-@jinja2.pass_context
+@pass_context
 def _ansible_finalize(ctx, thing):
     """
     This function is called by Jinja with the result of each

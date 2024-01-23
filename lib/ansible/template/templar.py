@@ -21,8 +21,6 @@ import ast
 import dataclasses
 import secrets
 
-import jinja2
-
 import ansible.module_utils.compat.typing as t
 
 from collections.abc import Mapping
@@ -31,6 +29,7 @@ from traceback import format_exc
 
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
+from jinja2 import __version__ as jinja2_version
 
 from ansible import constants as C
 from ansible.errors import (
@@ -69,7 +68,7 @@ _JINJA2_BEGIN_TOKENS = frozenset(('variable_begin', 'block_begin', 'comment_begi
 _JINJA2_END_TOKENS = frozenset(('variable_end', 'block_end', 'comment_end', 'raw_end'))
 
 # FIXME: remove/harden- just here for development backstop for now
-if tuple(map(int, jinja2.__version__.split('.'))) < (3, 1):
+if tuple(map(int, jinja2_version.split('.'))) < (3, 1):
     raise RuntimeError('Jinja 3.1+ required')
 
 
