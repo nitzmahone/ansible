@@ -91,55 +91,6 @@ def _repr_from(value: t.Any) -> str:
     return f'{value!r}'
 
 
-def _escape_backslashes(data: str, jinja_env: AnsibleEnvironment) -> str:
-    """
-    Escape backslashes in strings within Jinja template expressions to disable Jinja backslash processing.
-
-    NOTE: This does *NOT* apply to strings within Jinja template statements ("{%" and "%}").
-
-    This is useful when templates are sourced from YAML double-quoted strings, as it avoids having backslashes processed twice: first by the YAML parser,
-    and then again by the Jinja parser. Instead, backslashes are only processed by YAML.
-
-    Example YAML:
-
-    - debug:
-        msg: "Test Case 1\\3; {{ test1_name | regex_replace('^(.*)_name$', '\\1')}}"
-
-    Since the outermost YAML string is double-quoted, the YAML parser converts the double backslashes to single backslashes. Without escaping, Jinja would see
-    only a single backslash ('\1') while processing the embedded template expression, interpret it as an escape sequence, and convert it to '\x01'
-    (ASCII "SOH"). This is clearly not the intended `\1` backreference argument to the `regex_replace` filter (which would require the double-escaped string
-    '\\\\1' to yield the intended result).
-
-    Since the "\\3" in the input YAML was not part of a template expression, the YAML-parsed "\3" remains after Jinja rendering. This would be
-    confusing for playbook authors, as different escaping rules would be needed inside and outside the template expression.
-
-    When templates are not sourced from YAML, escaping backslashes will prevent use of backslash escape sequences such as "\n" and "\t".
-
-    See relevant Jinja lexer impl at e.g.: https://github.com/pallets/jinja/blob/3.1.2/src/jinja2/lexer.py#L646-L653.
-    """
-    if '\\' in data and jinja_env.variable_start_string in data:
-        new_data = []
-        d2 = jinja_env.preprocess(data)
-        in_var = False
-
-        for token in jinja_env.lex(d2):
-            if token[1] == 'variable_begin':
-                in_var = True
-                new_data.append(token[2])
-            elif token[1] == 'variable_end':
-                in_var = False
-                new_data.append(token[2])
-            elif in_var and token[1] == 'string':
-                # Double backslashes only if we're inside a jinja2 variable
-                new_data.append(token[2].replace('\\', '\\\\'))
-            else:
-                new_data.append(token[2])
-
-        data = ''.join(new_data)
-
-    return data
-
-
 def _create_overlay(data: str, overrides: dict, jinja_env: AnsibleEnvironment, undefined_behavior=None) -> tuple[str, AnsibleEnvironment, bool]:
     if overrides is None:
         overrides = {}
@@ -268,6 +219,55 @@ class Templar:
         # Custom globals
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
+
+    @staticmethod
+    def _escape_backslashes(data: str, jinja_env: AnsibleEnvironment) -> str:
+        """
+        Escape backslashes in strings within Jinja template expressions to disable Jinja backslash processing.
+
+        NOTE: This does *NOT* apply to strings within Jinja template statements ("{%" and "%}").
+
+        This is useful when templates are sourced from YAML double-quoted strings, as it avoids having backslashes processed twice: first by the YAML parser,
+        and then again by the Jinja parser. Instead, backslashes are only processed by YAML.
+
+        Example YAML:
+
+        - debug:
+            msg: "Test Case 1\\3; {{ test1_name | regex_replace('^(.*)_name$', '\\1')}}"
+
+        Since the outermost YAML string is double-quoted, the YAML parser converts the double backslashes to single backslashes. Without escaping, Jinja would see
+        only a single backslash ('\1') while processing the embedded template expression, interpret it as an escape sequence, and convert it to '\x01'
+        (ASCII "SOH"). This is clearly not the intended `\1` backreference argument to the `regex_replace` filter (which would require the double-escaped string
+        '\\\\1' to yield the intended result).
+
+        Since the "\\3" in the input YAML was not part of a template expression, the YAML-parsed "\3" remains after Jinja rendering. This would be
+        confusing for playbook authors, as different escaping rules would be needed inside and outside the template expression.
+
+        When templates are not sourced from YAML, escaping backslashes will prevent use of backslash escape sequences such as "\n" and "\t".
+
+        See relevant Jinja lexer impl at e.g.: https://github.com/pallets/jinja/blob/3.1.2/src/jinja2/lexer.py#L646-L653.
+        """
+        if '\\' in data and jinja_env.variable_start_string in data:
+            new_data = []
+            d2 = jinja_env.preprocess(data)
+            in_var = False
+
+            for token in jinja_env.lex(d2):
+                if token[1] == 'variable_begin':
+                    in_var = True
+                    new_data.append(token[2])
+                elif token[1] == 'variable_end':
+                    in_var = False
+                    new_data.append(token[2])
+                elif in_var and token[1] == 'string':
+                    # Double backslashes only if we're inside a jinja2 variable
+                    new_data.append(token[2].replace('\\', '\\\\'))
+                else:
+                    new_data.append(token[2])
+
+            data = ''.join(new_data)
+
+        return data
 
     @staticmethod
     def _count_newlines_from_end(in_str):
@@ -807,7 +807,7 @@ class Templar:
             data, myenv, _has_override_header = _create_overlay(data, overrides, self.environment, undefined_behavior=undefined_behavior)
 
             if escape_backslashes:
-                data = _escape_backslashes(data, myenv)
+                data = self._escape_backslashes(data, myenv)
 
             try:
                 cur_template = myenv.from_string(data)
