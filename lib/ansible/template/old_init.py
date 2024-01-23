@@ -105,44 +105,6 @@ def is_possibly_template(data, jinja_env):
     return False
 
 
-def is_template(data, jinja_env):
-    """This function attempts to quickly detect whether a value is a jinja2
-    template. To do so, we look for the first 2 matching jinja2 tokens for
-    start and end delimiters.
-    """
-    found = None
-    start = True
-    comment = False
-    d2 = jinja_env.preprocess(data)
-
-    # Quick check to see if this is remotely like a template before doing
-    # more expensive investigation.
-    if not is_possibly_template(d2, jinja_env):
-        return False
-
-    # This wraps a lot of code, but this is due to lex returning a generator
-    # so we may get an exception at any part of the loop
-    try:
-        for token in jinja_env.lex(d2):
-            if token[1] in JINJA2_BEGIN_TOKENS:
-                if start and token[1] == 'comment_begin':
-                    # Comments can wrap other token types
-                    comment = True
-                start = False
-                # Example: variable_end -> variable
-                found = token[1].split('_')[0]
-            elif token[1] in JINJA2_END_TOKENS:
-                if token[1].split('_')[0] == found:
-                    return True
-                elif comment:
-                    continue
-                return False
-    except TemplateSyntaxError:
-        return False
-
-    return False
-
-
 # FIXME: do we still need a class for this?
 @dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
 class TemplateResult:
@@ -181,6 +143,44 @@ class Templar:
         # Custom globals
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
+
+    def _is_template_internal(self, data):
+        """This function attempts to quickly detect whether a value is a jinja2
+        template. To do so, we look for the first 2 matching jinja2 tokens for
+        start and end delimiters.
+        """
+        found = None
+        start = True
+        comment = False
+        env = self.environment
+        d2 = env.preprocess(data)
+
+        # Quick check to see if this is remotely like a template before doing
+        # more expensive investigation.
+        if not is_possibly_template(d2, env):
+            return False
+
+        # This wraps a lot of code, but this is due to lex returning a generator
+        # so we may get an exception at any part of the loop
+        try:
+            for token in env.lex(d2):
+                if token[1] in JINJA2_BEGIN_TOKENS:
+                    if start and token[1] == 'comment_begin':
+                        # Comments can wrap other token types
+                        comment = True
+                    start = False
+                    # Example: variable_end -> variable
+                    found = token[1].split('_')[0]
+                elif token[1] in JINJA2_END_TOKENS:
+                    if token[1].split('_')[0] == found:
+                        return True
+                    elif comment:
+                        continue
+                    return False
+        except TemplateSyntaxError:
+            return False
+
+        return False
 
     def _create_overlay(self, data: str, overrides: dict, undefined_behavior=None) -> tuple[str, AnsibleEnvironment, bool]:
         if overrides is None:
@@ -530,7 +530,7 @@ class Templar:
     def is_template(self, data):
         """lets us know if data has a template"""
         if isinstance(data, str):
-            return is_template(data, self.environment)
+            return self._is_template_internal(data)
         elif isinstance(data, (list, tuple)):
             for v in data:
                 if self.is_template(v):
