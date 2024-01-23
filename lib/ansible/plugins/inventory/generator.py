@@ -105,8 +105,7 @@ class InventoryModule(BaseInventoryPlugin):
     def template(self, pattern, variables):
         # FIXME: don't clobber variables
         self.templar.available_variables = variables
-        # FIXME: FDI036
-        return self.templar.do_template(pattern, undefined_behavior=FAIL_ON_UNDEFINED)
+        return self.templar.template(pattern, undefined_behavior=FAIL_ON_UNDEFINED)
 
     def add_parents(self, inventory, child, parents, template_vars):
         for parent in parents:
