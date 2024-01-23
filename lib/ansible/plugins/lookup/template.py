@@ -157,7 +157,7 @@ class LookupModule(LookupBase):
                         comment_start_string=comment_start_string,
                         comment_end_string=comment_end_string
                     )
-                    res = templar.template(template_data, preserve_trailing_newlines=True, escape_backslashes=False, overrides=overrides)
+                    res = templar.template(template_data, escape_backslashes=False, overrides=overrides)
 
                 ret.append(res)
             else:

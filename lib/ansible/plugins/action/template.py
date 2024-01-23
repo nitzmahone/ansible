@@ -146,7 +146,7 @@ class ActionModule(ActionBase):
                     lstrip_blocks=lstrip_blocks
                 )
 
-                resultant = templar.template(template_data, preserve_trailing_newlines=True, escape_backslashes=False, overrides=overrides)
+                resultant = templar.template(template_data, escape_backslashes=False, overrides=overrides)
             except AnsibleAction:
                 raise
             except Exception as e:

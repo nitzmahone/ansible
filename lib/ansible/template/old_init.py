@@ -42,7 +42,6 @@ from ansible.errors import (
     AnsibleOptionsError,
     AnsibleUndefinedVariable,
 )
-from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
 from ansible.plugins.loader import lookup_loader
@@ -186,7 +185,7 @@ def is_possibly_template(data, jinja_env):
     you want to allow the templating engine to make the final
     assessment which may result in ``TemplateSyntaxError``.
     """
-    if isinstance(data, string_types):
+    if isinstance(data, str):
         for marker in (jinja_env.block_start_string, jinja_env.variable_start_string, jinja_env.comment_start_string):
             if marker in data:
                 return True
@@ -231,24 +230,6 @@ def is_template(data, jinja_env):
     return False
 
 
-def _count_newlines_from_end(in_str):
-    """
-    Counts the number of newlines at the end of a string. This is used during
-    the jinja2 templating to ensure the count matches the input, since some newlines
-    may be thrown away during the templating.
-    """
-
-    try:
-        i = len(in_str)
-        j = i - 1
-        while in_str[j] == '\n':
-            j -= 1
-        return i - 1 - j
-    except IndexError:
-        # Uncommon cases: zero length string and string containing only newlines
-        return i
-
-
 # FIXME: do we still need a class for this?
 @dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
 class TemplateResult:
@@ -287,6 +268,26 @@ class Templar:
         # Custom globals
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
+
+    @staticmethod
+    def _count_newlines_from_end(in_str):
+        """
+        Counts the number of newlines at the end of a string. This is used during
+        the jinja2 templating to ensure the count matches the input, since some newlines
+        may be thrown away during the templating.
+        """
+
+        i = len(in_str)
+        j = i - 1
+
+        try:
+            while in_str[j] == '\n':
+                j -= 1
+        except IndexError:
+            # Uncommon cases: zero length string and string containing only newlines
+            return i
+
+        return i - 1 - j
 
     # FIXME: this needs to die, badly
     def copy_with_new_env(self, **kwargs):
@@ -503,7 +504,7 @@ class Templar:
             if cache is not None:
                 display.deprecated("The `cache` option to `Templar.template` is no longer functional, and will be removed in a future release.", version='2.18')
 
-            if isinstance(variable, string_types):
+            if isinstance(variable, str):
                 if not self.is_possibly_template(variable, overrides):
                     return variable
 
@@ -534,7 +535,7 @@ class Templar:
 
     def is_template(self, data):
         """lets us know if data has a template"""
-        if isinstance(data, string_types):
+        if isinstance(data, str):
             return is_template(data, self.environment)
         elif isinstance(data, (list, tuple)):
             for v in data:
@@ -795,9 +796,7 @@ class Templar:
         if not self._trust_check(data):
             return data
 
-        # For preserving the number of input newlines in the output (used
-        # later in this method)
-        data_newlines = _count_newlines_from_end(data)
+        original_data = data
 
         if fail_on_undefined is None:
             fail_on_undefined = self._fail_on_undefined_errors
@@ -841,9 +840,9 @@ class Templar:
                     display.debug("failing because of a type error, template data is: %s" % to_text(data))
                     raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)), orig_exc=te)
 
-            if isinstance(res, string_types) and preserve_trailing_newlines:
+            if preserve_trailing_newlines and isinstance(res, str):
                 # The low level calls above do not preserve the newline
-                # characters at the end of the input data, so we use the
+                # characters at the end of the input data, so we
                 # calculate the difference in newlines and append them
                 # to the resulting output for parity
                 #
@@ -852,7 +851,8 @@ class Templar:
                 # would be kept also for included templates, for example:
                 # "Hello {% include 'world.txt' %}!" would render as
                 # "Hello world\n!\n" instead of "Hello world!\n".
-                res_newlines = _count_newlines_from_end(res)
+                data_newlines = self._count_newlines_from_end(original_data)
+                res_newlines = self._count_newlines_from_end(res)
                 if data_newlines > res_newlines:
                     newlines = self.environment.newline_sequence * (data_newlines - res_newlines)
                     res = AnsibleTaggedObject.tag_copy(res, res + newlines)
