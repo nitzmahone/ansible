@@ -793,68 +793,60 @@ class Templar:
         if fail_on_undefined is None:
             fail_on_undefined = self._fail_on_undefined_errors
 
+        # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
+        # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
+        data, myenv, _has_override_header = self._create_overlay(data, overrides, undefined_behavior=undefined_behavior)
+
+        if escape_backslashes:
+            data = self._escape_backslashes(data, myenv)
+
         try:
-            # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
-            # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
-            data, myenv, _has_override_header = self._create_overlay(data, overrides, undefined_behavior=undefined_behavior)
+            cur_template = myenv.from_string(data)
+        except TemplateSyntaxError as e:
+            raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(data)), orig_exc=e)
+        except Exception as e:
+            if 'recursion' in to_native(e):
+                raise AnsibleError("recursive loop detected in template string: %s" % to_native(data), orig_exc=e)
+            else:
+                return data
 
-            if escape_backslashes:
-                data = self._escape_backslashes(data, myenv)
+        if disable_lookups:
+            cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup
 
-            try:
-                cur_template = myenv.from_string(data)
-            except TemplateSyntaxError as e:
-                raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(data)), orig_exc=e)
-            except Exception as e:
-                if 'recursion' in to_native(e):
-                    raise AnsibleError("recursive loop detected in template string: %s" % to_native(data), orig_exc=e)
-                else:
-                    return data
+        jvars = AnsibleJ2Vars(self, cur_template.globals)
 
-            if disable_lookups:
-                cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup
+        cur_context = cur_template.new_context(jvars, shared=True)
 
-            jvars = AnsibleJ2Vars(self, cur_template.globals)
+        rf = cur_template.root_render_func(cur_context)
 
-            cur_context = cur_template.new_context(jvars, shared=True)
+        try:
+            res = myenv.concat(rf)
+            # FIXME: propagate some/all tags here?
+        except TypeError as te:
+            if 'AnsibleUndefined' in to_native(te):
+                errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(data)
+                errmsg += "Make sure your variable name does not contain invalid characters like '-': %s" % to_native(te)
+                raise AnsibleUndefinedVariable(errmsg, orig_exc=te)
+            else:
+                _display.debug("failing because of a type error, template data is: %s" % to_text(data))
+                raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)), orig_exc=te)
 
-            rf = cur_template.root_render_func(cur_context)
+        if preserve_trailing_newlines and isinstance(res, str):
+            # The low level calls above do not preserve the newline
+            # characters at the end of the input data, so we
+            # calculate the difference in newlines and append them
+            # to the resulting output for parity
+            #
+            # Using AnsibleEnvironment's keep_trailing_newline instead would
+            # result in change in behavior when trailing newlines
+            # would be kept also for included templates, for example:
+            # "Hello {% include 'world.txt' %}!" would render as
+            # "Hello world\n!\n" instead of "Hello world!\n".
+            data_newlines = self._count_newlines_from_end(original_data)
+            res_newlines = self._count_newlines_from_end(res)
 
-            try:
-                res = myenv.concat(rf)
-                # FIXME: propagate some/all tags here?
-            except TypeError as te:
-                if 'AnsibleUndefined' in to_native(te):
-                    errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(data)
-                    errmsg += "Make sure your variable name does not contain invalid characters like '-': %s" % to_native(te)
-                    raise AnsibleUndefinedVariable(errmsg, orig_exc=te)
-                else:
-                    _display.debug("failing because of a type error, template data is: %s" % to_text(data))
-                    raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)), orig_exc=te)
+            if data_newlines > res_newlines:
+                newlines = self.environment.newline_sequence * (data_newlines - res_newlines)
+                res = AnsibleTaggedObject.tag_copy(res, res + newlines)
 
-            if preserve_trailing_newlines and isinstance(res, str):
-                # The low level calls above do not preserve the newline
-                # characters at the end of the input data, so we
-                # calculate the difference in newlines and append them
-                # to the resulting output for parity
-                #
-                # Using AnsibleEnvironment's keep_trailing_newline instead would
-                # result in change in behavior when trailing newlines
-                # would be kept also for included templates, for example:
-                # "Hello {% include 'world.txt' %}!" would render as
-                # "Hello world\n!\n" instead of "Hello world!\n".
-                data_newlines = self._count_newlines_from_end(original_data)
-                res_newlines = self._count_newlines_from_end(res)
-                if data_newlines > res_newlines:
-                    newlines = self.environment.newline_sequence * (data_newlines - res_newlines)
-                    res = AnsibleTaggedObject.tag_copy(res, res + newlines)
-            return res
-        except Exception:
-            # FIXME: lazy testing, remove this whole thing once we've centralized the handling of these errors
-            raise
-        # except (UndefinedError, AnsibleUndefinedVariable) as e:
-        #     if fail_on_undefined:
-        #         raise AnsibleUndefinedVariable(e, orig_exc=e)
-        #     else:
-        #         _display.debug("Ignoring undefined failure: %s" % to_text(e))
-        #         return data
+        return res
