@@ -62,7 +62,7 @@ from .utils import Omit, TemplateContext, AnsibleUndefined
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
 from .undefined_behaviors import FAIL_ON_UNDEFINED
 
-display = Display()
+_display = Display()
 
 _JINJA2_OVERRIDE = '#jinja2:'
 _JINJA2_BEGIN_TOKENS = frozenset(('variable_begin', 'block_begin', 'comment_begin', 'raw_begin'))
@@ -210,7 +210,7 @@ class Templar:
                 if hasattr(overlay, key):
                     setattr(overlay, key, ast.literal_eval(val.strip()))
                 else:
-                    display.warning(f"Could not find Jinja2 environment setting to override: '{key}'")
+                    _display.warning(f"Could not find Jinja2 environment setting to override: '{key}'")
 
         return data, overlay, has_override_header
 
@@ -484,7 +484,7 @@ class Templar:
             if deprecation_template is not None:
                 message += f' while templating {self._repr_from(deprecation_template)}'
 
-            display.deprecated(message, version=deprecation.removal_version, date=deprecation.removal_date)
+            _display.deprecated(message, version=deprecation.removal_version, date=deprecation.removal_date)
 
         return TemplateResult(result=_template_result)
 
@@ -496,7 +496,7 @@ class Templar:
             # FIXME: ensure tag propagation behavior is working for containers
 
             if cache is not None:
-                display.deprecated("The `cache` option to `Templar.template` is no longer functional, and will be removed in a future release.", version='2.18')
+                _display.deprecated("The `cache` option to `Templar.template` is no longer functional, and will be removed in a future release.", version='2.18')
 
             if isinstance(variable, str):
                 if not self.is_possibly_template(variable, overrides):
@@ -584,9 +584,9 @@ class Templar:
             # lookup handled error but still decided to bail
             msg = 'Lookup failed but the error is being ignored: %s' % to_native(e)
             if errors == 'warn':
-                display.warning(msg)
+                _display.warning(msg)
             elif errors == 'ignore':
-                display.display(msg, log_only=True)
+                _display.display(msg, log_only=True)
             else:
                 raise e
             return [] if wantlist else None
@@ -595,18 +595,18 @@ class Templar:
             msg = u"An unhandled exception occurred while running the lookup plugin '%s'. Error was a %s, original message: %s" % \
                   (name, type(e), to_text(e))
             if errors == 'warn':
-                display.warning(msg)
+                _display.warning(msg)
             elif errors == 'ignore':
-                display.display(msg, log_only=True)
+                _display.display(msg, log_only=True)
             else:
-                display.vvv('exception during Jinja2 execution: {0}'.format(format_exc()))
+                _display.vvv('exception during Jinja2 execution: {0}'.format(format_exc()))
                 raise AnsibleError(to_native(msg), orig_exc=e)
             return [] if wantlist else None
 
         is_nonstring_sequence = is_sequence(ran)
 
         if not is_nonstring_sequence:
-            display.deprecated(
+            _display.deprecated(
                 f'The lookup plugin \'{name}\' was expected to return a list, got \'{type(ran)}\' instead. '
                 f'The lookup plugin \'{name}\' needs to be changed to return a list. '
                 'This will be an error in Ansible 2.18',
@@ -706,7 +706,7 @@ class Templar:
                 conditional_template = conditional
                 escape_backslashes = True
                 overrides = {}
-                display.warning(
+                _display.warning(
                     # FIXME: should we deprecate and/or remove this capability?
                     f'Conditional {self._repr_from(conditional)} could not be parsed as a Jinja2 expression, and will be '
                     'evaluated as a template instead. Conditionals should not include templating delimiters '
@@ -723,7 +723,7 @@ class Templar:
 
                 conditional_repr = self._repr_from(conditional)
 
-                display.warning(f'Conditional {conditional_repr} evaluation failed: {e}')
+                _display.warning(f'Conditional {conditional_repr} evaluation failed: {e}')
 
                 raise AnsibleUndefinedVariable(f"error while evaluating conditional {conditional_repr}: {e}") from e
 
@@ -735,7 +735,7 @@ class Templar:
         bool_result = bool(result)
         # FIXME: `type(result)` should probably be the base type of the data structure
         # FIXME: add an option to make these errors, enabled by default for integration tests
-        display.warning(f'Conditional {self._repr_from(conditional)} had result {result!r} of type {type(result)}, '
+        _display.warning(f'Conditional {self._repr_from(conditional)} had result {result!r} of type {type(result)}, '
                         f'which evaluates to {bool_result}. Conditionals should always have a boolean result.')
 
         return bool_result
@@ -754,7 +754,7 @@ class Templar:
 
             # FIXME: make traceback optional
             tb = "\n".join(format_stack())
-            display.warning(f'skipped untrusted template {self._repr_from(data)}; execution stack:\n{tb}')
+            _display.warning(f'skipped untrusted template {self._repr_from(data)}; execution stack:\n{tb}')
 
             if Templar._raise_on_trust_check_fail:
                 # FIXME: explicit exception type?
@@ -779,7 +779,7 @@ class Templar:
                     disable_lookups=False):
         if not TemplateContext.current():
             # FIXME: deprecation? Also, probably include a stacktrace...
-            display.warning('missing TemplateContext (direct call to do_template?)')
+            _display.warning('missing TemplateContext (direct call to do_template?)')
 
         # FIXME: FDI013
         if not isinstance(data, str):
@@ -829,7 +829,7 @@ class Templar:
                     errmsg += "Make sure your variable name does not contain invalid characters like '-': %s" % to_native(te)
                     raise AnsibleUndefinedVariable(errmsg, orig_exc=te)
                 else:
-                    display.debug("failing because of a type error, template data is: %s" % to_text(data))
+                    _display.debug("failing because of a type error, template data is: %s" % to_text(data))
                     raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)), orig_exc=te)
 
             if preserve_trailing_newlines and isinstance(res, str):
@@ -856,7 +856,7 @@ class Templar:
         #     if fail_on_undefined:
         #         raise AnsibleUndefinedVariable(e, orig_exc=e)
         #     else:
-        #         display.debug("Ignoring undefined failure: %s" % to_text(e))
+        #         _display.debug("Ignoring undefined failure: %s" % to_text(e))
         #         return data
 
     # for backwards compatibility in case anyone is using old private method directly
