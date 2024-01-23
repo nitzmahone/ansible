@@ -5,7 +5,9 @@ import functools
 from collections import ChainMap
 from typing import MutableMapping, Iterator, MappingView
 
-from jinja2 import pass_context, UndefinedError, Undefined, TemplateSyntaxError
+from jinja2 import pass_context
+from jinja2.exceptions import TemplateSyntaxError, UndefinedError
+from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
 from jinja2.nativetypes import NativeTemplate, NativeCodeGenerator
 from jinja2.nodes import Const
