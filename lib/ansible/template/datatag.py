@@ -3,7 +3,8 @@ from __future__ import annotations
 from ansible.module_utils.compat import typing as t
 from ansible.module_utils.datatag import Deprecated
 from ansible.module_utils.datatag.access import _NotifiableAccessContextBase, POORLY_NAMED_SENTINEL
-from ansible.template.utils import TemplateContext
+
+from .utils import TemplateContext
 
 
 class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):

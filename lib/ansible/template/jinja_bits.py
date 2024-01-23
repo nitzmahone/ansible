@@ -23,9 +23,10 @@ from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.module_utils.datatag.access import AnsibleAccessContext
 from ansible.module_utils.six import string_types
 from ansible.plugins.loader import filter_loader, test_loader
-from ansible.template.utils import AnsibleUndefined, Omit, TemplateContext
-from ansible.template.undefined_behaviors import FAIL_ON_UNDEFINED
-from ansible.template.lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin
+
+from .utils import AnsibleUndefined, Omit, TemplateContext
+from .undefined_behaviors import FAIL_ON_UNDEFINED
+from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin
 
 RANGE_TYPE = type(range(0))
 

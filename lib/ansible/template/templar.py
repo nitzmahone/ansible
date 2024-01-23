@@ -26,6 +26,7 @@ import ansible.module_utils.compat.typing as t
 from collections.abc import Mapping
 from contextlib import contextmanager
 from traceback import format_exc
+from collections import ChainMap
 
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
@@ -44,7 +45,6 @@ from ansible.errors import (
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
 from ansible.plugins.loader import lookup_loader
-from ansible.template.vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from ansible.module_utils.datatag import (
     AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError, _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
 )
@@ -52,11 +52,9 @@ from ansible.module_utils.datatag import (
 from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
 
-from collections import ChainMap
-
 from .datatag import DeprecatedAccessAuditContext
 from .jinja_bits import AnsibleEnvironment, AnsibleJ2Vars
-
+from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
 from .undefined_behaviors import FAIL_ON_UNDEFINED
