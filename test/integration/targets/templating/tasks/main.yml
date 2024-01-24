@@ -100,3 +100,20 @@
       - hostvarsvars_result.msg | type_debug == "_AnsibleLazyTemplateDict"
       - vars_result.msg.hostvars is defined
       - vars_result.msg | type_debug == "_AnsibleLazyTemplateDict"
+
+- vars:
+    task_scalar: i am a scalar
+    task_dict_yaml:
+      scalar_ref: '{{ task_scalar }}'
+    task_dict_jinja: '{{ {"scalar_ref": task_scalar} }}'
+    task_list_yaml: [ '{{ task_scalar }}' ]
+    task_list_jinja: '{{ [ task_scalar ] }}'
+  block:
+  - name: ensure that lazy containers with embedded templates handle equality-ish operators correctly
+    assert:
+      that:
+        - 'task_dict_yaml == {"scalar_ref": "i am a scalar"}'
+        - 'task_dict_jinja == {"scalar_ref": "i am a scalar"}'
+        - task_list_yaml == ["i am a scalar"]
+        - task_list_jinja == ["i am a scalar"]
+    ignore_errors: true  # FIXME: FDI041 - lazy container operators need to delazify
