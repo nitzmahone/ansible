@@ -495,6 +495,9 @@ class Templar:
                 if not self.is_possibly_template(variable, overrides):
                     return variable
 
+                if not self._trust_check(variable):
+                    return variable
+
                 result = self.do_template(
                     variable,
                     preserve_trailing_newlines=preserve_trailing_newlines,
@@ -756,31 +759,21 @@ class Templar:
 
         return True
 
-    def do_template(self, data, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True, overrides=None, disable_lookups=False):
-        if not TemplateContext.current():
-            # FIXME: deprecation? Also, probably include a stacktrace...
-            _display.warning('missing TemplateContext (direct call to do_template?)')
+    def do_template(self, variable, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True, overrides=None, disable_lookups=False):
 
-        # FIXME: FDI013
-        if not isinstance(data, str):
-            return data
-
-        if not self._trust_check(data):
-            return data
-
-        original_data = data
+        original_variable = variable
 
         # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
         # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
-        data, myenv, _has_override_header = self._create_overlay(data, overrides, undefined_behavior=undefined_behavior)
+        variable, myenv, _has_override_header = self._create_overlay(variable, overrides, undefined_behavior=undefined_behavior)
 
         if escape_backslashes:
-            data = self._escape_backslashes(data, myenv)
+            variable = self._escape_backslashes(variable, myenv)
 
         try:
-            cur_template = myenv.from_string(data)
+            cur_template = myenv.from_string(variable)
         except TemplateSyntaxError as e:
-            raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(data)), orig_exc=e)
+            raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(variable)), orig_exc=e)
 
         if disable_lookups:
             cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup
@@ -796,12 +789,12 @@ class Templar:
             # FIXME: propagate some/all tags here?
         except TypeError as te:
             if 'AnsibleUndefined' in to_native(te):
-                errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(data)
+                errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(variable)
                 errmsg += "Make sure your variable name does not contain invalid characters like '-': %s" % to_native(te)
                 raise AnsibleUndefinedVariable(errmsg, orig_exc=te)
             else:
-                _display.debug("failing because of a type error, template data is: %s" % to_text(data))
-                raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(data), to_native(te)), orig_exc=te)
+                _display.debug("failing because of a type error, template data is: %s" % to_text(variable))
+                raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(variable), to_native(te)), orig_exc=te)
 
         if preserve_trailing_newlines and isinstance(res, str):
             # The low level calls above do not preserve the newline
@@ -814,7 +807,7 @@ class Templar:
             # would be kept also for included templates, for example:
             # "Hello {% include 'world.txt' %}!" would render as
             # "Hello world\n!\n" instead of "Hello world!\n".
-            data_newlines = self._count_newlines_from_end(original_data)
+            data_newlines = self._count_newlines_from_end(original_variable)
             res_newlines = self._count_newlines_from_end(res)
 
             if data_newlines > res_newlines:
