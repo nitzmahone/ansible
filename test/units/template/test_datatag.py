@@ -1,3 +1,4 @@
+# FIXME: while this tests taggable types vs their native counterparts, it doesn't have testing of templating for lazy containers, particularly around repr
 from __future__ import annotations
 
 import collections.abc as c

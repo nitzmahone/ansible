@@ -82,4 +82,5 @@ AnsibleDumper.add_representer(
 )
 
 # FIXME: do we actually need knobs to allow re-serialization of !!unsafe or !!vault?
+# FIXME: how do we want to handle this for lazy containers, for cases like using the to_yaml filter in templates?
 AnsibleDumper.add_multi_representer(AnsibleTaggedObject, represent_ansible_tagged_object)

@@ -129,6 +129,7 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
 
     # FIXME: fully implement iteration support
     # FIXME: do we need to implement templated key support?
+    #        probably not, since lazy templates can be volatile, and thus not hashable
 
     def __str__(self):
         return self.__repr__()
@@ -143,8 +144,20 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
             #  template the same values?
             yield key, self._templar.environment._proxy_or_render_template(value, key)
 
+    def values(self):
+        for _key, value in self.items():
+            yield value
+
     def native_copy(self) -> dict:
         return dict(dict.items(self))
+
+    def __eq__(self, other):
+        # FIXME: optimize this
+        return dict(self.items()) == other
+
+    def __ne__(self, other):
+        # FIXME: optimize this
+        return dict(self.items()) != other
 
 
 @t.final
@@ -175,7 +188,39 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
     def native_copy(self) -> list:
         return list(list.__iter__(self))
 
+    def __eq__(self, other):
+        # FIXME: optimize this
+        return list(self) == other
 
+    def __ne__(self, other):
+        # FIXME: optimize this
+        return list(self) != other
+
+    def __gt__(self, other):
+        # FIXME: optimize this
+        return list(self) > other
+
+    def __contains__(self, item):
+        # FIXME: optimize this
+        return item in list(self)
+
+    def index(self, *args, **kwargs) -> int:
+        # FIXME: optimize this
+        # FIXME: when writing the docstring for this, include a note that mentions the input args are *NOT* templated by this method
+        return list(self).index(*args, **kwargs)
+
+    def remove(self, value) -> None:
+        # FIXME: when writing the docstring for this, include a note that mentions the input args are *NOT* templated by this method
+        self.pop(self.index(value))
+
+    def sort(self, *args, **kwargs):
+        # FIXME: do we possibly want to implement this?
+        raise NotImplementedError('In-place sorting of a lazy templated list is not supported. Sort into a new list instead.')
+
+
+# FIXME: we're considering removing this, reasons include:
+#        lazy templates can be volatile, and thus not immutable, breaking hashing of the tuple
+#        when including/dropping this, document rationale (cost/benefit analysis)
 @t.final
 class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
     # nonempty __slots__ not supported for subtype of 'tuple'
@@ -205,7 +250,28 @@ class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
     def native_copy(self) -> tuple:
         return tuple(tuple.__iter__(self))
 
+    def __eq__(self, other):
+        # FIXME: optimize this
+        return tuple(self) == other
 
+    def __ne__(self, other):
+        # FIXME: optimize this
+        return tuple(self) != other
+
+    def __gt__(self, other):
+        # FIXME: optimize this
+        return tuple(self) > other
+
+    def __contains__(self, item):
+        # FIXME: optimize this
+        return item in tuple(self)
+
+
+# FIXME: we're considering removing this, reasons include:
+#        lazy templates can be volatile, and thus not immutable, breaking set hashing
+#        sets need a lot of work to deal with set operations
+#        when including/dropping this, document rationale (cost/benefit analysis)
+#        if keeping, more tests needed (see list for ideas)
 @t.final
 class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
     __slots__ = _ANSIBLE_LAZY_TEMPLATE_SLOTS
