@@ -73,3 +73,30 @@
         that:
         - am_i_lazy == "static data"
         - not stat_res.stat.exists
+
+# omitting output for brevity in CI
+- no_log: true
+  block:
+  - name: ensure that `hostvars` gets flattened properly from Templar
+    debug:
+      msg: '{{ hostvars }}'
+    register: hostvars_result
+
+  - name: ensure that `hostvars['somehost']` gets flattened properly from Templar
+    debug:
+      msg: '{{ hostvars.testhost }}'
+    register: hostvarsvars_result
+
+  - name: ensure that `vars` gets flattened properly from Templar
+    debug:
+      msg: '{{ vars }}'
+    register: vars_result
+
+- assert:
+    that:
+      - hostvars_result.msg.testhost.inventory_hostname == "testhost"
+      - hostvars_result.msg | type_debug == "_AnsibleLazyTemplateDict"
+      - hostvarsvars_result.msg.inventory_hostname == "testhost"
+      - hostvarsvars_result.msg | type_debug == "_AnsibleLazyTemplateDict"
+      - vars_result.msg.hostvars is defined
+      - vars_result.msg | type_debug == "_AnsibleLazyTemplateDict"
