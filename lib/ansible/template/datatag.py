@@ -26,7 +26,7 @@ class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):
                 # FIXME: ascend the template stack to try and find the nearest string source template
                 src_pos = AnsibleSourcePosition.get_tag(template)
 
-                template = f'<<container>>'
+                template = '<<container>>'
 
                 if src_pos:
                     src_pos.tag(template)
