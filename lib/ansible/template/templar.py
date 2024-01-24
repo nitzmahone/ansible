@@ -425,46 +425,62 @@ class Templar:
                 UndecryptableAccessMutator(),  # trigger injection of VaultBomb
                 DeprecatedAccessAuditContext() as deprecated,
         ):
-            _template_result = self._template_recursive(
-                variable,
-                preserve_trailing_newlines=preserve_trailing_newlines,
-                escape_backslashes=escape_backslashes,
-                overrides=overrides,
-                disable_lookups=disable_lookups,
-                undefined_behavior=undefined_behavior,
-            )
+            is_top_level_template = not TemplateContext.current()
 
-            # If we're the outermost template operation, we need to recursively finalize the template result.
-            # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
-            if not TemplateContext.current():
-                if _template_result is Omit:
-                    if value_for_omit is Omit:
-                        raise AnsibleValueOmittedError()
+            try:
+                _template_result = self._template_recursive(
+                    variable,
+                    preserve_trailing_newlines=preserve_trailing_newlines,
+                    escape_backslashes=escape_backslashes,
+                    overrides=overrides,
+                    disable_lookups=disable_lookups,
+                    undefined_behavior=undefined_behavior,
+                )
 
-                    return TemplateResult(result=value_for_omit)  # value_for_omit was not manipulated, trust that it contains only allowed types
+                # If we're the outermost template operation, we need to recursively finalize the template result.
+                # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
+                if not TemplateContext.current():
+                    if _template_result is Omit:
+                        if value_for_omit is Omit:
+                            raise AnsibleValueOmittedError()
 
-                if stop_on_container_result and type(_template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
-                    # Use of stop_on_container_result implies the caller will perform necessary checks on values,
-                    # most likely by passing them back into the templating system.
-                    return TemplateResult(
-                        result=_template_result.native_copy() if _template_result in AnsibleTaggedObject._collection_types else _template_result,
-                    )
+                        return TemplateResult(result=value_for_omit)  # value_for_omit was not manipulated, trust that it contains only allowed types
 
-                # data is our only positional arg, everything else is kwargs-only
-                with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
-                    _template_result = _finalize_template_result(_template_result, undefined_behavior=undefined_behavior, raise_on_unsupported_type=True)
-                    _template_result = undefined_behavior.post_finalize(_template_result)
+                    if stop_on_container_result and type(_template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
+                        # Use of stop_on_container_result implies the caller will perform necessary checks on values,
+                        # most likely by passing them back into the templating system.
+                        return TemplateResult(
+                            result=_template_result.native_copy() if _template_result in AnsibleTaggedObject._collection_types else _template_result,
+                        )
+
+                    # data is our only positional arg, everything else is kwargs-only
+                    with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
+                        _template_result = _finalize_template_result(_template_result, undefined_behavior=undefined_behavior, raise_on_unsupported_type=True)
+                        _template_result = undefined_behavior.post_finalize(_template_result)
+            except RecursionError as ex:
+                if is_top_level_template:
+                    # FIXME: implement a better error handler here with proper contextual information, such as source position
+
+                    src_pos = AnsibleSourcePosition.get_tag(variable)
+
+                    if isinstance(variable, str):
+                        cause = repr(variable)
+                    else:
+                        cause = f'of type {type(variable)}'
+
+                    raise AnsibleError(NotATemplate().tag(f"Recursive loop detected in template {cause} from {src_pos}"), orig_exc=ex) from ex
+
+                raise
 
         # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
         for deprecation_template, deprecation in deprecated.deprecated_access:
             # FIXME: if we're in a worker, propagate deprecated access warnings back to the controller for deduplication
             # FIXME: the current template may not have a source position, we may need to consult a parent template
-            message = deprecation.msg
-
-            if deprecation_template is not None:
-                message += f' while templating {self._repr_from(deprecation_template)}'
-
-            _display.deprecated(message, version=deprecation.removal_version, date=deprecation.removal_date)
+            _display.deprecated(
+                msg=f'{deprecation.msg} while templating {self._repr_from(deprecation_template)}',
+                version=deprecation.removal_version,
+                date=deprecation.removal_date,
+            )
 
         return TemplateResult(result=_template_result)
 
@@ -765,11 +781,6 @@ class Templar:
             cur_template = myenv.from_string(data)
         except TemplateSyntaxError as e:
             raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(data)), orig_exc=e)
-        except Exception as e:
-            if 'recursion' in to_native(e):
-                raise AnsibleError("recursive loop detected in template string: %s" % to_native(data), orig_exc=e)
-            else:
-                return data
 
         if disable_lookups:
             cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup

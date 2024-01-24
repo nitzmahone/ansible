@@ -264,6 +264,8 @@ class Deprecated(AnsibleDataclassTagBase):
     removal_version: t.Optional[str] = None
 
     def __post_init__(self):
+        # FIXME: we should probably have more strict type checks here for the other fields
+
         if type(self.removal_date) not in (type(None), datetime.date):
             raise TypeError(f'removal_date must be {datetime.date} instead of {type(self.removal_date)}')
 

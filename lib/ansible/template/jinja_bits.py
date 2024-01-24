@@ -393,6 +393,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
                     name=key,
                     exc=AnsibleUndefinedVariable,
                 )
+            except RecursionError:  # FIXME: stupid hack so we can handle recursion errors better, not needed once we ditch the dumb Exeption handler below
+                raise
             except Exception as e:
                 msg = getattr(e, 'message', None) or to_native(e)
                 raise AnsibleError(
