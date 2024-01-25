@@ -117,3 +117,15 @@
         - task_list_yaml == ["i am a scalar"]
         - task_list_jinja == ["i am a scalar"]
     ignore_errors: true  # FIXME: FDI041 - lazy container operators need to delazify
+
+- name: trigger a template cycle that overflows the stack
+  vars:
+    cycle: '{{ cycle }}'
+  raw: echo {{ cycle }}
+  ignore_errors: true
+  register: result
+
+- assert:
+    that:
+      - result is failed
+      - result.msg is contains("Recursive loop detected in template")
