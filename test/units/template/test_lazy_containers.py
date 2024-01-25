@@ -31,7 +31,7 @@ def test_container_equality(value: t.Any) -> None:
 
         lazy = _AnsibleLazyTemplateMixin.try_create(value)
 
-        assert lazy == lazy
+        assert lazy == lazy  # pylint: disable=comparison-with-itself
 
         assert lazy == rendered
         assert rendered == lazy

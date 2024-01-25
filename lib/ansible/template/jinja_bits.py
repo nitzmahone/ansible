@@ -6,7 +6,7 @@ from collections import ChainMap
 from typing import MutableMapping, Iterator, MappingView
 
 from jinja2 import pass_context
-from jinja2.exceptions import TemplateSyntaxError, UndefinedError
+from jinja2.exceptions import TemplateSyntaxError
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
 from jinja2.nativetypes import NativeTemplate, NativeCodeGenerator
@@ -16,7 +16,7 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing
 
 from ansible.utils.display import Display
-from ansible.errors import AnsibleUndefinedVariable, AnsibleError
+from ansible.errors import AnsibleError
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
 from ansible.module_utils.datatag import TrustedAsTemplate
@@ -26,7 +26,7 @@ from ansible.plugins.loader import filter_loader, test_loader
 
 from .utils import AnsibleUndefined, Omit, TemplateContext
 from .undefined_behaviors import FAIL_ON_UNDEFINED
-from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin
+from .lazy_containers import _finalize_template_result
 
 RANGE_TYPE = type(range(0))
 
