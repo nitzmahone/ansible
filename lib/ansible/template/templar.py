@@ -439,7 +439,7 @@ class Templar:
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
                 # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
-                if not TemplateContext.current():
+                if is_top_level_template:
                     if _template_result is Omit:
                         if value_for_omit is Omit:
                             raise AnsibleValueOmittedError()

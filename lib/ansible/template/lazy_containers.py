@@ -310,7 +310,10 @@ def _finalize_template_result(o: t.Any, undefined_behavior: UndefinedBehavior, r
         return o
     # FIXME: delazifying HostVars/HostVarsVars here is correct but expensive- look at ways to do deferred lazy outside of templating or ?
     elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict, HostVars, HostVarsVars):
-        value_expression = (_finalize_template_result((k, v), undefined_behavior, raise_on_unsupported_type) for k, v in o.items() if v is not Omit)
+        value_expression = ((
+            _finalize_template_result(k, undefined_behavior, raise_on_unsupported_type),
+            _finalize_template_result(v, undefined_behavior, raise_on_unsupported_type)
+        ) for k, v in o.items() if v is not Omit)
         value_type = dict
     elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
         value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
