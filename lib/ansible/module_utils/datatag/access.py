@@ -14,6 +14,7 @@ from . import (
 POORLY_NAMED_SENTINEL = object()
 
 
+# FIXME: this base class is not datatag specific- find a new module_utils home for it
 # this base class implements a context manager that makes the CM instance accessible to any other code executing beneath
 # it in the same contextvars context (eg, thread, asyncio context) via a .current property
 class AmbientContextBase:
@@ -29,6 +30,13 @@ class AmbientContextBase:
             return cls._contextvar.get()
         except LookupError:
             return None
+
+    @classmethod
+    def current_or_raise(cls):
+        try:
+            return cls._contextvar.get()
+        except LookupError:
+            raise ReferenceError(f"A required {cls.__name__} context is not active.")
 
     def __enter__(self):
         self._contextvar_token = self.__class__._contextvar.set(self)

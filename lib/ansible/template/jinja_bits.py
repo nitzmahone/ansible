@@ -114,7 +114,7 @@ class AnsibleJ2Vars(ChainMap):
         )
 
     def __getitem__(self, key):
-        return self._templar.environment._proxy_or_render_template(super().__getitem__(key), key)
+        return self._templar.proxy_or_render_template(super().__getitem__(key), key)
 
     def add_locals(self, locals):
         """If locals are provided, create a copy of self containing those
@@ -334,55 +334,16 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         return ''.join([to_text(v) for v in node_list])
 
     # NB: this method is for exclusive use of the template compiler to render embedded constant templates
-    def _render_inline_template(self, const_template: str) -> t.Any:
-        const_template = TrustedAsTemplate().tag(const_template)
-        result = self._proxy_or_render_template(const_template)
-        return result
+    @staticmethod
+    def _render_inline_template(const_template: str) -> t.Any:
+        return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(const_template))
 
     def getitem(self, obj, argument):
         # FIXME: do we actually need to managed-access both sides of templates/strings here?
-        return self._proxy_or_render_template(super().getitem(obj, argument), argument)
+        return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getitem(obj, argument), argument)
 
     def getattr(self, obj, attribute):
-        return self._proxy_or_render_template(super().getattr(obj, attribute), attribute)
-
-    def _proxy_or_render_template(self, item: t.Any, key: str | None = None):
-        # FIXME: always blindly access item here?
-        item = AnsibleAccessContext.current().access(item)
-        if isinstance(item, str):
-            # in case the item is a template, render it first
-            if not (template_context := TemplateContext.current()):
-                # FIXME: better exception type? (same thing in the lazy template wrapper constructors)
-                raise ReferenceError("no TemplateContext is available")
-            try:
-                # FIXME: we need to propagate template args like undefined_behavior and/or move them into a templar/overlay instance
-                #  also, what happens if Lazy's that survive encounter a different templar and/or override args
-                item = template_context.templar.template(item)
-            except (AnsibleUndefinedVariable, UndefinedError) as e:  # FIXME: can we dump this whole thing or preserve just enough?
-                # Instead of failing here prematurely, return an Undefined
-                # object which fails only after its first usage allowing us to
-                # do lazy evaluation and passing it into filters/tests that
-                # operate on such objects.
-                return AnsibleUndefined(
-                    template_source=item,
-                    hint=e.message,  # FIXME: what should this actually be?
-                    name=key,
-                    exc=AnsibleUndefinedVariable,
-                )
-            except RecursionError:  # FIXME: stupid hack so we can handle recursion errors better, not needed once we ditch the dumb Exeption handler below
-                raise
-            except Exception as e:
-                msg = getattr(e, 'message', None) or to_native(e)
-                raise AnsibleError(
-                    f"An unhandled exception occurred while templating '{to_native(item)}'. "
-                    f"Error was a {type(e)}, original message: {msg}"
-                )
-
-        # FIXME: this can return an empty lazy container, is that what we want?
-        if (lazy := _AnsibleLazyTemplateMixin.try_create(item)) is not None:
-            return lazy
-
-        return item
+        return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getattr(obj, attribute), attribute)
 
     def _now(self, utc=False, fmt=None):
         """Jinja2 global function (now) to return current datetime, potentially formatted via strftime."""

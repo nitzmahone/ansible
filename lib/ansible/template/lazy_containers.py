@@ -125,7 +125,7 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
         # FIXME: better access pattern for this?
         # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
         #  template the same values?
-        return self._templar.environment._proxy_or_render_template(super().__getitem__(item), item)
+        return self._templar.proxy_or_render_template(super().__getitem__(item), item)
 
     # FIXME: fully implement iteration support
     # FIXME: do we need to implement templated key support?
@@ -142,7 +142,7 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
         for key, value in super().items():
             # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
             #  template the same values?
-            yield key, self._templar.environment._proxy_or_render_template(value, key)
+            yield key, self._templar.proxy_or_render_template(value, key)
 
     def values(self):
         for _key, value in self.items():
@@ -172,11 +172,11 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
         # FIXME: better access pattern for this?
         # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
         #  template the same values?
-        return self._templar.environment._proxy_or_render_template(super().__getitem__(item), item)
+        return self._templar.proxy_or_render_template(super().__getitem__(item), item)
 
     def __iter__(self):
         for value in super().__iter__():
-            yield self._templar.environment._proxy_or_render_template(value)
+            yield self._templar.proxy_or_render_template(value)
 
     def __str__(self):
         return self.__repr__()
@@ -234,11 +234,11 @@ class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
         # FIXME: better access pattern for this?
         # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
         #  template the same values?
-        return self._templar.environment._proxy_or_render_template(super().__getitem__(item), item)
+        return self._templar.proxy_or_render_template(super().__getitem__(item), item)
 
     def __iter__(self):
         for value in super().__iter__():
-            yield self._templar.environment._proxy_or_render_template(value)
+            yield self._templar.proxy_or_render_template(value)
 
     def __str__(self):
         return self.__repr__()
@@ -282,7 +282,7 @@ class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
 
     def __iter__(self):
         for value in super().__iter__():
-            yield self._templar.environment._proxy_or_render_template(value)
+            yield self._templar.proxy_or_render_template(value)
 
     def __str__(self):
         return self.__repr__()

@@ -48,6 +48,7 @@ from ansible.plugins.loader import lookup_loader
 from ansible.module_utils.datatag import (
     AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError, _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
 )
+from ansible.module_utils.datatag.access import AnsibleAccessContext
 
 from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
@@ -55,7 +56,7 @@ from ansible.utils.vars import isidentifier
 from .datatag import DeprecatedAccessAuditContext
 from .jinja_bits import AnsibleEnvironment, AnsibleJ2Vars
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
-from .utils import Omit, TemplateContext
+from .utils import AnsibleUndefined, Omit, TemplateContext, TemplateDepthContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
 from .undefined_behaviors import FAIL_ON_UNDEFINED
 
@@ -420,13 +421,14 @@ class Templar:
 
         # FIXME: early exit on empty collections
 
+        is_top_level_template = not TemplateDepthContext.current()
+
         # track access to items that are tagged Deprecated during templating, handle accordingly
         with (
                 UndecryptableAccessMutator(),  # trigger injection of VaultBomb
                 DeprecatedAccessAuditContext() as deprecated,
+                TemplateDepthContext()
         ):
-            is_top_level_template = not TemplateContext.current()
-
             try:
                 _template_result = self._template_recursive(
                     variable,
@@ -454,7 +456,7 @@ class Templar:
                         )
 
                     # data is our only positional arg, everything else is kwargs-only
-                    with DetonateVaultBombsTripwire(), TemplateContext(template_value=_template_result, templar=self):
+                    with DetonateVaultBombsTripwire():
                         _template_result = _finalize_template_result(_template_result, undefined_behavior=undefined_behavior, raise_on_unsupported_type=True)
                         _template_result = undefined_behavior.post_finalize(_template_result)
             except RecursionError as ex:
@@ -815,3 +817,43 @@ class Templar:
                 res = AnsibleTaggedObject.tag_copy(res, res + newlines)
 
         return res
+
+    def proxy_or_render_template(self, item: t.Any, key: str | None = None):
+        # FIXME: always blindly access item here?
+        item = AnsibleAccessContext.current().access(item)
+        if isinstance(item, str):  # in case the item is a template, render it first
+            # ensure we're running under templating; if this fails, it usually means a lazy container has escaped the template system
+            try:
+                # FIXME: we need to propagate template args like undefined_behavior and/or move them into a templar/overlay instance
+                #  also, what happens if Lazy's that survive encounter a different templar and/or override args
+                item = self.template(item)
+
+            # FIXME: do we still need this at all, and if so, can we move it into template?
+            except (AnsibleUndefinedVariable, UndefinedError) as e:
+                # Instead of failing here prematurely, return an Undefined
+                # object which fails only after its first usage allowing us to
+                # do lazy evaluation and passing it into filters/tests that
+                # operate on such objects.
+                return AnsibleUndefined(
+                    template_source=item,
+                    hint=e.message,  # FIXME: what should this actually be?
+                    name=key,
+                    exc=AnsibleUndefinedVariable,
+                )
+            # except RecursionError:  # FIXME: stupid hack so we can handle recursion errors better, not needed once we ditch the dumb Exeption handler below
+            #     raise
+            # except Exception as e:
+            #     msg = getattr(e, 'message', None) or to_native(e)
+            #     raise AnsibleError(
+            #         f"An unhandled exception occurred while templating '{to_native(item)}'. "
+            #         f"Error was a {type(e)}, original message: {msg}"
+            #     )
+
+        # FIXME: probably a better way to do this
+        with TemplateContext(template_value=item, templar=self):
+
+            # FIXME: this can return an empty lazy container, is that what we want?
+            if (lazy := _AnsibleLazyTemplateMixin.try_create(item)) is not None:
+                return lazy
+
+        return item

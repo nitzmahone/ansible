@@ -13,6 +13,11 @@ if t.TYPE_CHECKING:
     from . import Templar
 
 
+class TemplateDepthContext(AmbientContextBase):
+    # FIXME: HACK, this isn't exactly right yet
+    pass
+
+
 class TemplateContext(AmbientContextBase):
     def __init__(self, *, template_value: t.Any, templar: Templar):
         self._template_value = template_value
