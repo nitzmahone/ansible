@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import mock
-from jinja2.runtime import Context, UndefinedError
+from jinja2.runtime import Context
 
 import unittest
 
@@ -66,11 +66,11 @@ class BaseTemplar(object):
 class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
     def test_trust_fail_raises_in_tests(self):
         """Ensure template trust check failures default to fatal for unit tests (set in units/conftest.py)"""
-        from ansible.template.templar import _TemplateTrustCheckFailedError
+        from ansible.template.templar import TemplateTrustCheckFailedError
 
         assert Templar._raise_on_trust_check_fail is True
 
-        with pytest.raises(_TemplateTrustCheckFailedError):
+        with pytest.raises(TemplateTrustCheckFailedError):
             self.templar.template("{{ i_am_not_trusted }}")
 
     def test_trust_fail_warning_behavior(self):
@@ -220,7 +220,7 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         self.assertRaises(AnsibleUndefinedVariable, templar.template, TrustedAsTemplate().tag("{{lookup('file', bad_var)}}"))
         self.assertRaises(AnsibleError, templar.template, TrustedAsTemplate().tag("{{lookup('bad_lookup')}}"))
         self.assertRaises(AnsibleError, templar.template, TrustedAsTemplate().tag("{{recursive}}"))
-        self.assertRaises(UndefinedError, templar.template, TrustedAsTemplate().tag("{{foo-bar}}"))  # FIXME: what's the correct exception type to expect here?
+        self.assertRaises(AnsibleUndefinedVariable, templar.template, TrustedAsTemplate().tag("{{foo-bar}}"))
 
         # FIXME: this currently expects the best effort result to match the hint, which is a reconstructed version of the original template with additional
         #        spaces, which may not be what we want (or what we end up with after refactoring)

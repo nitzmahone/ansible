@@ -387,7 +387,7 @@ class AnsibleVariableTypeError(AnsibleRuntimeError):
         super().__init__(f'Variables of type {variable_type} are not supported.')
 
 
-class AnsibleValueOmittedError(Exception):
+class AnsibleValueOmittedError(AnsibleTemplateError):
     """
     Raised when the result of a template operation was the Omit singleton. This exception purposely does
     not derive from AnsibleError to avoid elision of the traceback, since uncaught errors of this type always

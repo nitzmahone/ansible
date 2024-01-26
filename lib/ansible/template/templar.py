@@ -41,6 +41,7 @@ from ansible.errors import (
     AnsibleValueOmittedError,
     AnsibleOptionsError,
     AnsibleUndefinedVariable,
+    AnsibleTemplateError,
 )
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
@@ -56,7 +57,7 @@ from ansible.utils.vars import isidentifier
 from .datatag import DeprecatedAccessAuditContext
 from .jinja_bits import AnsibleEnvironment, AnsibleJ2Vars
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
-from .utils import AnsibleUndefined, Omit, TemplateContext, TemplateDepthContext
+from .utils import Omit, TemplateContext, TemplateDepthContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
 from .undefined_behaviors import FAIL_ON_UNDEFINED, UndefinedBehavior
 
@@ -81,7 +82,7 @@ class TemplateResult:
         return AnsibleTaggedObject.tag(str(result), AnsibleTaggedObject.tags(result) | {NotATemplate()})
 
 
-class _TemplateTrustCheckFailedError(Exception):
+class TemplateTrustCheckFailedError(AnsibleTemplateError):
     pass
 
 
@@ -506,9 +507,13 @@ class Templar:
                     with DetonateVaultBombsTripwire():
                         _template_result = _finalize_template_result(_template_result, raise_on_unsupported_type=True)
                         _template_result = options.undefined_behavior.post_finalize(_template_result)
-            except RecursionError as ex:
-                if is_top_level_template:
-                    # FIXME: implement a better error handler here with proper contextual information, such as source position
+            except Exception as ex:
+                # FIXME: capture useful context information from each context early
+
+                if isinstance(ex, AnsibleTemplateError):
+                    exception_to_raise = ex
+                else:
+                    exception_factory = AnsibleTemplateError
 
                     src_pos = AnsibleSourcePosition.get_tag(variable)
 
@@ -517,9 +522,25 @@ class Templar:
                     else:
                         cause = f'of type {type(variable)}'
 
-                    raise AnsibleError(NotATemplate().tag(f"Recursive loop detected in template {cause} from {src_pos}"), orig_exc=ex) from ex
+                    if src_pos:
+                        cause += f'from {src_pos}'
 
-                raise
+                    if isinstance(ex, UndefinedError):
+                        exception_factory = AnsibleUndefinedVariable
+                        msg = f"Undefined variable in template {cause}"
+                    elif isinstance(ex, RecursionError):
+                        msg = f"Recursive loop detected in template {cause}"
+                    else:
+                        msg = f"Unexpected exception rendering template {cause}: {ex}"
+
+                    exception_to_raise = exception_factory(NotATemplate().tag(msg), orig_exc=ex)
+
+                # FIXME: apply captured context information from above onto `exception_to_raise` here, before (re)raising
+
+                if exception_to_raise is ex:
+                    raise
+
+                raise exception_to_raise from ex
 
         # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
         for deprecation_template, deprecation in deprecated.deprecated_access:
@@ -796,7 +817,7 @@ class Templar:
 
             if Templar._raise_on_trust_check_fail:
                 # FIXME: explicit exception type?
-                raise _TemplateTrustCheckFailedError(f'failing on untrusted template {self._repr_from(data)}')
+                raise TemplateTrustCheckFailedError(f'failing on untrusted template {self._repr_from(data)}')
 
             return False
 
