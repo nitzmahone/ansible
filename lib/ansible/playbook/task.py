@@ -143,7 +143,6 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         # input (eg, debug's var/msg, assert's "that" conditional expressions)
         self.untemplated_args = value
 
-
         # FIXME: this is None for pseudo-actions like include_tasks, should it be?
         if self.resolved_action:
             ctx = action_loader.get_with_context(self.resolved_action, collection_list=self.collections, class_only=True)
