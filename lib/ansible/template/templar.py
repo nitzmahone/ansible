@@ -112,8 +112,15 @@ class TemplateOptions:
 
         # FIXME: dataclasses.replace on the defaults in a factory?
         for field in dataclasses.fields(self):
+            # FIXME: tighten this up?
             if getattr(self, field.name) is ...:
-                object.__setattr__(self, field.name, getattr(defaults, field.name))
+                # FIXME: figure out a better way to avoid propagating options
+                if field.name in ('stop_on_container_result', 'value_for_omit', 'overrides'):
+                    value = getattr(_DEFAULT_TEMPLATE_OPTIONS, field.name)
+                else:
+                    value = getattr(defaults, field.name)
+
+                object.__setattr__(self, field.name, value)
 
 
 _DEFAULT_TEMPLATE_OPTIONS: t.Final = TemplateOptions(
@@ -461,8 +468,10 @@ class Templar:
 
         # FIXME: early exit on empty collections
 
+        # FIXME: tighten this up, and figure out a better way to avoid propagating options
         if template_depth_ctx := TemplateDepthContext.current():
-            options = options or template_depth_ctx.options
+            # FIXME: ideally avoid re-creating TemplateOptions every time here
+            options = options or TemplateOptions()
         else:
             options = options or _DEFAULT_TEMPLATE_OPTIONS
 
@@ -530,8 +539,10 @@ class Templar:
         with TemplateContext(template_value=variable, templar=self):
             # FIXME: ensure tag propagation behavior is working for containers
 
+            options = TemplateDepthContext.current_or_raise().options
+
             if isinstance(variable, str):
-                if not self.is_possibly_template(variable, TemplateDepthContext.current_or_raise().options.overrides):
+                if not self.is_possibly_template(variable, options.overrides):
                     return variable
 
                 if not self._trust_check(variable):
@@ -549,10 +560,11 @@ class Templar:
 
                 return result
 
-            elif (lazy := _AnsibleLazyTemplateMixin.try_create(variable)) is not None:
-                return lazy
-            else:
-                return variable
+            if options.overrides is not None:
+                raise ValueError("Jinja overrides are only allowed on string inputs")
+
+            return _AnsibleLazyTemplateMixin.try_create(variable)
+
 
     def is_template(self, data):
         """lets us know if data has a template"""
@@ -732,7 +744,7 @@ class Templar:
                 # assume the original conditional was actually a {{ }} style template, process it as such
                 conditional_template = conditional
                 escape_backslashes = True
-                overrides = {}
+                overrides = None
                 _display.warning(
                     # FIXME: should we deprecate and/or remove this capability?
                     f'Conditional {self._repr_from(conditional)} could not be parsed as a Jinja2 expression, and will be '
