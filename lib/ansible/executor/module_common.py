@@ -609,7 +609,8 @@ def _get_shebang(interpreter, task_vars, templar, args=tuple(), remote_is_local=
         elif C.config.get_configuration_definition(interpreter_config_key):
 
             interpreter_from_config = C.config.get_config_value(interpreter_config_key, variables=task_vars)
-            interpreter_out = templar.template(interpreter_from_config.strip(), options=TemplateOptions(value_for_omit=C.config.get_config_default(interpreter_config_key)))
+            interpreter_out = templar.template(interpreter_from_config.strip(), options=TemplateOptions(
+                value_for_omit=C.config.get_config_default(interpreter_config_key)))
 
             # handle interpreter discovery if requested or empty interpreter was provided
             if not interpreter_out or interpreter_out in ['auto', 'auto_legacy', 'auto_silent', 'auto_legacy_silent']:

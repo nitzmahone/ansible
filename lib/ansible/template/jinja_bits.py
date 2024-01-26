@@ -25,7 +25,6 @@ from ansible.module_utils.six import string_types
 from ansible.plugins.loader import filter_loader, test_loader
 
 from .utils import AnsibleUndefined, Omit, TemplateContext
-from .undefined_behaviors import FAIL_ON_UNDEFINED
 from .lazy_containers import _finalize_template_result
 
 RANGE_TYPE = type(range(0))

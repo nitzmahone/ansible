@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-from ansible.template.templar import TemplateOptions
-
 DOCUMENTATION = """
     name: template
     author: Michael DeHaan
@@ -99,6 +97,7 @@ from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.plugin_utils.template import generate_ansible_template_vars
 from ansible.utils.display import Display
+from ansible.template.templar import TemplateOptions
 
 
 display = Display()

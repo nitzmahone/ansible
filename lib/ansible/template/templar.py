@@ -88,12 +88,12 @@ class _TemplateTrustCheckFailedError(Exception):
 @dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
 class TemplateOptions:
     # FIXME: embedded sentinel
-    preserve_trailing_newlines: bool = ...
-    escape_backslashes: bool = ...
-    overrides: dict[str, t.Any] | None = ...
-    disable_lookups: bool = ...
-    undefined_behavior: UndefinedBehavior = ...
-    stop_on_container_result: bool = ...
+    preserve_trailing_newlines: bool = t.cast(bool, ...)
+    escape_backslashes: bool = t.cast(bool, ...)
+    overrides: dict[str, t.Any] | None = t.cast(None, ...)
+    disable_lookups: bool = t.cast(bool, ...)
+    undefined_behavior: UndefinedBehavior = t.cast(UndefinedBehavior, ...)
+    stop_on_container_result: bool = t.cast(bool, ...)
     value_for_omit: t.Any = ...
 
     def __post_init__(self):
@@ -564,7 +564,6 @@ class Templar:
                 raise ValueError("Jinja overrides are only allowed on string inputs")
 
             return _AnsibleLazyTemplateMixin.try_create(variable)
-
 
     def is_template(self, data):
         """lets us know if data has a template"""

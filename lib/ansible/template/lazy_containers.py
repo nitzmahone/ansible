@@ -23,9 +23,6 @@ from .vault import _AnsibleTaggedVaultBomb
 from ansible.errors import AnsibleVariableTypeError
 from ansible.utils.display import Display
 
-if t.TYPE_CHECKING:
-    from .undefined_behaviors import UndefinedBehavior
-
 _ANSIBLE_LAZY_TEMPLATE_SLOTS = tuple(('_templar',))
 
 display = Display()
