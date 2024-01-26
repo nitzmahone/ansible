@@ -129,3 +129,11 @@
     that:
       - result is failed
       - result.msg is contains("Recursive loop detected in template")
+
+- raw: "{{ 'x' in y }}"
+  ignore_errors: yes
+  register: error
+
+- name: check that proper error message is emitted when in operator is used
+  assert:
+    that: "\"'y' is undefined\" in error.msg"

@@ -699,15 +699,6 @@
         - 'diff_result.stdout == ""'
         - "diff_result.rc == 0"
 
-- debug:
-    msg: "{{ 'x' in y }}"
-  ignore_errors: yes
-  register: error
-
-- name: check that proper error message is emitted when in operator is used
-  assert:
-    that: "\"The error was: 'y' is undefined\n\n\" in error.msg"
-
 - template:
     src: template_import_macro_globals.j2
     dest: "{{ output_dir }}/template_import_macro_globals.templated"

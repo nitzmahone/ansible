@@ -513,8 +513,6 @@ class Templar:
                 if isinstance(ex, AnsibleTemplateError):
                     exception_to_raise = ex
                 else:
-                    exception_factory = AnsibleTemplateError
-
                     src_pos = AnsibleSourcePosition.get_tag(variable)
 
                     if isinstance(variable, str):
@@ -525,15 +523,12 @@ class Templar:
                     if src_pos:
                         cause += f'from {src_pos}'
 
-                    if isinstance(ex, UndefinedError):
-                        exception_factory = AnsibleUndefinedVariable
-                        msg = f"Undefined variable in template {cause}"
-                    elif isinstance(ex, RecursionError):
+                    if isinstance(ex, RecursionError):
                         msg = f"Recursive loop detected in template {cause}"
                     else:
                         msg = f"Unexpected exception rendering template {cause}: {ex}"
 
-                    exception_to_raise = exception_factory(NotATemplate().tag(msg), orig_exc=ex)
+                    exception_to_raise = AnsibleTemplateError(NotATemplate().tag(msg), orig_exc=ex)
 
                 # FIXME: apply captured context information from above onto `exception_to_raise` here, before (re)raising
 
@@ -850,17 +845,9 @@ class Templar:
 
         rf = cur_template.root_render_func(cur_context)
 
-        try:
-            res = myenv.concat(rf)
-            # FIXME: propagate some/all tags here?
-        except TypeError as te:
-            if 'AnsibleUndefined' in to_native(te):
-                errmsg = "Unable to look up a name or access an attribute in template string (%s).\n" % to_native(variable)
-                errmsg += "Make sure your variable name does not contain invalid characters like '-': %s" % to_native(te)
-                raise AnsibleUndefinedVariable(errmsg, orig_exc=te)
-            else:
-                _display.debug("failing because of a type error, template data is: %s" % to_text(variable))
-                raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(variable), to_native(te)), orig_exc=te)
+        res = myenv.concat(rf)
+
+        # FIXME: propagate some/all tags here?
 
         if options.preserve_trailing_newlines and isinstance(res, str):
             # The low level calls above do not preserve the newline
@@ -884,40 +871,5 @@ class Templar:
 
     def proxy_or_render_template(self, item: t.Any, key: str | None = None):
         # FIXME: always blindly access item here?
-        item = AnsibleAccessContext.current().access(item)
-        if isinstance(item, str):  # in case the item is a template, render it first
-            # ensure we're running under templating; if this fails, it usually means a lazy container has escaped the template system
-            try:
-                # FIXME: we need to propagate template args like undefined_behavior and/or move them into a templar/overlay instance
-                #  also, what happens if Lazy's that survive encounter a different templar and/or override args
-                item = self.template(item)
-
-            # FIXME: do we still need this at all, and if so, can we move it into template?
-            except (AnsibleUndefinedVariable, UndefinedError) as e:
-                # Instead of failing here prematurely, return an Undefined
-                # object which fails only after its first usage allowing us to
-                # do lazy evaluation and passing it into filters/tests that
-                # operate on such objects.
-                return AnsibleUndefined(
-                    template_source=item,
-                    hint=e.message,  # FIXME: what should this actually be?
-                    name=key,
-                    exc=AnsibleUndefinedVariable,
-                )
-            # except RecursionError:  # FIXME: stupid hack so we can handle recursion errors better, not needed once we ditch the dumb Exeption handler below
-            #     raise
-            # except Exception as e:
-            #     msg = getattr(e, 'message', None) or to_native(e)
-            #     raise AnsibleError(
-            #         f"An unhandled exception occurred while templating '{to_native(item)}'. "
-            #         f"Error was a {type(e)}, original message: {msg}"
-            #     )
-
-        # FIXME: probably a better way to do this
-        with TemplateContext(template_value=item, templar=self):
-
-            # FIXME: this can return an empty lazy container, is that what we want?
-            if (lazy := _AnsibleLazyTemplateMixin.try_create(item)) is not None:
-                return lazy
-
-        return item
+        # FIXME: should we do something with key here, or remove it?
+        return self.template(AnsibleAccessContext.current().access(item))

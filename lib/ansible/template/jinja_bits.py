@@ -6,7 +6,8 @@ from collections import ChainMap
 from typing import MutableMapping, Iterator, MappingView
 
 from jinja2 import pass_context
-from jinja2.exceptions import TemplateSyntaxError
+from jinja2.environment import TemplateModule
+from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
 from jinja2.nativetypes import NativeTemplate, NativeCodeGenerator
@@ -308,7 +309,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
 
     def concat(self, nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
-        node_list = list(nodes)
+        node_list = list(_flatten_nodes(nodes))
 
         if not node_list:
             return None
@@ -381,3 +382,25 @@ def _unroll_iterator(func):
         return ret
 
     return functools.update_wrapper(wrapper, func)
+
+
+def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any, None, None]:
+    """
+    Yield nodes from a potentially recursive iterable of nodes.
+    The recursion is required to expand template imports (TemplateModule).
+    Any UndefinedError exception encountered will be converted to an AnsibleUndefined instance.
+    """
+    try:
+        for node in nodes:
+            if type(node) is TemplateModule:  # pylint: disable=unidiomatic-typecheck
+                yield from _flatten_nodes(node._body_stream)
+
+            yield node
+    except UndefinedError as ex:
+        # Convert an UndefinedError generated internally by Jinja2 back into an AnsibleUndefined instance.
+        # This instance may be embedded in a data structure and will be subject to UndefinedBehavior handling during template finalization.
+        # FIXME: figure out what we should be setting here for obj, key, etc.
+        yield AnsibleUndefined(
+            template_source=TemplateContext.current_or_raise().template_value,
+            hint=ex.message,
+        )
