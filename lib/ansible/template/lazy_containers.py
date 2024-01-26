@@ -296,7 +296,7 @@ class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
 
 
 # FIXME: add tests to ensure this doesn't drift from allowed types
-def _finalize_template_result(o: t.Any, undefined_behavior: UndefinedBehavior, raise_on_unsupported_type: bool) -> t.Any:
+def _finalize_template_result(o: t.Any, raise_on_unsupported_type: bool) -> t.Any:
     """
     Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions.
     """
@@ -311,21 +311,24 @@ def _finalize_template_result(o: t.Any, undefined_behavior: UndefinedBehavior, r
     # FIXME: delazifying HostVars/HostVarsVars here is correct but expensive- look at ways to do deferred lazy outside of templating or ?
     elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict, HostVars, HostVarsVars):
         value_expression = ((
-            _finalize_template_result(k, undefined_behavior, raise_on_unsupported_type),
-            _finalize_template_result(v, undefined_behavior, raise_on_unsupported_type)
+            _finalize_template_result(k, raise_on_unsupported_type),
+            _finalize_template_result(v, raise_on_unsupported_type)
         ) for k, v in o.items() if v is not Omit)
         value_type = dict
     elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
-        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
         value_type = list
     elif o_type in (tuple, _AnsibleTaggedTuple, _AnsibleLazyTemplateTuple):
-        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
         value_type = tuple
     elif o_type in (set, _AnsibleTaggedSet, _AnsibleLazyTemplateSet):
-        value_expression = (_finalize_template_result(v, undefined_behavior, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
         value_type = set
     elif o_type is AnsibleUndefined:
-        return undefined_behavior.handle_undefined(o)  # FIXME: this assumes handle_undefined follows our variable type rules
+        # FIXME: move to allow top-level import
+        from .templar import TemplateDepthContext
+        # FIXME: this assumes handle_undefined follows our variable type rules
+        return TemplateDepthContext.current_or_raise().options.undefined_behavior.handle_undefined(o)
     elif raise_on_unsupported_type:  # unsupported type (raise)
         if o_type is _AnsibleTaggedVaultBomb:
             o.detonate()

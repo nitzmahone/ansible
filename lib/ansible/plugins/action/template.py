@@ -27,6 +27,7 @@ from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.six import string_types
 from ansible.plugins.action import ActionBase
 from ansible.plugin_utils.template import generate_ansible_template_vars
+from ansible.template.templar import TemplateOptions
 
 
 class ActionModule(ActionBase):
@@ -146,7 +147,7 @@ class ActionModule(ActionBase):
                     lstrip_blocks=lstrip_blocks
                 )
 
-                resultant = templar.template(template_data, escape_backslashes=False, overrides=overrides)
+                resultant = templar.template(template_data, options=TemplateOptions(escape_backslashes=False, overrides=overrides))
             except AnsibleAction:
                 raise
             except Exception as e:

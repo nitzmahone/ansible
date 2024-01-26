@@ -26,7 +26,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleUndefinedVariable
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate
 from ansible.plugins.loader import init_plugin_loader
-from ansible.template.templar import Templar
+from ansible.template.templar import Templar, TemplateOptions
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext
 from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display
@@ -205,8 +205,8 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         # test some basic templating
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}")), "bar")
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}\n")), "bar\n")
-        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}\n"), preserve_trailing_newlines=True), "bar\n")
-        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}\n"), preserve_trailing_newlines=False), "bar")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}\n"), options=TemplateOptions(preserve_trailing_newlines=True)), "bar\n")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}\n"), options=TemplateOptions(preserve_trailing_newlines=False)), "bar")
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bam}}")), "bar")
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{num}}")), 1)
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{var_true}}")), True)
@@ -224,7 +224,7 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
 
         # FIXME: this currently expects the best effort result to match the hint, which is a reconstructed version of the original template with additional
         #        spaces, which may not be what we want (or what we end up with after refactoring)
-        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), undefined_behavior=BEST_EFFORT), "{{ bad_var }}")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), options=TemplateOptions(undefined_behavior=BEST_EFFORT)), "{{ bad_var }}")
 
         # test setting available_variables
         templar.available_variables = dict(foo="bam")
@@ -239,16 +239,16 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
     def test_templar_escape_backslashes(self):
         # Rule of thumb: If escape backslashes is True you should end up with
         # the same number of backslashes as when you started.
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\t{{foo}}"), escape_backslashes=True), "\tbar")
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\t{{foo}}"), escape_backslashes=False), "\tbar")
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo}}"), escape_backslashes=True), "\\bar")
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo}}"), escape_backslashes=False), "\\bar")
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\t' }}"), escape_backslashes=True), "\\bar\t")
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\t' }}"), escape_backslashes=False), "\\bar\t")
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\t' }}"), escape_backslashes=True), "\\bar\\t")
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\t' }}"), escape_backslashes=False), "\\bar\t")
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\\\t' }}"), escape_backslashes=True), "\\bar\\\\t")
-        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\\\t' }}"), escape_backslashes=False), "\\bar\\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\t{{foo}}"), options=TemplateOptions(escape_backslashes=True)), "\tbar")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\t{{foo}}"), options=TemplateOptions(escape_backslashes=False)), "\tbar")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo}}"), options=TemplateOptions(escape_backslashes=True)), "\\bar")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo}}"), options=TemplateOptions(escape_backslashes=False)), "\\bar")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\t' }}"), options=TemplateOptions(escape_backslashes=True)), "\\bar\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\t' }}"), options=TemplateOptions(escape_backslashes=False)), "\\bar\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\t' }}"), options=TemplateOptions(escape_backslashes=True)), "\\bar\\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\t' }}"), options=TemplateOptions(escape_backslashes=False)), "\\bar\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\\\t' }}"), options=TemplateOptions(escape_backslashes=True)), "\\bar\\\\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\\\t' }}"), options=TemplateOptions(escape_backslashes=False)), "\\bar\\t")
 
     def test_template_jinja2_extensions(self):
         fake_loader = DictDataLoader({})

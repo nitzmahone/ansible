@@ -33,7 +33,7 @@ from ansible.plugins import AnsiblePlugin
 from ansible.plugins.cache import CachePluginAdjudicator as CacheObject
 from ansible.module_utils.common.text.converters import to_bytes, to_native
 from ansible.module_utils.six import string_types
-from ansible.template.templar import Templar
+from ansible.template.templar import Templar, TemplateOptions
 from ansible.utils.display import Display
 from ansible.utils.vars import combine_vars, load_extra_vars
 from ansible.utils.datatag import AnsibleVariableVisitor
@@ -442,7 +442,7 @@ class Constructable(_BaseInventoryPlugin):
                         raw_parent_name = keyed.get('parent_group', None)
 
                         try:
-                            raw_parent_name = self.templar.template(raw_parent_name, value_for_omit=None)
+                            raw_parent_name = self.templar.template(raw_parent_name, options=TemplateOptions(value_for_omit=None))
                         except Exception as ex:
                             if strict:
                                 raise AnsibleParserError(f'Could not generate parent group {raw_parent_name!r} for group {key!r}: {ex}') from ex

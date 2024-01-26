@@ -22,6 +22,7 @@ import traceback
 from ansible.errors import AnsibleError, AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.plugins.action import ActionBase
+from ansible.template.templar import TemplateOptions
 from ansible.template.utils import Omit
 from ansible.template.undefined_behaviors import BestEffortWithWarnings, FAIL_ON_UNDEFINED
 
@@ -39,7 +40,7 @@ class ActionModule(ActionBase):
 
         # template splatted `args` only until we get a dictionary
         if vp := raw_task_args.pop('_variable_params', None):
-            raw_task_args = self._templar.template(vp, stop_on_container_result=True, value_for_omit={})
+            raw_task_args = self._templar.template(vp, options=TemplateOptions(stop_on_container_result=True, value_for_omit={}))
 
             if not isinstance(raw_task_args, dict):
                 # FIXME: needs AnsibleTaggedObject.get_native_type() to avoid displaying internal type names
@@ -62,7 +63,7 @@ class ActionModule(ActionBase):
             undefined_handler = custom_undefined_handlers.get(arg_name, FAIL_ON_UNDEFINED)
 
             try:
-                result = self._templar.template(arg, undefined_behavior=undefined_handler)
+                result = self._templar.template(arg, options=TemplateOptions(undefined_behavior=undefined_handler))
             except AnsibleValueOmittedError:
                 raw_task_args.pop(arg_name)
                 continue
@@ -98,7 +99,7 @@ class ActionModule(ActionBase):
                 template_wrapped_arg = AnsibleTaggedObject.tag_copy(raw_var_arg, "{{" + raw_var_arg + "}}")
 
                 try:
-                    template_result = self._templar.template_with_result(template_wrapped_arg, undefined_behavior=best_effort)
+                    template_result = self._templar.template_with_result(template_wrapped_arg, options=TemplateOptions(undefined_behavior=best_effort))
                 except AnsibleValueOmittedError:
                     results = repr(Omit)
                     result.setdefault('warnings', []).append(

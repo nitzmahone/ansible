@@ -10,12 +10,17 @@ from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.datatag.access import AmbientContextBase
 
 if t.TYPE_CHECKING:
-    from . import Templar
+    from .templar import Templar, TemplateOptions
 
 
 class TemplateDepthContext(AmbientContextBase):
     # FIXME: HACK, this isn't exactly right yet
-    pass
+    def __init__(self, options: TemplateOptions):
+        self._options = options
+
+    @property
+    def options(self):
+        return self._options
 
 
 class TemplateContext(AmbientContextBase):

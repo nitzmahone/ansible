@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from ansible.template.templar import TemplateOptions
+
 DOCUMENTATION = """
     name: template
     author: Michael DeHaan
@@ -157,7 +159,7 @@ class LookupModule(LookupBase):
                         comment_start_string=comment_start_string,
                         comment_end_string=comment_end_string
                     )
-                    res = templar.template(template_data, escape_backslashes=False, overrides=overrides)
+                    res = templar.template(template_data, options=TemplateOptions(escape_backslashes=False, overrides=overrides))
 
                 ret.append(res)
             else:

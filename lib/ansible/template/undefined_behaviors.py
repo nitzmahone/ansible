@@ -105,4 +105,4 @@ class BestEffortOmitUndefined(BestEffortWithWarnings):
 
         # there were warnings, which means we emitted omits that need omitting into the template result
         # do another finalize pass to clean it up
-        return _finalize_template_result(template_result, undefined_behavior=FAIL_ON_UNDEFINED, raise_on_unsupported_type=False)
+        return _finalize_template_result(template_result, raise_on_unsupported_type=False)

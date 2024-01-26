@@ -42,6 +42,7 @@ from ansible.module_utils.common.json import AnsibleJSONEncoder
 from ansible.module_utils.common.text.converters import to_bytes, to_text, to_native
 from ansible.playbook.task import Task
 from ansible.plugins.loader import module_utils_loader
+from ansible.template.templar import TemplateOptions
 from ansible.utils.collection_loader._collection_finder import _get_collection_metadata, _nested_dict_get
 
 # Must import strategy and use write_locks from there
@@ -608,7 +609,7 @@ def _get_shebang(interpreter, task_vars, templar, args=tuple(), remote_is_local=
         elif C.config.get_configuration_definition(interpreter_config_key):
 
             interpreter_from_config = C.config.get_config_value(interpreter_config_key, variables=task_vars)
-            interpreter_out = templar.template(interpreter_from_config.strip(), value_for_omit=C.config.get_config_default(interpreter_config_key))
+            interpreter_out = templar.template(interpreter_from_config.strip(), options=TemplateOptions(value_for_omit=C.config.get_config_default(interpreter_config_key)))
 
             # handle interpreter discovery if requested or empty interpreter was provided
             if not interpreter_out or interpreter_out in ['auto', 'auto_legacy', 'auto_silent', 'auto_legacy_silent']:
@@ -626,7 +627,7 @@ def _get_shebang(interpreter, task_vars, templar, args=tuple(), remote_is_local=
 
     elif interpreter_config in task_vars:
         # for non python we consult vars for a possible direct override
-        interpreter_out = templar.template(task_vars.get(interpreter_config).strip(), value_for_omit=None)
+        interpreter_out = templar.template(task_vars.get(interpreter_config).strip(), options=TemplateOptions(value_for_omit=None))
 
     if not interpreter_out:
         # nothing matched(None) or in case someone configures empty string or empty intepreter
@@ -1239,7 +1240,7 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
         rlimit_nofile = C.config.get_config_value('PYTHON_MODULE_RLIMIT_NOFILE', variables=task_vars)
 
         if not isinstance(rlimit_nofile, int):
-            rlimit_nofile = int(templar.template(rlimit_nofile, value_for_omit=0))
+            rlimit_nofile = int(templar.template(rlimit_nofile, options=TemplateOptions(value_for_omit=0)))
 
         if rlimit_nofile:
             rlimit = ANSIBALLZ_RLIMIT_TEMPLATE % dict(

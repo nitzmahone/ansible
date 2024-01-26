@@ -58,7 +58,7 @@ from .jinja_bits import AnsibleEnvironment, AnsibleJ2Vars
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import AnsibleUndefined, Omit, TemplateContext, TemplateDepthContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
-from .undefined_behaviors import FAIL_ON_UNDEFINED
+from .undefined_behaviors import FAIL_ON_UNDEFINED, UndefinedBehavior
 
 _display = Display()
 
@@ -83,6 +83,48 @@ class TemplateResult:
 
 class _TemplateTrustCheckFailedError(Exception):
     pass
+
+
+@dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
+class TemplateOptions:
+    # FIXME: embedded sentinel
+    preserve_trailing_newlines: bool = ...
+    escape_backslashes: bool = ...
+    overrides: dict[str, t.Any] | None = ...
+    disable_lookups: bool = ...
+    undefined_behavior: UndefinedBehavior = ...
+    stop_on_container_result: bool = ...
+    value_for_omit: t.Any = ...
+
+    def __post_init__(self):
+        if template_ctx := TemplateDepthContext.current():
+            if self.stop_on_container_result is not ...:
+                raise ValueError("stop_on_container_result is only valid for top-level template calls.")
+            if self.value_for_omit is not ...:
+                raise ValueError("value_for_omit is only valid for top-level template calls.")
+            defaults = template_ctx.options
+        else:
+            try:
+                defaults = _DEFAULT_TEMPLATE_OPTIONS
+            except NameError:
+                # HACK: stop post_init here when creating the shared defaults
+                return
+
+        # FIXME: dataclasses.replace on the defaults in a factory?
+        for field in dataclasses.fields(self):
+            if getattr(self, field.name) is ...:
+                object.__setattr__(self, field.name, getattr(defaults, field.name))
+
+
+_DEFAULT_TEMPLATE_OPTIONS: t.Final = TemplateOptions(
+    preserve_trailing_newlines=True,
+    escape_backslashes=True,
+    overrides=None,
+    disable_lookups=False,
+    undefined_behavior=FAIL_ON_UNDEFINED,
+    stop_on_container_result=False,
+    value_for_omit=Omit,
+)
 
 
 class Templar:
@@ -178,7 +220,7 @@ class Templar:
 
         return False
 
-    def _create_overlay(self, data: str, overrides: dict, undefined_behavior=None) -> tuple[str, AnsibleEnvironment, bool]:
+    def _create_overlay(self, data: str, overrides: dict) -> tuple[str, AnsibleEnvironment, bool]:
         if overrides is None:
             overrides = {}
 
@@ -187,8 +229,8 @@ class Templar:
         except (TypeError, AttributeError):
             has_override_header = False
 
-        if overrides or has_override_header or undefined_behavior:
-            overlay = self.environment.overlay(**overrides, undefined_behavior=undefined_behavior)
+        if overrides or has_override_header:
+            overlay = self.environment.overlay(**overrides)
         else:
             overlay = self.environment
 
@@ -407,12 +449,10 @@ class Templar:
         return templar.template(expression_template)
 
     # FIXME: wrap tripwires in a template decorator so we can preserve/propagate args automatically
-    def template(self, *args, **kwargs) -> t.Any:
-        return self.template_with_result(*args, **kwargs).result
+    def template(self, variable: t.Any, *, options: TemplateOptions | None = None) -> t.Any:
+        return self.template_with_result(variable, options=options).result
 
-    def template_with_result(self, variable, *, preserve_trailing_newlines=True, escape_backslashes=True,
-                             overrides=None, disable_lookups=False, undefined_behavior=FAIL_ON_UNDEFINED,
-                             stop_on_container_result=False, value_for_omit=Omit) -> TemplateResult:
+    def template_with_result(self, variable: t.Any, *, options: TemplateOptions | None = None) -> TemplateResult:
         """Templates (possibly recursively) any given data as input."""
 
         # bail out if we know we're looking at something that's been explicitly tagged as not a template
@@ -421,34 +461,32 @@ class Templar:
 
         # FIXME: early exit on empty collections
 
-        is_top_level_template = not TemplateDepthContext.current()
+        if template_depth_ctx := TemplateDepthContext.current():
+            options = options or template_depth_ctx.options
+        else:
+            options = options or _DEFAULT_TEMPLATE_OPTIONS
+
+        is_top_level_template = not template_depth_ctx
 
         # track access to items that are tagged Deprecated during templating, handle accordingly
         with (
                 UndecryptableAccessMutator(),  # trigger injection of VaultBomb
                 DeprecatedAccessAuditContext() as deprecated,
-                TemplateDepthContext()
+                TemplateDepthContext(options=options),
         ):
             try:
-                _template_result = self._template_recursive(
-                    variable,
-                    preserve_trailing_newlines=preserve_trailing_newlines,
-                    escape_backslashes=escape_backslashes,
-                    overrides=overrides,
-                    disable_lookups=disable_lookups,
-                    undefined_behavior=undefined_behavior,
-                )
+                _template_result = self._template_recursive(variable)
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
                 # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
                 if is_top_level_template:
                     if _template_result is Omit:
-                        if value_for_omit is Omit:
+                        if options.value_for_omit is Omit:
                             raise AnsibleValueOmittedError()
 
-                        return TemplateResult(result=value_for_omit)  # value_for_omit was not manipulated, trust that it contains only allowed types
+                        return TemplateResult(result=options.value_for_omit)  # value_for_omit was not manipulated, trust that it contains only allowed types
 
-                    if stop_on_container_result and type(_template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
+                    if options.stop_on_container_result and type(_template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
                         # Use of stop_on_container_result implies the caller will perform necessary checks on values,
                         # most likely by passing them back into the templating system.
                         return TemplateResult(
@@ -457,8 +495,8 @@ class Templar:
 
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire():
-                        _template_result = _finalize_template_result(_template_result, undefined_behavior=undefined_behavior, raise_on_unsupported_type=True)
-                        _template_result = undefined_behavior.post_finalize(_template_result)
+                        _template_result = _finalize_template_result(_template_result, raise_on_unsupported_type=True)
+                        _template_result = options.undefined_behavior.post_finalize(_template_result)
             except RecursionError as ex:
                 if is_top_level_template:
                     # FIXME: implement a better error handler here with proper contextual information, such as source position
@@ -486,28 +524,20 @@ class Templar:
 
         return TemplateResult(result=_template_result)
 
-    def _template_recursive(self, variable, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True,
-                            overrides=None, disable_lookups=False):
+    def _template_recursive(self, variable):
         """Templates (possibly recursively) any given data as input."""
         # stack the current active var value we're templating; this lets the deprecated tripwire ask for it
         with TemplateContext(template_value=variable, templar=self):
             # FIXME: ensure tag propagation behavior is working for containers
 
             if isinstance(variable, str):
-                if not self.is_possibly_template(variable, overrides):
+                if not self.is_possibly_template(variable, TemplateDepthContext.current_or_raise().options.overrides):
                     return variable
 
                 if not self._trust_check(variable):
                     return variable
 
-                result = self.do_template(
-                    variable,
-                    preserve_trailing_newlines=preserve_trailing_newlines,
-                    escape_backslashes=escape_backslashes,
-                    overrides=overrides,
-                    disable_lookups=disable_lookups,
-                    undefined_behavior=undefined_behavior,
-                )
+                result = self.do_template(variable)
 
                 # FIXME: should there be some form of recursive application here?
                 # if the input string template was source-tagged and the result is not, propagate the source tag to the new value
@@ -651,7 +681,7 @@ class Templar:
 
         expression_template = TrustedAsTemplate().tag(f'{variable_marker}{expression}{variable_marker}')
 
-        return self.template(expression_template, overrides=overrides, disable_lookups=disable_lookups)
+        return self.template(expression_template, options=TemplateOptions(overrides=overrides, disable_lookups=disable_lookups))
 
     # FIXME: make allow_inline_template=False by default
     def evaluate_conditional(self, conditional: str, allow_inline_template=True) -> bool:
@@ -713,7 +743,7 @@ class Templar:
             try:
                 # template the conditional with our overrides specified- any indirect template resolved from vars will be
                 # templated with the templar's default environment settings (eg {{ }} var blocks)
-                result = self.template(conditional_template, escape_backslashes=escape_backslashes, overrides=overrides)
+                result = self.template(conditional_template, options=TemplateOptions(escape_backslashes=escape_backslashes, overrides=overrides))
             except AnsibleUndefinedVariable as e:
                 # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
                 #  at least the warning allows us a place to consistently present useful forensic information about the problem
@@ -761,15 +791,17 @@ class Templar:
 
         return True
 
-    def do_template(self, variable, *, undefined_behavior, preserve_trailing_newlines=True, escape_backslashes=True, overrides=None, disable_lookups=False):
+    def do_template(self, variable):
 
         original_variable = variable
 
+        options = TemplateDepthContext.current_or_raise().options
+
         # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
         # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
-        variable, myenv, _has_override_header = self._create_overlay(variable, overrides, undefined_behavior=undefined_behavior)
+        variable, myenv, _has_override_header = self._create_overlay(variable, options.overrides)
 
-        if escape_backslashes:
+        if options.escape_backslashes:
             variable = self._escape_backslashes(variable, myenv)
 
         try:
@@ -777,7 +809,7 @@ class Templar:
         except TemplateSyntaxError as e:
             raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(variable)), orig_exc=e)
 
-        if disable_lookups:
+        if options.disable_lookups:
             cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup
 
         jvars = AnsibleJ2Vars(self, cur_template.globals)
@@ -798,7 +830,7 @@ class Templar:
                 _display.debug("failing because of a type error, template data is: %s" % to_text(variable))
                 raise AnsibleError("Unexpected templating type error occurred on (%s): %s" % (to_native(variable), to_native(te)), orig_exc=te)
 
-        if preserve_trailing_newlines and isinstance(res, str):
+        if options.preserve_trailing_newlines and isinstance(res, str):
             # The low level calls above do not preserve the newline
             # characters at the end of the input data, so we
             # calculate the difference in newlines and append them

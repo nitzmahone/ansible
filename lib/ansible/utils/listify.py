@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from ansible.template.templar import TemplateOptions
 from ansible.template.undefined_behaviors import FAIL_ON_UNDEFINED, BestEffortOmitUndefined
 from ansible.utils.display import Display
 
@@ -35,9 +36,9 @@ def listify_lookup_plugin_terms(terms, templar, loader=None, fail_on_undefined=T
     undefined_behavior = FAIL_ON_UNDEFINED if fail_on_undefined else BestEffortOmitUndefined()
 
     if isinstance(terms, str):
-        terms = templar.template(terms.strip(), undefined_behavior=undefined_behavior)
+        terms = templar.template(terms.strip(), options=TemplateOptions(undefined_behavior=undefined_behavior))
     else:
-        terms = templar.template(terms, undefined_behavior=undefined_behavior)
+        terms = templar.template(terms, options=TemplateOptions(undefined_behavior=undefined_behavior))
 
     if isinstance(terms, str) or not isinstance(terms, Iterable):
         terms = [terms]

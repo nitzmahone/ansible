@@ -30,6 +30,7 @@ from ansible.vars.manager import VariableManager
 __all__ = ['HostVars', 'HostVarsVars']
 
 
+# FIXME: why isn't this dict-ish enough to render eg `debug: var=hostvars`?
 class HostVars(Mapping):
     """A read-only wrapper to enable on-demand templating of a specific host's variables under that host's variable context."""
 
@@ -47,6 +48,7 @@ class HostVars(Mapping):
         if host is None:
             return AnsibleUndefined(name=f"hostvars['{key}']")
 
+        # FIXME: this should be able to fetch play/task from a context so that vars defined at those layers are available within hostvarsvars
         data = self._variable_manager.get_vars(host=host, include_hostvars=False)
 
         return HostVarsVars(data, loader=self._loader, host=key)

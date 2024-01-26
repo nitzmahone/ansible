@@ -289,7 +289,6 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.undefined = AnsibleUndefined
         self.finalize = _ansible_finalize
-        self.undefined_behavior = FAIL_ON_UNDEFINED
 
         self.globals.update(
             range=range,  # the sandboxed environment limits range in ways that may cause us problems; use the real Python one
@@ -309,11 +308,6 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
 
-    def overlay(self, *args, undefined_behavior: t.Callable[..., t.Any] = None, **kwargs):
-        res = super().overlay(*args, **kwargs)
-        res.undefined_behavior = undefined_behavior or self.undefined_behavior
-        return res
-
     def concat(self, nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
         node_list = list(nodes)
 
@@ -329,7 +323,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # FIXME: need to smuggle undefined_behavior in from the current templating operation (eg, debug and templated task names w/ BestEffort)
         # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive finalize before we repr (otherwise we can end up
         # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
-        node_list = _finalize_template_result(node_list, undefined_behavior=self.undefined_behavior, raise_on_unsupported_type=False)
+        node_list = _finalize_template_result(node_list, raise_on_unsupported_type=False)
 
         return ''.join([to_text(v) for v in node_list])
 
