@@ -27,7 +27,7 @@ from ansible.module_utils.common.text.converters import to_native
 from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.six import string_types
 from ansible.parsing.mod_args import ModuleArgsParser
-from ansible.plugins.loader import lookup_loader
+from ansible.plugins.loader import action_loader, lookup_loader
 from ansible.playbook.attribute import NonInheritableFieldAttribute
 from ansible.playbook.base import Base
 from ansible.playbook.block import Block
@@ -143,10 +143,18 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         # input (eg, debug's var/msg, assert's "that" conditional expressions)
         self.untemplated_args = value
 
-        # FIXME: load action handler earlier so we can query it for "do you want untemplated args?"
-        if self.resolved_action in ('ansible.builtin.debug', 'debug'):
-            # FIXME: need to also handle _variable_args; move below or ?
-            return value
+
+        # FIXME: this is None for pseudo-actions like include_tasks, should it be?
+        if self.resolved_action:
+            ctx = action_loader.get_with_context(self.resolved_action, collection_list=self.collections, class_only=True)
+
+            # FIXME: decide the final name for this class attribute
+            # FIXME: need to preserve resolved action and resolved as module separately to handle action subsystems that want to do their own templating?
+            if ctx.plugin_load_context.resolved and getattr(ctx.object, 'FIXME_DOES_OWN_TEMPLATING', False):
+                # FIXME: are we making self-templated plugins handle their own _variable_params (eg debug: args={{someargdict}}) or ?
+                return value
+
+        # if we didn't resolve, it's probably a module, just move along like normal
 
         # now recursively template the args dict
         args = templar.template(value)

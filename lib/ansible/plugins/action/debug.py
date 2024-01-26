@@ -32,6 +32,7 @@ class ActionModule(ActionBase):
 
     TRANSFERS_FILES = False
     _requires_connection = False
+    FIXME_DOES_OWN_TEMPLATING = True
 
     def run(self, tmp=None, task_vars=None):
         best_effort = BestEffortWithWarnings()
