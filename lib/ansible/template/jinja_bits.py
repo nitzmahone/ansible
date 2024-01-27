@@ -384,7 +384,7 @@ def _unroll_iterator(func):
     return functools.update_wrapper(wrapper, func)
 
 
-def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any, None, None]:
+def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
     """
     Yield nodes from a potentially recursive iterable of nodes.
     The recursion is required to expand template imports (TemplateModule).
