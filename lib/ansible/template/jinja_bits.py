@@ -113,7 +113,7 @@ class AnsibleJ2Vars(ChainMap):
             globals,
         )
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: t.Any, /) -> t.Any:
         return self._templar.proxy_or_render_template(super().__getitem__(key), key)
 
     def add_locals(self, locals):
@@ -332,11 +332,11 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     def _render_inline_template(const_template: str) -> t.Any:
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(const_template))
 
-    def getitem(self, obj, argument):
+    def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
         # FIXME: do we actually need to managed-access both sides of templates/strings here?
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getitem(obj, argument), argument)
 
-    def getattr(self, obj, attribute):
+    def getattr(self, obj: t.Any, attribute: str) -> t.Any:
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getattr(obj, attribute), attribute)
 
     def _now(self, utc=False, fmt=None):

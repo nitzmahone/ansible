@@ -118,11 +118,11 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
         super().__init__(*args, **kwargs)
         _AnsibleLazyTemplateMixin.__init__(self)
 
-    def __getitem__(self, item: t.Any) -> t.Any:
+    def __getitem__(self, key: t.Any, /) -> t.Any:
         # FIXME: better access pattern for this?
         # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
         #  template the same values?
-        return self._templar.proxy_or_render_template(super().__getitem__(item), item)
+        return self._templar.proxy_or_render_template(super().__getitem__(key), key)
 
     # FIXME: fully implement iteration support
     # FIXME: do we need to implement templated key support?
@@ -165,11 +165,11 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
         super().__init__(*args, **kwargs)
         _AnsibleLazyTemplateMixin.__init__(self)
 
-    def __getitem__(self, item):
+    def __getitem__(self, key: t.SupportsIndex, /) -> t.Any:
         # FIXME: better access pattern for this?
         # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
         #  template the same values?
-        return self._templar.proxy_or_render_template(super().__getitem__(item), item)
+        return self._templar.proxy_or_render_template(super().__getitem__(key), key)
 
     def __iter__(self):
         for value in super().__iter__():
@@ -227,11 +227,11 @@ class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
         # object.__init__, which accepts no args beyond "self"
         _AnsibleLazyTemplateMixin.__init__(self)
 
-    def __getitem__(self, item):
+    def __getitem__(self, key: t.SupportsIndex, /) -> t.Any:
         # FIXME: better access pattern for this?
         # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
         #  template the same values?
-        return self._templar.proxy_or_render_template(super().__getitem__(item), item)
+        return self._templar.proxy_or_render_template(super().__getitem__(key), key)
 
     def __iter__(self):
         for value in super().__iter__():
