@@ -65,7 +65,7 @@ class AnsibleContext(Context):
         like setting a local variable and passing it to {% include %}
         in a template.
 
-        Also see ``AnsibleJ2Template``and
+        Also see ``AnsibleTemplate``and
         https://github.com/pallets/jinja/commit/d67f0fd4cc2a4af08f51f4466150d49da7798729
         """
         if not self.vars:
@@ -272,7 +272,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     values for the Template and Context classes used by jinja2 internally.
     """
     context_class = AnsibleContext
-    template_class = AnsibleJ2Template
+    template_class = AnsibleTemplate
     code_generator_class = AnsibleNativeCodeGenerator
 
     def __init__(self, *args, **kwargs):

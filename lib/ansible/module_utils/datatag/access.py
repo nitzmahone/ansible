@@ -14,10 +14,13 @@ from . import (
 POORLY_NAMED_SENTINEL = object()
 
 
-# FIXME: this base class is not datatag specific- find a new module_utils home for it
-# this base class implements a context manager that makes the CM instance accessible to any other code executing beneath
-# it in the same contextvars context (eg, thread, asyncio context) via a .current property
 class AmbientContextBase:
+    # FIXME: this base class is not datatag specific- find a new module_utils home for it
+    # this base class implements a context manager that makes the CM instance accessible to any other code executing beneath
+    # it in the same contextvars context (eg, thread, asyncio context) via a .current property
+    # FIXME: this class should enforce strict nesting of contexts; overlapping context lifetimes leads to incredibly difficult to
+    #  debug situations with undefined behavior, so it should fail fast.
+
     _contextvar: t.Optional[ContextVar] = None
     _contextvar_token = None  # overwritten with an instance attribute in the __enter__ method
 
