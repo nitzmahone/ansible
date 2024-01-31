@@ -81,6 +81,7 @@ class AnsibleContext(Context):
 
 
 class AnsibleJ2Template(NativeTemplate):
+class AnsibleTemplate(NativeTemplate):
     """
     A helper class, which prevents Jinja2 from running AnsibleJ2Vars through dict().
     Without this, {% include %} and similar will create new contexts unlike the special
