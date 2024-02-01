@@ -11,7 +11,7 @@ from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
 from jinja2.nativetypes import NativeTemplate, NativeCodeGenerator
-from jinja2.nodes import Const
+from jinja2.nodes import Const, Dict, List, Tuple
 from jinja2.runtime import Context
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing
@@ -166,14 +166,29 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
 
         val = node.as_const(frame.eval_ctx)
         if isinstance(val, float):
-            self.write(str(val))
+            self.write(str(val))  # FIXME: why is this not just using repr(val) below?
         elif is_template:
             # FIXME: propagate other tags from parent template (for forensic/debug)?
             # FIXME: if lookup nerfing is restored, this could end up assigning trust to an embedded constant we don't want to trust.
             #  Keep this note until we're sure it's not coming back.
-            self.write(f'environment._render_inline_template({val!r})')
+            self.write(f'environment._trust_template({val!r})')
         else:
             self.write(repr(val))
+
+    def visit_Tuple(self, node: Tuple, frame: Frame) -> None:
+        self.write("environment._proxy_container(")
+        super().visit_Tuple(node, frame)
+        self.write(")")
+
+    def visit_List(self, node: List, frame: Frame) -> None:
+        self.write("environment._proxy_container(")
+        super().visit_List(node, frame)
+        self.write(")")
+
+    def visit_Dict(self, node: Dict, frame: Frame) -> None:
+        self.write("environment._proxy_container(")
+        super().visit_Dict(node, frame)
+        self.write(")")
 
 
 class JinjaPluginIntercept(MutableMapping):
@@ -233,6 +248,8 @@ class JinjaPluginIntercept(MutableMapping):
             # deprecated: description="deprecate STRING_TYPE_FILTERS config entry (formerly used here) once 2.18 is EOL" core_version="2.19"
             # conditionally unroll iterators/generators to avoid having to use `|list` after every filter
             func = _unroll_iterator(func)
+
+            # FIXME: we should probably be running the result of filter plugins through proxy_or_render_template
 
         return func
 
@@ -332,8 +349,13 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     # NB: this method is for exclusive use of the template compiler to render embedded constant templates
     @staticmethod
-    def _render_inline_template(const_template: str) -> t.Any:
-        return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(const_template))
+    def _trust_template(const_template: t.LiteralString) -> t.Any:
+        return TrustedAsTemplate().tag(const_template)
+
+    # NB: this method is for exclusive use of the template compiler to proxy containers
+    @staticmethod
+    def _proxy_container(container: list | dict | tuple) -> t.Any:
+        return TemplateContext.current_or_raise().templar.proxy_or_render_template(container)
 
     def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
         # FIXME: do we actually need to managed-access both sides of templates/strings here?

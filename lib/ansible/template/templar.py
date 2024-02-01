@@ -610,6 +610,8 @@ class Templar:
         return self._lookup(name, *args, **kwargs)
 
     def _lookup(self, name, /, *args, **kwargs):
+        # FIXME: we should probably be running the result of lookup plugins through proxy_or_render_template
+
         instance = lookup_loader.get(name, loader=self._loader, templar=self)
 
         if instance is None:
