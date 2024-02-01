@@ -157,9 +157,6 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
     # this override causes embedded inline template strings to be marked TrustedAsTemplate at runtime
     # so that some inline templates can be processed with multiple passes, eg, {{ lookup("file", "{{output_dir}}/bla") }}
     def visit_Const(self, node: Const, frame: Frame) -> None:
-        # FIXME: this should have a config option to disable, with it enabled by default
-        #        use of this feature should result in a deprecation warning, stating the default will be switched to disabled in the future
-        #        a later release will then remove the feature entirely
         # FIXME: shortcut "is maybe template", then blindly wrap with TrustedAsTemplate if so
         # FIXME: this needs to consult the variable marker overrides
         is_template = type(node.value) is str and '{{' in node.value  # pylint: disable=unidiomatic-typecheck
