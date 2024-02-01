@@ -80,7 +80,6 @@ class AnsibleContext(Context):
             return dict(self.parent, **self.vars)
 
 
-class AnsibleJ2Template(NativeTemplate):
 class AnsibleTemplate(NativeTemplate):
     """
     A helper class, which prevents Jinja2 from running AnsibleJ2Vars through dict().
