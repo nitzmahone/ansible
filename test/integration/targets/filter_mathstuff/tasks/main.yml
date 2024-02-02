@@ -236,8 +236,8 @@
     unions: '{{ [1,2,3]|union([4,5])|union([6,7]) }}'
   assert:
     that:
-      # FIXME: should we be exposing/testing this?
-      - "unions|type_debug == '_AnsibleLazyTemplateList'"
+      # FIXME: FDI042 - changed from AnsibleLazyTemplateList due to refactor; solve for plugins and decide what's correct
+      - "unions|type_debug == '_AnsibleTaggedList'"
       - "unions|length == 7"
 
 - name: Test union with unhashable item
@@ -246,8 +246,8 @@
     unions: '{{ [1,2,3]|union([{}]) }}'
   assert:
     that:
-      # FIXME: should we be exposing/testing this?
-      - "unions|type_debug == '_AnsibleLazyTemplateList'"
+      # FIXME: FDI042 - changed from AnsibleLazyTemplateList due to refactor; solve for plugins and decide what's correct
+      - "unions|type_debug == '_AnsibleTaggedList'"
       - "unions|length == 4"
 
 - name: Verify rekey_on_member with invalid "duplicates" kwarg

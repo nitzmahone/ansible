@@ -3,16 +3,19 @@ from __future__ import annotations
 import collections.abc as c
 import datetime
 import functools
+import tempfile
 from collections import ChainMap
-from typing import MutableMapping, Iterator, MappingView
+from contextlib import nullcontext
+from pathlib import Path
+from types import CodeType
 
-from jinja2 import pass_context
+from jinja2 import pass_context, nodes
 from jinja2.environment import TemplateModule, Environment
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
 from jinja2.nativetypes import NativeTemplate, NativeCodeGenerator
-from jinja2.nodes import Const, Dict, List, Tuple
+from jinja2.nodes import Const
 from jinja2.runtime import Context
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing
@@ -22,12 +25,12 @@ from ansible.errors import AnsibleError
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
 from ansible.module_utils.datatag import TrustedAsTemplate
-from ansible.module_utils.datatag.access import AnsibleAccessContext
+from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 from ansible.module_utils.six import string_types
 from ansible.plugins.loader import filter_loader, test_loader
 
 from .utils import AnsibleUndefined, Omit, TemplateContext
-from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateDict
+from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateDict, _AnsibleTaggedDict
 
 RANGE_TYPE = type(range(0))
 
@@ -123,7 +126,7 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
             self.write(repr(val))
 
 
-class JinjaPluginIntercept(MutableMapping):
+class JinjaPluginIntercept(c.MutableMapping):
     """
     Simulated dict class that loads Jinja2Plugins at request
     otherwise all plugins would need to be loaded a priori.
@@ -218,6 +221,13 @@ def _ansible_finalize(ctx, thing):
     return thing
 
 
+class _CompileStateSmugglingCtx(AmbientContextBase):
+    template_source: str | None = None
+    python_source: str | None = None
+    # FIXME: tie the life of this tempfile to the template itself
+    filename: str | None = None
+
+
 class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     """
     Our custom environment, which simply allows us to override the class-level
@@ -259,6 +269,29 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         self.optimized = False
 
         self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
+
+    _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = True
+
+    def _parse(self, source, *args, **kwargs):
+        if csc := _CompileStateSmugglingCtx.current():
+            csc.template_source = source
+        return super()._parse(source, *args, **kwargs)
+
+    def _compile(self, source, filename):
+        if csc := _CompileStateSmugglingCtx.current():
+            source = f'"""{csc.template_source}"""\n\n{source}'
+            csc.python_source = source
+            filename = tempfile.mktemp(suffix='.py', prefix='j2_src_')
+            Path(filename).write_text(source)
+            csc.filename = filename
+        res = super()._compile(source, filename)
+        return res
+
+    def compile(self, source: t.Union[str, nodes.Template], *args, **kwargs) -> t.Union[str, CodeType]:
+        compilectx = _CompileStateSmugglingCtx if self._FIXME_DEBUGGABLE_TEMPLATE_SOURCE else nullcontext
+
+        with compilectx():
+            return super().compile(source, *args, **kwargs)
 
     def concat(self, nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
         node_list = list(_flatten_nodes(nodes))
@@ -319,8 +352,8 @@ def _is_rolled(value):
     iterator, or similar object
     """
     return (
-        isinstance(value, Iterator) or
-        isinstance(value, MappingView) or
+        isinstance(value, c.Iterator) or
+        isinstance(value, c.MappingView) or
         isinstance(value, RANGE_TYPE)
     )
 
@@ -361,45 +394,50 @@ def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
         )
 
 
+def _flatten_and_lazify_vars(mapping: c.Mapping) -> t.Iterable[c.Mapping]:
+    """Prevent deeply-nested Jinja vars ChainMaps from being created by nested contexts and ensure that all top-level containers support lazy templating."""
+    mapping_type = type(mapping)
+    if mapping_type is ChainMap:
+        # noinspection PyUnresolvedReferences
+        for m in mapping.maps:
+            yield from _flatten_and_lazify_vars(m)
+    elif mapping_type is _AnsibleLazyTemplateDict:
+        yield mapping
+    elif mapping_type in (dict, _AnsibleTaggedDict):
+        yield _AnsibleLazyTemplateMixin.try_create(mapping)
+    else:
+        raise NotImplementedError(f"unsupported mapping type in Jinja vars: {mapping_type}")
+
+
 def _new_context(
     environment: Environment,
-    template_name: t.Optional[str],
-    blocks: t.Dict[str, t.Callable[[Context], t.Iterator[str]]],
-    vars: t.Optional[t.Mapping[str, t.Any]] = None,
+    template_name: str | None,
+    blocks: dict[str, t.Callable[[Context], c.Iterator[str]]],
+    vars: c.Mapping[str, t.Any] | None = None,
     shared: bool = False,
-    globals: t.Optional[t.MutableMapping[str, t.Any]] = None,
-    locals: t.Optional[t.Mapping[str, t.Any]] = None,
+    globals: c.MutableMapping[str, t.Any] | None = None,
+    locals: c.Mapping[str, t.Any] | None = None,
 ) -> Context:
+    """Override Jinja's context vars setup to use ChainMaps and containers that support lazy templating."""
     layers = []
-
-    # FIXME: add docstring
 
     if locals:
         # FIXME: if we can't trip this in coverage, kill it off?
         if type(locals) is not dict:  # pylint: disable=unidiomatic-typecheck
             raise NotImplementedError("locals must be a dict")
 
-        if missing in locals.values():
-            # FIXME: if we can't trip this in coverage, kill it off?
-            raise NotImplementedError("missing value encountered in template local")
-
-        layers.append(_AnsibleLazyTemplateMixin.try_create(locals))
+        # Omit values set to Jinja's internal `missing` sentinel; they are locals that have not yet been
+        # initialized in the current context, and should not be exposed to child contexts. e.g.: {% import 'a' as b with context %}.
+        # The `b` local will be `missing` in the `a` context and should not be propagated as a local to the child context we're creating.
+        layers.append(_AnsibleLazyTemplateMixin.try_create({k: v for k, v in locals.items() if v is not missing}))
 
     if vars:
-        # deal with vars being a chainmap
-        if isinstance(vars, ChainMap):
-            # FIXME: should we verify that these are already lazy?
-            if any(type(v) is not _AnsibleLazyTemplateDict for v in vars.maps):  # pylint: disable=unidiomatic-typecheck
-                raise NotImplementedError("non-lazy layer in vars ChainMap is not implemented")
-            layers.extend(vars.maps)
-        elif type(vars) in (dict, _AnsibleLazyTemplateDict):
-            layers.append(_AnsibleLazyTemplateMixin.try_create(vars))
-        else:
-            raise NotImplementedError(f"non-dict Jinja Context vars not supported, {type(vars)=}")
+        layers.extend(_flatten_and_lazify_vars(vars))
 
     if globals and not shared:
-        # FIXME: this should probably be lazy as well
-        layers.append(globals)
+        # Even though we don't currently support templating globals, it's easier to ensure that everything is template-able rather than trying to
+        # pick apart the ChainMaps to enforce non-template-able globals, or to risk things that *should* be template-able not being lazified.
+        layers.extend(_flatten_and_lazify_vars(globals))
 
     # only return a ChainMap if we're combining layers or we have none
     parent = layers[0] if len(layers) == 1 else ChainMap(*layers)
