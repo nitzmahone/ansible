@@ -826,8 +826,8 @@ class Templar:
 
         options = TemplateDepthContext.current_or_raise().options
 
-        # NOTE Creating an overlay that lives only inside do_template means that overrides are not applied
-        # when templating nested variables in AnsibleJ2Vars where Templar.environment is used, not the overlay.
+        # NOTE: Creating an overlay that lives only inside do_template means that overrides are not applied
+        # when templating nested variables, where Templar.environment is used, not the overlay.
         variable, myenv, _has_override_header = self._create_overlay(variable, options.overrides)
 
         if options.escape_backslashes:
