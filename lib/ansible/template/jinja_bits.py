@@ -118,24 +118,9 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
             # FIXME: propagate other tags from parent template (for forensic/debug)?
             # FIXME: if lookup nerfing is restored, this could end up assigning trust to an embedded constant we don't want to trust.
             #  Keep this note until we're sure it's not coming back.
-            self.write(f'environment._trust_template({val!r})')
+            self.write(f'environment._render_const_template({val!r})')
         else:
             self.write(repr(val))
-
-    def visit_Tuple(self, node: Tuple, frame: Frame) -> None:
-        self.write("environment._proxy_container(")
-        super().visit_Tuple(node, frame)
-        self.write(")")
-
-    def visit_List(self, node: List, frame: Frame) -> None:
-        self.write("environment._proxy_container(")
-        super().visit_List(node, frame)
-        self.write(")")
-
-    def visit_Dict(self, node: Dict, frame: Frame) -> None:
-        self.write("environment._proxy_container(")
-        super().visit_Dict(node, frame)
-        self.write(")")
 
 
 class JinjaPluginIntercept(MutableMapping):
@@ -294,15 +279,13 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         return ''.join([to_text(v) for v in node_list])
 
-    # NB: this method is for exclusive use of the template compiler to render embedded constant templates
     @staticmethod
-    def _trust_template(const_template: t.LiteralString) -> t.Any:
-        return TrustedAsTemplate().tag(const_template)
-
-    # NB: this method is for exclusive use of the template compiler to proxy containers
-    @staticmethod
-    def _proxy_container(container: list | dict | tuple) -> t.Any:
-        return TemplateContext.current_or_raise().templar.proxy_or_render_template(container)
+    def _render_const_template(const_template: t.LiteralString) -> t.Any:
+        """
+        This method is for exclusive use by the template compiler to render embedded constant templates.
+        Since these values may be stored in locals that will receive no further processing before use, they must be trusted and templated, not just trusted.
+        """
+        return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(const_template))
 
     def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
         # FIXME: do we actually need to managed-access both sides of templates/strings here?

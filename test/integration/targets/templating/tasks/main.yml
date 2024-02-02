@@ -137,3 +137,12 @@
 - name: check that proper error message is emitted when in operator is used
   assert:
     that: "\"'y' is undefined\" in error.msg"
+
+- name: verify locals are templated early enough to be used in expressions
+  debug:
+    msg: |
+      {% set a = '{{ 1 }}' %}
+      {% set b = '{{ 2 }}' %}
+      {{ a + b }}
+  register: result
+  failed_when: result.msg != 3
