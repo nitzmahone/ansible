@@ -270,7 +270,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
 
-    _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = True
+    _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = False
 
     def _parse(self, source, *args, **kwargs):
         if csc := _CompileStateSmugglingCtx.current():
@@ -279,7 +279,9 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     def _compile(self, source, filename):
         if csc := _CompileStateSmugglingCtx.current():
-            source = f'"""{csc.template_source}"""\n\n{source}'
+            # FIXME: this should be preprended `#` on each line instead
+            template_source = '\n'.join(f'# {line}' for line in csc.template_source.splitlines()) + "\n\n"
+            source = template_source + source
             csc.python_source = source
             filename = tempfile.mktemp(suffix='.py', prefix='j2_src_')
             Path(filename).write_text(source)
