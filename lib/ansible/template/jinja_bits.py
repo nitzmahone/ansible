@@ -28,7 +28,7 @@ from ansible.module_utils.six import string_types
 from ansible.plugins.loader import filter_loader, test_loader
 
 from .utils import AnsibleUndefined, Omit, TemplateContext
-from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin
+from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateDict
 
 RANGE_TYPE = type(range(0))
 
@@ -396,18 +396,27 @@ def _new_context(
     # FIXME: add docstring
 
     if locals:
+        # FIXME: if we can't trip this in coverage, kill it off?
         if type(locals) is not dict:
             raise NotImplementedError("locals must be a dict")
 
-        if non_missing_locals := {k: v for k, v in locals if v is not missing}:
-            layers.append(_AnsibleLazyTemplateMixin.try_create(non_missing_locals))
+        if missing in locals.values():
+            # FIXME: if we can't trip this in coverage, kill it off?
+            raise NotImplementedError("missing value encountered in template local")
+
+        layers.append(_AnsibleLazyTemplateMixin.try_create(locals))
 
     if vars:
-        # FIXME: deal with vars being a chainmap
-        if type(vars) is not dict:
-            raise NotImplementedError("non-dict Jinja Context vars not yet implemented")
-
-        layers.append(_AnsibleLazyTemplateMixin.try_create(vars))
+        # deal with vars being a chainmap
+        if isinstance(vars, ChainMap):
+            # FIXME: should we verify that these are already lazy?
+            if any(type(v) is not _AnsibleLazyTemplateDict for v in vars.maps):
+                raise NotImplementedError("non-lazy layer in vars ChainMap is not implemented")
+            layers.extend(vars.maps)
+        elif type(vars) in (dict, _AnsibleLazyTemplateDict):
+            layers.append(_AnsibleLazyTemplateMixin.try_create(vars))
+        else:
+            raise NotImplementedError(f"non-dict Jinja Context vars not supported, {type(vars)=}")
 
     if globals and not shared:
         # FIXME: this should probably be lazy as well

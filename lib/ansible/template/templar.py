@@ -841,7 +841,7 @@ class Templar:
         if options.disable_lookups:
             cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup
 
-        cur_context = cur_template.new_context(self.available_variables, shared=True)
+        cur_context = cur_template.new_context(self.available_variables)
 
         rf = cur_template.root_render_func(cur_context)
 
