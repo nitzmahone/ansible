@@ -55,7 +55,7 @@ from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
 
 from .datatag import DeprecatedAccessAuditContext
-from .jinja_bits import AnsibleEnvironment, AnsibleJ2Vars
+from .jinja_bits import AnsibleEnvironment
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext, TemplateDepthContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
@@ -841,9 +841,7 @@ class Templar:
         if options.disable_lookups:
             cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup
 
-        jvars = AnsibleJ2Vars(self, cur_template.globals)
-
-        cur_context = cur_template.new_context(jvars, shared=True)
+        cur_context = cur_template.new_context(self.available_variables, shared=True)
 
         rf = cur_template.root_render_func(cur_context)
 

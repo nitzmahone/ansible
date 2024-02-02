@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import collections.abc as c
+import typing as t
 import datetime
 import functools
 from collections import ChainMap
@@ -26,7 +28,7 @@ from ansible.module_utils.six import string_types
 from ansible.plugins.loader import filter_loader, test_loader
 
 from .utils import AnsibleUndefined, Omit, TemplateContext
-from .lazy_containers import _finalize_template_result
+from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin
 
 RANGE_TYPE = type(range(0))
 
@@ -47,37 +49,24 @@ class AnsibleContext(Context):
         return AnsibleAccessContext.current().access(val)
 
     def get_all(self):
-        """Return the complete context as a dict including the exported
-        variables. For optimizations reasons this might not return an
-        actual copy so be careful with using it.
+        # FIXME: explanatory docstring
 
-        This is to prevent from running ``AnsibleJ2Vars`` through dict():
-
-            ``dict(self.parent, **self.vars)``
-
-        In Ansible this means that ALL variables would be templated in the
-        process of re-creating the parent because ``AnsibleJ2Vars`` templates
-        each variable in its ``__getitem__`` method. Instead we re-create the
-        parent via ``AnsibleJ2Vars.add_locals`` that creates a new
-        ``AnsibleJ2Vars`` copy without templating each variable.
-
-        This will prevent unnecessarily templating unused variables in cases
-        like setting a local variable and passing it to {% include %}
-        in a template.
-
-        Also see ``AnsibleTemplate``and
-        https://github.com/pallets/jinja/commit/d67f0fd4cc2a4af08f51f4466150d49da7798729
-        """
         if not self.vars:
             return self.parent
         if not self.parent:
             return self.vars
 
-        if isinstance(self.parent, AnsibleJ2Vars):
-            return self.parent.add_locals(self.vars)
-        else:
-            # can this happen in Ansible?
-            return dict(self.parent, **self.vars)
+        return ChainMap(self.vars, self.parent)
+
+    def derived(self, locals: t.Optional[t.Dict[str, t.Any]] = None) -> Context:
+        # this is a clone of Jinja's impl of derived, but using our lazy-aware _new_context
+
+        context = _new_context(
+            self.environment, self.name, {}, self.get_all(), True, None, locals
+        )
+        context.eval_ctx = self.eval_ctx
+        context.blocks.update((k, list(v)) for k, v in self.blocks.items())
+        return context
 
 
 class AnsibleTemplate(NativeTemplate):
@@ -88,51 +77,16 @@ class AnsibleTemplate(NativeTemplate):
     potential locals.
     """
 
-    def new_context(self, vars=None, shared=False, locals=None):
-        if vars is None:
-            vars = dict(self.globals or ())
-
-        if isinstance(vars, dict):
-            vars = vars.copy()
-            if locals is not None:
-                vars.update(locals)
-        else:
-            vars = vars.add_locals(locals)
-
-        return self.environment.context_class(self.environment, vars, self.name, self.blocks)
+    def new_context(
+        self,
+        vars: c.Mapping[str, t.Any] | None = None,
+        shared: bool = False,
+        locals: c.Mapping[str, t.Any] | None = None,
+    ) -> Context:
+        return _new_context(self.environment, self.name, self.blocks, vars, shared, self.globals, locals)
 
 
-class AnsibleJ2Vars(ChainMap):
-    """Helper variable storage class that allows for nested variables templating: `foo: "{{ bar }}"`."""
-
-    def __init__(self, templar, globals, locals=None):
-        self._templar = templar
-        super().__init__(
-            _process_locals(locals),  # first mapping has the highest precedence
-            self._templar.available_variables,
-            globals,
-        )
-
-    def __getitem__(self, key: t.Any, /) -> t.Any:
-        return self._templar.proxy_or_render_template(super().__getitem__(key), key)
-
-    def add_locals(self, locals):
-        """If locals are provided, create a copy of self containing those
-        locals in addition to what is already in this variable proxy.
-        """
-        if locals is None:
-            return self
-
-        current_locals = self.maps[0]
-        current_globals = self.maps[2]
-
-        # prior to version 2.9, locals contained all of the vars and not just the current
-        # local vars so this was not necessary for locals to propagate down to nested includes
-        new_locals = current_locals | locals
-
-        return AnsibleJ2Vars(self._templar, current_globals, locals=new_locals)
-
-
+# FIXME: this is no longer used (previously part of J2Vars init to filter locals), should we still do this? Probably not...
 def _process_locals(_l):
     if _l is None:
         return {}
@@ -426,3 +380,41 @@ def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
             template_source=TemplateContext.current_or_raise().template_value,
             hint=ex.message,
         )
+
+
+def _new_context(
+    environment: "Environment",
+    template_name: t.Optional[str],
+    blocks: t.Dict[str, t.Callable[["Context"], t.Iterator[str]]],
+    vars: t.Optional[t.Dict[str, t.Any]] = None,
+    shared: bool = False,
+    globals: t.Optional[t.MutableMapping[str, t.Any]] = None,
+    locals: t.Optional[t.Mapping[str, t.Any]] = None,
+) -> "Context":
+    layers = []
+
+    # FIXME: add docstring
+
+    if locals:
+        if type(locals) is not dict:
+            raise NotImplementedError("locals must be a dict")
+
+        if non_missing_locals := {k: v for k, v in locals if v is not missing}:
+            layers.append(_AnsibleLazyTemplateMixin.try_create(non_missing_locals))
+
+    if vars:
+        # FIXME: deal with vars being a chainmap
+        if type(vars) is not dict:
+            raise NotImplementedError("non-dict Jinja Context vars not yet implemented")
+
+        layers.append(_AnsibleLazyTemplateMixin.try_create(vars))
+
+    if globals and not shared:
+        # FIXME: this should probably be lazy as well
+        layers.append(globals)
+
+    # only return a ChainMap if we're combining layers or we have none
+    parent = layers[0] if len(layers) == 1 else ChainMap(*layers)
+
+    # the `parent` cast is only to satisfy Jinja's overly-strict type hint
+    return environment.context_class(environment, t.cast(dict, parent), template_name, blocks, globals=globals)
