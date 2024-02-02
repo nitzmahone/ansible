@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import collections.abc as c
-import typing as t
 import datetime
 import functools
 from collections import ChainMap
 from typing import MutableMapping, Iterator, MappingView
 
 from jinja2 import pass_context
-from jinja2.environment import TemplateModule
+from jinja2.environment import TemplateModule, Environment
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
@@ -383,21 +382,21 @@ def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
 
 
 def _new_context(
-    environment: "Environment",
+    environment: Environment,
     template_name: t.Optional[str],
-    blocks: t.Dict[str, t.Callable[["Context"], t.Iterator[str]]],
-    vars: t.Optional[t.Dict[str, t.Any]] = None,
+    blocks: t.Dict[str, t.Callable[[Context], t.Iterator[str]]],
+    vars: t.Optional[t.Mapping[str, t.Any]] = None,
     shared: bool = False,
     globals: t.Optional[t.MutableMapping[str, t.Any]] = None,
     locals: t.Optional[t.Mapping[str, t.Any]] = None,
-) -> "Context":
+) -> Context:
     layers = []
 
     # FIXME: add docstring
 
     if locals:
         # FIXME: if we can't trip this in coverage, kill it off?
-        if type(locals) is not dict:
+        if type(locals) is not dict:  # pylint: disable=unidiomatic-typecheck
             raise NotImplementedError("locals must be a dict")
 
         if missing in locals.values():
@@ -410,7 +409,7 @@ def _new_context(
         # deal with vars being a chainmap
         if isinstance(vars, ChainMap):
             # FIXME: should we verify that these are already lazy?
-            if any(type(v) is not _AnsibleLazyTemplateDict for v in vars.maps):
+            if any(type(v) is not _AnsibleLazyTemplateDict for v in vars.maps):  # pylint: disable=unidiomatic-typecheck
                 raise NotImplementedError("non-lazy layer in vars ChainMap is not implemented")
             layers.extend(vars.maps)
         elif type(vars) in (dict, _AnsibleLazyTemplateDict):

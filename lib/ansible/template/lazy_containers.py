@@ -165,7 +165,7 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
         super().__init__(*args, **kwargs)
         _AnsibleLazyTemplateMixin.__init__(self)
 
-    def __getitem__(self, key: t.SupportsIndex, /) -> t.Any:
+    def __getitem__(self, key: t.Any, /) -> t.Any:
         # FIXME: better access pattern for this?
         # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
         #  template the same values?
@@ -227,7 +227,7 @@ class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
         # object.__init__, which accepts no args beyond "self"
         _AnsibleLazyTemplateMixin.__init__(self)
 
-    def __getitem__(self, key: t.SupportsIndex, /) -> t.Any:
+    def __getitem__(self, key: t.Any, /) -> t.Any:
         # FIXME: better access pattern for this?
         # FIXME: internally cache templated item responses for the lifetime of this wrapper so we don't repeatedly
         #  template the same values?
