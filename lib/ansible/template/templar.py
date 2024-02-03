@@ -55,7 +55,7 @@ from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
 
 from .datatag import DeprecatedAccessAuditContext
-from .jinja_bits import AnsibleEnvironment
+from .jinja_bits import AnsibleEnvironment, AnsibleTemplate
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext, TemplateDepthContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
@@ -497,7 +497,10 @@ class Templar:
                     elif not self._trust_check(variable):
                         template_result = variable
                     else:
-                        template_result = self._do_template(variable, options)
+                        compiled_template = self._compile_template(variable, options)
+
+                        template_result = compiled_template.render(self.available_variables)
+                        template_result = self._post_render_mutation(variable, template_result, options)
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
                 # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
@@ -526,9 +529,7 @@ class Templar:
 
         return TemplateResult(result=template_result)
 
-    def _do_template(self, template: str, options: TemplateOptions) -> t.Any:
-        """Templates (possibly recursively) any given data as input."""
-
+    def _compile_template(self, template: str, options: TemplateOptions) -> AnsibleTemplate:
         # NOTE: Creating an overlay that lives only inside _do_template means that overrides are not applied
         # when templating nested variables, where Templar.environment is used, not the overlay.
         stripped_template, myenv, _has_override_header = self._create_overlay(template, options.overrides)
@@ -537,18 +538,14 @@ class Templar:
             stripped_template = self._escape_backslashes(stripped_template, myenv)
 
         try:
-            compiled_template = myenv.from_string(stripped_template)
+            compiled_template = t.cast(AnsibleTemplate, myenv.from_string(stripped_template))
         except TemplateSyntaxError as ex:
             raise AnsibleError(f"template error while templating string: {ex}. String: {stripped_template}", orig_exc=ex)
 
         if options.disable_lookups:
             compiled_template.globals['query'] = compiled_template.globals['q'] = compiled_template.globals['lookup'] = self._fail_lookup
 
-        result = compiled_template.render(self.available_variables)
-
-        result = self._post_render_mutation(template, result, options)
-
-        return result
+        return compiled_template
 
     def _post_render_mutation(self, template: str, result: t.Any, options: TemplateOptions) -> t.Any:
         if options.preserve_trailing_newlines and isinstance(result, str):
