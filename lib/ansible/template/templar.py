@@ -497,7 +497,7 @@ class Templar:
                     elif not self._trust_check(variable):
                         template_result = variable
                     else:
-                        template_result = self._do_template(variable)
+                        template_result = self._do_template(variable, options)
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
                 # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
@@ -520,34 +520,7 @@ class Templar:
                         template_result = _finalize_template_result(template_result, raise_on_unsupported_type=True)
                         template_result = options.undefined_behavior.post_finalize(template_result)
             except Exception as ex:
-                # FIXME: capture useful context information from each context early
-
-                if isinstance(ex, AnsibleTemplateError):
-                    exception_to_raise = ex
-                else:
-                    src_pos = AnsibleSourcePosition.get_tag(variable)
-
-                    if isinstance(variable, str):
-                        cause = repr(variable)
-                    else:
-                        cause = f'of type {type(variable)}'
-
-                    if src_pos:
-                        cause += f'from {src_pos}'
-
-                    if isinstance(ex, RecursionError):
-                        msg = f"Recursive loop detected in template {cause}"
-                    else:
-                        msg = f"Unexpected exception rendering template {cause}: {ex}"
-
-                    exception_to_raise = AnsibleTemplateError(NotATemplate().tag(msg), orig_exc=ex)
-
-                # FIXME: apply captured context information from above onto `exception_to_raise` here, before (re)raising
-
-                if exception_to_raise is ex:
-                    raise
-
-                raise exception_to_raise from ex
+                self._raise_template_error(ex, variable)
 
         # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
         for deprecation_template, deprecation in deprecated.deprecated_access:
@@ -561,12 +534,10 @@ class Templar:
 
         return TemplateResult(result=template_result)
 
-    def _do_template(self, variable: str) -> t.Any:
+    def _do_template(self, variable: str, options: TemplateOptions) -> t.Any:
         """Templates (possibly recursively) any given data as input."""
         # FIXME: ensure tag propagation behavior is working for containers
         original_variable = variable
-
-        options = TemplateDepthContext.current_or_raise().options
 
         # NOTE: Creating an overlay that lives only inside _do_template means that overrides are not applied
         # when templating nested variables, where Templar.environment is used, not the overlay.
@@ -618,6 +589,37 @@ class Templar:
                 pass  # FIXME: determine if there are cases where this error should not be suppressed
 
         return result
+
+    @staticmethod
+    def _raise_template_error(ex: Exception, variable: t.Any) -> t.NoReturn:
+        # FIXME: capture useful context information from each context early
+
+        if isinstance(ex, AnsibleTemplateError):
+            exception_to_raise = ex
+        else:
+            src_pos = AnsibleSourcePosition.get_tag(variable)
+
+            if isinstance(variable, str):
+                cause = repr(variable)
+            else:
+                cause = f'of type {type(variable)}'
+
+            if src_pos:
+                cause += f'from {src_pos}'
+
+            if isinstance(ex, RecursionError):
+                msg = f"Recursive loop detected in template {cause}"
+            else:
+                msg = f"Unexpected exception rendering template {cause}: {ex}"
+
+            exception_to_raise = AnsibleTemplateError(NotATemplate().tag(msg), orig_exc=ex)
+
+        # FIXME: apply captured context information from above onto `exception_to_raise` here, before (re)raising
+
+        if exception_to_raise is ex:
+            raise
+
+        raise exception_to_raise from ex
 
     def is_template(self, data):
         """lets us know if data has a template"""
