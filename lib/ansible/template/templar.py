@@ -534,33 +534,31 @@ class Templar:
 
         return TemplateResult(result=template_result)
 
-    def _do_template(self, variable: str, options: TemplateOptions) -> t.Any:
+    def _do_template(self, template: str, options: TemplateOptions) -> t.Any:
         """Templates (possibly recursively) any given data as input."""
-        # FIXME: ensure tag propagation behavior is working for containers
-        original_variable = variable
 
         # NOTE: Creating an overlay that lives only inside _do_template means that overrides are not applied
         # when templating nested variables, where Templar.environment is used, not the overlay.
-        variable, myenv, _has_override_header = self._create_overlay(variable, options.overrides)
+        stripped_template, myenv, _has_override_header = self._create_overlay(template, options.overrides)
 
         if options.escape_backslashes:
-            variable = self._escape_backslashes(variable, myenv)
+            stripped_template = self._escape_backslashes(stripped_template, myenv)
 
         try:
-            cur_template = myenv.from_string(variable)
-        except TemplateSyntaxError as e:
-            raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(variable)), orig_exc=e)
+            compiled_template = myenv.from_string(stripped_template)
+        except TemplateSyntaxError as ex:
+            raise AnsibleError(f"template error while templating string: {ex}. String: {stripped_template}", orig_exc=ex)
 
         if options.disable_lookups:
-            cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup
+            compiled_template.globals['query'] = compiled_template.globals['q'] = compiled_template.globals['lookup'] = self._fail_lookup
 
-        result = cur_template.render(self.available_variables)
+        result = compiled_template.render(self.available_variables)
 
-        result = self._post_render_mutation(original_variable, result, options)
+        result = self._post_render_mutation(template, result, options)
 
         return result
 
-    def _post_render_mutation(self, original_variable: str, result: t.Any, options: TemplateOptions) -> t.Any:
+    def _post_render_mutation(self, template: str, result: t.Any, options: TemplateOptions) -> t.Any:
         if options.preserve_trailing_newlines and isinstance(result, str):
             # The low level calls above do not preserve the newline
             # characters at the end of the input data, so we
@@ -572,17 +570,18 @@ class Templar:
             # would be kept also for included templates, for example:
             # "Hello {% include 'world.txt' %}!" would render as
             # "Hello world\n!\n" instead of "Hello world!\n".
-            data_newlines = self._count_newlines_from_end(original_variable)
+            data_newlines = self._count_newlines_from_end(template)
             res_newlines = self._count_newlines_from_end(result)
 
             if data_newlines > res_newlines:
                 newlines = self.environment.newline_sequence * (data_newlines - res_newlines)
                 result = AnsibleTaggedObject.tag_copy(result, result + newlines)
 
+        # FIXME: ensure tag propagation behavior is working for containers
         # FIXME: should there be some form of recursive application here?
         # FIXME: propagate more tags here?
         # if the input string template was source-tagged and the result is not, propagate the source tag to the new value
-        if (src_pos := AnsibleSourcePosition.get_tag(original_variable)) and not AnsibleSourcePosition.is_tagged_on(result):
+        if (src_pos := AnsibleSourcePosition.get_tag(template)) and not AnsibleSourcePosition.is_tagged_on(result):
             try:
                 result = src_pos.tag(result)
             except NotTaggableError:
