@@ -485,7 +485,7 @@ class Templar:
                 TemplateDepthContext(options=options),
         ):
             try:
-                _template_result = self._template_recursive(variable)
+                _template_result = self._do_template(variable)
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
                 # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
@@ -549,7 +549,7 @@ class Templar:
 
         return TemplateResult(result=_template_result)
 
-    def _template_recursive(self, variable):
+    def _do_template(self, variable):
         """Templates (possibly recursively) any given data as input."""
         # stack the current active var value we're templating; this lets the deprecated tripwire ask for it
         with TemplateContext(template_value=variable, templar=self):
@@ -564,7 +564,46 @@ class Templar:
                 if not self._trust_check(variable):
                     return variable
 
-                result = self.do_template(variable)
+                original_variable = variable
+
+                options = TemplateDepthContext.current_or_raise().options
+
+                # NOTE: Creating an overlay that lives only inside _do_template means that overrides are not applied
+                # when templating nested variables, where Templar.environment is used, not the overlay.
+                variable, myenv, _has_override_header = self._create_overlay(variable, options.overrides)
+
+                if options.escape_backslashes:
+                    variable = self._escape_backslashes(variable, myenv)
+
+                try:
+                    cur_template = myenv.from_string(variable)
+                except TemplateSyntaxError as e:
+                    raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(variable)), orig_exc=e)
+
+                if options.disable_lookups:
+                    cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup
+
+                result = cur_template.render(self.available_variables)
+
+                # FIXME: propagate some/all tags here?
+
+                if options.preserve_trailing_newlines and isinstance(result, str):
+                    # The low level calls above do not preserve the newline
+                    # characters at the end of the input data, so we
+                    # calculate the difference in newlines and append them
+                    # to the resulting output for parity
+                    #
+                    # Using AnsibleEnvironment's keep_trailing_newline instead would
+                    # result in change in behavior when trailing newlines
+                    # would be kept also for included templates, for example:
+                    # "Hello {% include 'world.txt' %}!" would render as
+                    # "Hello world\n!\n" instead of "Hello world!\n".
+                    data_newlines = self._count_newlines_from_end(original_variable)
+                    res_newlines = self._count_newlines_from_end(result)
+
+                    if data_newlines > res_newlines:
+                        newlines = self.environment.newline_sequence * (data_newlines - res_newlines)
+                        result = AnsibleTaggedObject.tag_copy(result, result + newlines)
 
                 # FIXME: should there be some form of recursive application here?
                 # if the input string template was source-tagged and the result is not, propagate the source tag to the new value
@@ -819,51 +858,6 @@ class Templar:
             return False
 
         return True
-
-    def do_template(self, variable):
-
-        original_variable = variable
-
-        options = TemplateDepthContext.current_or_raise().options
-
-        # NOTE: Creating an overlay that lives only inside do_template means that overrides are not applied
-        # when templating nested variables, where Templar.environment is used, not the overlay.
-        variable, myenv, _has_override_header = self._create_overlay(variable, options.overrides)
-
-        if options.escape_backslashes:
-            variable = self._escape_backslashes(variable, myenv)
-
-        try:
-            cur_template = myenv.from_string(variable)
-        except TemplateSyntaxError as e:
-            raise AnsibleError("template error while templating string: %s. String: %s" % (to_native(e), to_native(variable)), orig_exc=e)
-
-        if options.disable_lookups:
-            cur_template.globals['query'] = cur_template.globals['q'] = cur_template.globals['lookup'] = self._fail_lookup
-
-        res = cur_template.render(self.available_variables)
-
-        # FIXME: propagate some/all tags here?
-
-        if options.preserve_trailing_newlines and isinstance(res, str):
-            # The low level calls above do not preserve the newline
-            # characters at the end of the input data, so we
-            # calculate the difference in newlines and append them
-            # to the resulting output for parity
-            #
-            # Using AnsibleEnvironment's keep_trailing_newline instead would
-            # result in change in behavior when trailing newlines
-            # would be kept also for included templates, for example:
-            # "Hello {% include 'world.txt' %}!" would render as
-            # "Hello world\n!\n" instead of "Hello world!\n".
-            data_newlines = self._count_newlines_from_end(original_variable)
-            res_newlines = self._count_newlines_from_end(res)
-
-            if data_newlines > res_newlines:
-                newlines = self.environment.newline_sequence * (data_newlines - res_newlines)
-                res = AnsibleTaggedObject.tag_copy(res, res + newlines)
-
-        return res
 
     def proxy_or_render_template(self, item: t.Any, key: str | None = None):
         # FIXME: always blindly access item here?
