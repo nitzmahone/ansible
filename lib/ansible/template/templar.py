@@ -522,15 +522,7 @@ class Templar:
             except Exception as ex:
                 self._raise_template_error(ex, variable)
 
-        # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
-        for deprecation_template, deprecation in deprecated.deprecated_access:
-            # FIXME: if we're in a worker, propagate deprecated access warnings back to the controller for deduplication
-            # FIXME: the current template may not have a source position, we may need to consult a parent template
-            _display.deprecated(
-                msg=f'{deprecation.msg} while templating {self._repr_from(deprecation_template)}',
-                version=deprecation.removal_version,
-                date=deprecation.removal_date,
-            )
+        self._emit_deprecation_warnings(deprecated)
 
         return TemplateResult(result=template_result)
 
@@ -588,6 +580,17 @@ class Templar:
                 pass  # FIXME: determine if there are cases where this error should not be suppressed
 
         return result
+
+    def _emit_deprecation_warnings(self, deprecated: DeprecatedAccessAuditContext) -> None:
+        # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
+        for deprecation_template, deprecation in deprecated.deprecated_access:
+            # FIXME: if we're in a worker, propagate deprecated access warnings back to the controller for deduplication
+            # FIXME: the current template may not have a source position, we may need to consult a parent template
+            _display.deprecated(
+                msg=f'{deprecation.msg} while templating {self._repr_from(deprecation_template)}',
+                version=deprecation.removal_version,
+                date=deprecation.removal_date,
+            )
 
     @staticmethod
     def _raise_template_error(ex: Exception, variable: t.Any) -> t.NoReturn:
