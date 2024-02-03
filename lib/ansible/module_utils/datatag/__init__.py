@@ -323,7 +323,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
     Efficient internal storage of tags, indexed by tag type.
     Contains no more than one instance of each tag type.
     This is defined as a class attribute to support type hinting and documentation.
-    It is overwritten with an instance attribute in the _tag_value method.
+    It is overwritten with an instance attribute during instance creation.
     """
 
     def __init_subclass__(cls, **kwargs):
@@ -450,8 +450,9 @@ class AnsibleTaggedObject(AnsibleSerializable):
             tag_list = list(chain(existing_internal_tags_mapping.values(), tag_list))
 
         tags_mapping = _AnsibleTagsMapping((type(tag), tag) for tag in tag_list)
+        tagged_type = AnsibleTaggedObject._get_tagged_type(value_type)
 
-        return AnsibleTaggedObject._tag_value(value_type, value, tags_mapping)
+        return tagged_type._instance_factory(value, tags_mapping)
 
     @staticmethod
     def untag(value: _T, tag_type: t.Type[AnsibleDatatagBase]) -> _T:
@@ -468,10 +469,12 @@ class AnsibleTaggedObject(AnsibleSerializable):
 
             tags_mapping = _EMPTY_INTERNAL_TAGS_MAPPING
 
-        return AnsibleTaggedObject._tag_value(type(value), value, tags_mapping)
+        tagged_type = AnsibleTaggedObject._get_tagged_type(type(value))
+
+        return tagged_type._instance_factory(value, tags_mapping)
 
     @staticmethod
-    def _tag_value(value_type: type, value: _T, tags_mapping: _AnsibleTagsMapping) -> _T:
+    def _get_tagged_type(value_type: type) -> type[AnsibleTaggedObject]:
         tagged_type: t.Optional[type[AnsibleTaggedObject]]
 
         if issubclass(value_type, AnsibleTaggedObject):
@@ -482,9 +485,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
         if not tagged_type:
             raise NotTaggableError(value_type)
 
-        tagged_value = tagged_type._instance_factory(value, tags_mapping)
-
-        return tagged_value  # type: ignore[return-value]
+        return tagged_type
 
     def _as_dict(self) -> t.Dict[str, t.Any]:
         # FIXME: this is probably incomplete; don't we need a full deep copy (possibly with templating and access)?
