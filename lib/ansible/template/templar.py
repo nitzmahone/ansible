@@ -487,28 +487,38 @@ class Templar:
             try:
                 # stack the current active var value we're templating; this lets the deprecated tripwire ask for it
                 with TemplateContext(template_value=variable, templar=self):
-                    _template_result = self._do_template(variable)
+                    if not isinstance(variable, str):
+                        if options.overrides is not None:
+                            raise ValueError("Jinja overrides are only allowed on string inputs")
+
+                        template_result = _AnsibleLazyTemplateMixin.try_create(variable)
+                    elif not self.is_possibly_template(variable, options.overrides):
+                        template_result = variable
+                    elif not self._trust_check(variable):
+                        template_result = variable
+                    else:
+                        template_result = self._do_template(variable)
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
                 # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
                 if is_top_level_template:
-                    if _template_result is Omit:
+                    if template_result is Omit:
                         if options.value_for_omit is Omit:
                             raise AnsibleValueOmittedError()
 
                         return TemplateResult(result=options.value_for_omit)  # value_for_omit was not manipulated, trust that it contains only allowed types
 
-                    if options.stop_on_container_result and type(_template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
+                    if options.stop_on_container_result and type(template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
                         # Use of stop_on_container_result implies the caller will perform necessary checks on values,
                         # most likely by passing them back into the templating system.
                         return TemplateResult(
-                            result=_template_result.native_copy() if _template_result in AnsibleTaggedObject._collection_types else _template_result,
+                            result=template_result.native_copy() if template_result in AnsibleTaggedObject._collection_types else template_result,
                         )
 
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire():
-                        _template_result = _finalize_template_result(_template_result, raise_on_unsupported_type=True)
-                        _template_result = options.undefined_behavior.post_finalize(_template_result)
+                        template_result = _finalize_template_result(template_result, raise_on_unsupported_type=True)
+                        template_result = options.undefined_behavior.post_finalize(template_result)
             except Exception as ex:
                 # FIXME: capture useful context information from each context early
 
@@ -549,26 +559,11 @@ class Templar:
                 date=deprecation.removal_date,
             )
 
-        return TemplateResult(result=_template_result)
+        return TemplateResult(result=template_result)
 
     def _do_template(self, variable):
         """Templates (possibly recursively) any given data as input."""
         # FIXME: ensure tag propagation behavior is working for containers
-
-        options = TemplateDepthContext.current_or_raise().options
-
-        if not isinstance(variable, str):
-            if options.overrides is not None:
-                raise ValueError("Jinja overrides are only allowed on string inputs")
-
-            return _AnsibleLazyTemplateMixin.try_create(variable)
-
-        if not self.is_possibly_template(variable, options.overrides):
-            return variable
-
-        if not self._trust_check(variable):
-            return variable
-
         original_variable = variable
 
         options = TemplateDepthContext.current_or_raise().options
