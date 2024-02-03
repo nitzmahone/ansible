@@ -561,7 +561,7 @@ class Templar:
 
         return TemplateResult(result=template_result)
 
-    def _do_template(self, variable):
+    def _do_template(self, variable: str) -> t.Any:
         """Templates (possibly recursively) any given data as input."""
         # FIXME: ensure tag propagation behavior is working for containers
         original_variable = variable
@@ -585,8 +585,11 @@ class Templar:
 
         result = cur_template.render(self.available_variables)
 
-        # FIXME: propagate some/all tags here?
+        result = self._post_render_mutation(original_variable, result, options)
 
+        return result
+
+    def _post_render_mutation(self, original_variable: str, result: t.Any, options: TemplateOptions) -> t.Any:
         if options.preserve_trailing_newlines and isinstance(result, str):
             # The low level calls above do not preserve the newline
             # characters at the end of the input data, so we
@@ -606,8 +609,9 @@ class Templar:
                 result = AnsibleTaggedObject.tag_copy(result, result + newlines)
 
         # FIXME: should there be some form of recursive application here?
+        # FIXME: propagate more tags here?
         # if the input string template was source-tagged and the result is not, propagate the source tag to the new value
-        if (src_pos := AnsibleSourcePosition.get_tag(variable)) and not AnsibleSourcePosition.is_tagged_on(result):
+        if (src_pos := AnsibleSourcePosition.get_tag(original_variable)) and not AnsibleSourcePosition.is_tagged_on(result):
             try:
                 result = src_pos.tag(result)
             except NotTaggableError:
