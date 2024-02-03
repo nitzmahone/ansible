@@ -10,11 +10,11 @@ from pathlib import Path
 from types import CodeType
 
 from jinja2 import pass_context, nodes
-from jinja2.environment import TemplateModule, Environment
+from jinja2.environment import Environment, Template, TemplateModule
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
-from jinja2.nativetypes import NativeTemplate, NativeCodeGenerator
+from jinja2.nativetypes import NativeCodeGenerator
 from jinja2.nodes import Const
 from jinja2.runtime import Context
 from jinja2.sandbox import ImmutableSandboxedEnvironment
@@ -71,7 +71,7 @@ class AnsibleContext(Context):
         return context
 
 
-class AnsibleTemplate(NativeTemplate):
+class AnsibleTemplate(Template):
     """
     A helper class, which prevents Jinja2 from running lazy containers through dict().
     """
