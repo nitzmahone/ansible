@@ -334,4 +334,5 @@ def _finalize_template_result(o: t.Any, raise_on_unsupported_type: bool) -> t.An
     else:  # unsupported type (do not raise)
         return o
 
-    return AnsibleTaggedObject.tag_copy(o, value_expression, value_type=value_type)
+    # avoiding tag_copy to minimize call stack depth when dealing with recursive template calls on deeply nested lazy containers
+    return AnsibleTaggedObject.tag(value_expression, AnsibleTaggedObject.tags(o), value_type=value_type)
