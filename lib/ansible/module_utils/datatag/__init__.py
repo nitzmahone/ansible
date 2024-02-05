@@ -313,6 +313,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
     __slots__ = _NO_INSTANCE_STORAGE
 
     native_type: type
+    item_source: t.Optional[t.Callable] = None
 
     _tagged_type_map: t.Dict[type, t.Type['AnsibleTaggedObject']] = {}
     _collection_types: t.Set[t.Type[Collection]] = set()
@@ -338,6 +339,12 @@ class AnsibleTaggedObject(AnsibleSerializable):
             cls.native_type
         except AttributeError:
             cls.native_type = cls.__bases__[0]
+
+        if cls.item_source is None and is_non_scalar_collection_type(cls.native_type):
+            cls.item_source = cls.native_type.__iter__  # type: ignore[attr-defined]
+
+        if cls.item_source:
+            cls._instance_factory = cls._instance_factory_collection
 
         AnsibleTaggedObject._tagged_type_map[cls.__mro__[1]] = cls
 
@@ -505,14 +512,10 @@ class AnsibleTaggedObject(AnsibleSerializable):
             cls,
             value: t.Iterable,
             tags_mapping: _AnsibleTagsMapping,
-            item_source: t.Optional[t.Callable] = None,
     ) -> t.Self:
         if type(value) in AnsibleTaggedObject._collection_types:
-            if not item_source:
-                item_source = cls.native_type.__iter__  # type: ignore[attr-defined]
-
             # use the underlying iterator to avoid access/iteration side effects (e.g. templating/wrapping on Lazy subclasses)
-            instance = cls(item_source(value))  # type: ignore[call-arg]
+            instance = cls(cls.item_source(value))  # type: ignore[call-arg]
         else:
             # this is used when the value is a generator
             instance = cls(value)  # type: ignore[call-arg]
@@ -521,12 +524,9 @@ class AnsibleTaggedObject(AnsibleSerializable):
 
         return instance
 
-    def _copy_collection(self, item_source: t.Optional[t.Callable] = None) -> AnsibleTaggedObject:
-        if not item_source:
-            item_source = self.native_type.__iter__  # type: ignore[attr-defined]
-
+    def _copy_collection(self) -> AnsibleTaggedObject:
         # use the underlying iterator to avoid access/iteration side effects (e.g. templating/wrapping on Lazy subclasses)
-        return AnsibleTaggedObject.tag_copy(self, item_source(self), value_type=type(self))
+        return AnsibleTaggedObject.tag_copy(self, self.item_source(), value_type=type(self))
 
     @classmethod
     def _new(cls, value: t.Any, *args, **kwargs) -> t.Self:
@@ -713,12 +713,10 @@ class _AnsibleTaggedTime(datetime.time, AnsibleTaggedObject):
 class _AnsibleTaggedDict(dict, AnsibleTaggedObject):
     __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
 
-    @classmethod
-    def _instance_factory(cls, value: dict, tags_mapping: _AnsibleTagsMapping) -> _AnsibleTaggedDict:
-        return cls._instance_factory_collection(value, tags_mapping, item_source=dict.items)
+    item_source = dict.items
 
     def __copy__(self):
-        return super()._copy_collection(item_source=dict.items)
+        return super()._copy_collection()
 
     def copy(self):
         return copy.copy(self)
@@ -726,10 +724,6 @@ class _AnsibleTaggedDict(dict, AnsibleTaggedObject):
 
 class _AnsibleTaggedList(list, AnsibleTaggedObject):
     __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
-
-    @classmethod
-    def _instance_factory(cls, value: list, tags_mapping: _AnsibleTagsMapping) -> _AnsibleTaggedList:
-        return cls._instance_factory_collection(value, tags_mapping)
 
     def __copy__(self):
         return super()._copy_collection()
@@ -741,10 +735,6 @@ class _AnsibleTaggedList(list, AnsibleTaggedObject):
 # FIXME: do we want frozenset too?
 class _AnsibleTaggedSet(set, AnsibleTaggedObject):
     __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
-
-    @classmethod
-    def _instance_factory(cls, value: set, tags_mapping: _AnsibleTagsMapping) -> _AnsibleTaggedSet:
-        return cls._instance_factory_collection(value, tags_mapping)
 
     def __copy__(self):
         return super()._copy_collection()
@@ -773,10 +763,6 @@ class _AnsibleTaggedSet(set, AnsibleTaggedObject):
 
 class _AnsibleTaggedTuple(tuple, AnsibleTaggedObject):
     # nonempty __slots__ not supported for subtype of 'tuple'
-
-    @classmethod
-    def _instance_factory(cls, value: tuple, tags_mapping: _AnsibleTagsMapping) -> _AnsibleTaggedTuple:
-        return cls._instance_factory_collection(value, tags_mapping)
 
     def __copy__(self):
         return super()._copy_collection()
