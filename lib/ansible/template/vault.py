@@ -99,7 +99,7 @@ class _AnsibleTaggedVaultBomb(_VaultBomb, AnsibleTaggedObject):
     )
 
     @classmethod
-    def _instance_factory(cls, value: t.Any, tags_mapping: _AnsibleTagsMapping) -> AnsibleTaggedObject:
+    def _instance_factory(cls, value: t.Any, tags_mapping: _AnsibleTagsMapping) -> _AnsibleTaggedVaultBomb:
         instance = cls(value._value if isinstance(value, _VaultBomb) else value)
         instance._ansible_tags_mapping = tags_mapping
         return instance

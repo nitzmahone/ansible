@@ -616,7 +616,7 @@ class Templar:
         # FIXME: apply captured context information from above onto `exception_to_raise` here, before (re)raising
 
         if exception_to_raise is ex:
-            raise
+            raise  # pylint: disable=misplaced-bare-raise
 
         raise exception_to_raise from ex
 

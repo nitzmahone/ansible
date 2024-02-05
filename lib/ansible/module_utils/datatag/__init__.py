@@ -348,7 +348,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
         return self.native_type(self)  # pylint: disable=abstract-class-instantiated
 
     @classmethod
-    def _instance_factory(cls, value: t.Any, tags_mapping: _AnsibleTagsMapping) -> AnsibleTaggedObject:
+    def _instance_factory(cls, value: t.Any, tags_mapping: _AnsibleTagsMapping) -> t.Self:
         # There's no way to indicate cls is callable with a single arg without defining a useless __init__.
         instance = cls(value)  # type: ignore[call-arg]
         instance._ansible_tags_mapping = tags_mapping
@@ -452,7 +452,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
         tags_mapping = _AnsibleTagsMapping((type(tag), tag) for tag in tag_list)
         tagged_type = AnsibleTaggedObject._get_tagged_type(value_type)
 
-        return tagged_type._instance_factory(value, tags_mapping)
+        return t.cast(_T, tagged_type._instance_factory(value, tags_mapping))
 
     @staticmethod
     def untag(value: _T, tag_type: t.Type[AnsibleDatatagBase]) -> _T:
@@ -471,7 +471,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
 
         tagged_type = AnsibleTaggedObject._get_tagged_type(type(value))
 
-        return tagged_type._instance_factory(value, tags_mapping)
+        return t.cast(_T, tagged_type._instance_factory(value, tags_mapping))
 
     @staticmethod
     def _get_tagged_type(value_type: type) -> type[AnsibleTaggedObject]:

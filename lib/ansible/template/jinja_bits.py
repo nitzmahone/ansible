@@ -6,7 +6,6 @@ import functools
 import tempfile
 from collections import ChainMap
 from contextlib import nullcontext
-from pathlib import Path
 from types import CodeType
 
 from jinja2 import pass_context, nodes
@@ -279,17 +278,19 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     def _compile(self, source, filename):
         if csc := _CompileStateSmugglingCtx.current():
-            # FIXME: this should be preprended `#` on each line instead
             template_source = '\n'.join(f'# {line}' for line in csc.template_source.splitlines()) + "\n\n"
             source = template_source + source
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', prefix='j2_src_', delete=False) as source_file:
+                filename = source_file.name
+                source_file.write(source)
+
             csc.python_source = source
-            filename = tempfile.mktemp(suffix='.py', prefix='j2_src_')
-            Path(filename).write_text(source)
             csc.filename = filename
         res = super()._compile(source, filename)
         return res
 
-    def compile(self, source: t.Union[str, nodes.Template], *args, **kwargs) -> t.Union[str, CodeType]:
+    def compile(self, source: t.Union[str, nodes.Template], *args, **kwargs) -> t.Union[str, CodeType]:  # type: ignore[override]
         compilectx = _CompileStateSmugglingCtx if self._FIXME_DEBUGGABLE_TEMPLATE_SOURCE else nullcontext
 
         with compilectx():
