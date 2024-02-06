@@ -35,7 +35,6 @@ class TestBackslashEscape(unittest.TestCase):
         # Test backslashes in a filter arg are double escaped
         dict(
             template=u"{{ 'test2 %s' | format('\\1') }}",
-            intermediate=u"{{ 'test2 %s' | format('\\\\1') }}",
             expectation=u"test2 \\1",
             args=dict()
         ),
@@ -43,7 +42,6 @@ class TestBackslashEscape(unittest.TestCase):
         # escaped
         dict(
             template=u"Test 2\\3: {{ '\\1 %s' | format('\\2') }}",
-            intermediate=u"Test 2\\3: {{ '\\\\1 %s' | format('\\\\2') }}",
             expectation=u"Test 2\\3: \\1 \\2",
             args=dict()
         ),
@@ -51,14 +49,12 @@ class TestBackslashEscape(unittest.TestCase):
         # escaped
         dict(
             template=u"Test 2\\3: {{ 'test2 %s' | format('\\1') }}; \\done",
-            intermediate=u"Test 2\\3: {{ 'test2 %s' | format('\\\\1') }}; \\done",
             expectation=u"Test 2\\3: test2 \\1; \\done",
             args=dict()
         ),
         # Test backslashes in a variable sent to a filter are handled
         dict(
             template=u"{{ 'test2 %s' | format(var1) }}",
-            intermediate=u"{{ 'test2 %s' | format(var1) }}",
             expectation=u"test2 \\1",
             args=dict(var1=u'\\1')
         ),
@@ -66,7 +62,6 @@ class TestBackslashEscape(unittest.TestCase):
         # escaped
         dict(
             template=u"Test 2\\3: {{ var1 | format('\\2') }}",
-            intermediate=u"Test 2\\3: {{ var1 | format('\\\\2') }}",
             expectation=u"Test 2\\3: \\1 \\2",
             args=dict(var1=u'\\1 %s')
         ),
@@ -78,8 +73,6 @@ class TestBackslashEscape(unittest.TestCase):
     def test_backslash_escaping(self):
 
         for test in self.test_data:
-            intermediate = Templar._escape_backslashes(test['template'], self.env)
-            self.assertEqual(intermediate, test['intermediate'])
             templar = Templar(None, test['args'])
             self.assertEqual(templar.template(TrustedAsTemplate().tag(test['template'])), test['expectation'])
 

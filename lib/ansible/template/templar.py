@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import ast
 import dataclasses
-import secrets
 
 import ansible.module_utils.compat.typing as t
 
@@ -30,6 +29,7 @@ from collections import ChainMap
 
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
+from jinja2.environment import TemplateExpression
 from jinja2 import __version__ as jinja2_version
 
 from ansible import constants as C
@@ -42,6 +42,7 @@ from ansible.errors import (
     AnsibleOptionsError,
     AnsibleUndefinedVariable,
     AnsibleTemplateError,
+    AnsibleTemplateSyntaxError,
 )
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
@@ -55,7 +56,7 @@ from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
 
 from .datatag import DeprecatedAccessAuditContext
-from .jinja_bits import AnsibleEnvironment, AnsibleTemplate
+from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext, TemplateDepthContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
@@ -116,7 +117,8 @@ class TemplateOptions:
             # FIXME: tighten this up?
             if getattr(self, field.name) is ...:
                 # FIXME: figure out a better way to avoid propagating options
-                if field.name in ('stop_on_container_result', 'value_for_omit', 'overrides'):
+                # FIXME: review all options to determine correct propagation behavior
+                if field.name in ('stop_on_container_result', 'value_for_omit', 'overrides', 'escape_backslashes'):
                     value = getattr(_DEFAULT_TEMPLATE_OPTIONS, field.name)
                 else:
                     value = getattr(defaults, field.name)
@@ -259,55 +261,6 @@ class Templar:
                     _display.warning(f"Could not find Jinja2 environment setting to override: '{key}'")
 
         return data, overlay, has_override_header
-
-    @staticmethod
-    def _escape_backslashes(data: str, jinja_env: AnsibleEnvironment) -> str:
-        """
-        Escape backslashes in strings within Jinja template expressions to disable Jinja backslash processing.
-
-        NOTE: This does *NOT* apply to strings within Jinja template statements ("{%" and "%}").
-
-        This is useful when templates are sourced from YAML double-quoted strings, as it avoids having backslashes processed twice: first by the YAML parser,
-        and then again by the Jinja parser. Instead, backslashes are only processed by YAML.
-
-        Example YAML:
-
-        - debug:
-            msg: "Test Case 1\\3; {{ test1_name | regex_replace('^(.*)_name$', '\\1')}}"
-
-        Since the outermost YAML string is double-quoted, the YAML parser converts the double backslashes to single backslashes. Without escaping, Jinja would
-        see only a single backslash ('\1') while processing the embedded template expression, interpret it as an escape sequence, and convert it to '\x01'
-        (ASCII "SOH"). This is clearly not the intended `\1` backreference argument to the `regex_replace` filter (which would require the double-escaped string
-        '\\\\1' to yield the intended result).
-
-        Since the "\\3" in the input YAML was not part of a template expression, the YAML-parsed "\3" remains after Jinja rendering. This would be
-        confusing for playbook authors, as different escaping rules would be needed inside and outside the template expression.
-
-        When templates are not sourced from YAML, escaping backslashes will prevent use of backslash escape sequences such as "\n" and "\t".
-
-        See relevant Jinja lexer impl at e.g.: https://github.com/pallets/jinja/blob/3.1.2/src/jinja2/lexer.py#L646-L653.
-        """
-        if '\\' in data and jinja_env.variable_start_string in data:
-            new_data = []
-            d2 = jinja_env.preprocess(data)
-            in_var = False
-
-            for token in jinja_env.lex(d2):
-                if token[1] == 'variable_begin':
-                    in_var = True
-                    new_data.append(token[2])
-                elif token[1] == 'variable_end':
-                    in_var = False
-                    new_data.append(token[2])
-                elif in_var and token[1] == 'string':
-                    # Double backslashes only if we're inside a jinja2 variable
-                    new_data.append(token[2].replace('\\', '\\\\'))
-                else:
-                    new_data.append(token[2])
-
-            data = ''.join(new_data)
-
-        return data
 
     @staticmethod
     def _count_newlines_from_end(in_str):
@@ -460,7 +413,8 @@ class Templar:
     def template(self, variable: t.Any, *, options: TemplateOptions | None = None) -> t.Any:
         return self.template_with_result(variable, options=options).result
 
-    def template_with_result(self, variable: t.Any, *, options: TemplateOptions | None = None) -> TemplateResult:
+    # FIXME: expression_mode should be strings only- enforce (or use a different entrypoint)
+    def template_with_result(self, variable: t.Any, *, options: TemplateOptions | None = None, expression_mode=False) -> TemplateResult:
         """Templates (possibly recursively) any given data as input."""
 
         # bail out if we know we're looking at something that's been explicitly tagged as not a template
@@ -492,14 +446,19 @@ class Templar:
                             raise ValueError("Jinja overrides are only allowed on string inputs")
 
                         template_result = _AnsibleLazyTemplateMixin.try_create(variable)
-                    elif not self.is_possibly_template(variable, options.overrides):
+                    elif not expression_mode and not self.is_possibly_template(variable, options.overrides):
                         template_result = variable
                     elif not self._trust_check(variable):
                         template_result = variable
                     else:
-                        compiled_template = self._compile_template(variable, options)
+                        if expression_mode:
+                            compiled_expression = self._compile_expression(variable, options)
+                            template_result = compiled_expression(self.available_variables)
+                        else:
+                            compiled_template = self._compile_template(variable, options)
 
-                        template_result = compiled_template.render(self.available_variables)
+                            template_result = compiled_template.render(self.available_variables)
+
                         template_result = self._post_render_mutation(variable, template_result, options)
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
@@ -532,20 +491,27 @@ class Templar:
     def _compile_template(self, template: str, options: TemplateOptions) -> AnsibleTemplate:
         # NOTE: Creating an overlay that lives only inside _do_template means that overrides are not applied
         # when templating nested variables, where Templar.environment is used, not the overlay.
-        stripped_template, myenv, _has_override_header = self._create_overlay(template, options.overrides)
+        stripped_template, env, _has_override_header = self._create_overlay(template, options.overrides)
 
-        if options.escape_backslashes:
-            stripped_template = self._escape_backslashes(stripped_template, myenv)
-
-        try:
-            compiled_template = t.cast(AnsibleTemplate, myenv.from_string(stripped_template))
-        except TemplateSyntaxError as ex:
-            raise AnsibleError(f"template error while templating string: {ex}. String: {stripped_template}", orig_exc=ex)
+        with _TemplateCompileContext(escape_backslashes=options.escape_backslashes):
+            compiled_template = t.cast(AnsibleTemplate, env.from_string(stripped_template))
 
         if options.disable_lookups:
             compiled_template.globals['query'] = compiled_template.globals['q'] = compiled_template.globals['lookup'] = self._fail_lookup
 
         return compiled_template
+
+    def _compile_expression(self, expression: str, options: TemplateOptions | None = None) -> TemplateExpression:
+        """
+        Compile a Jinja expression, applying optional compile-time behavior via an environment overlay (if needed). The overlay is
+        necessary to avoid mutating settings on the Templar's shared environment, which could be visible to other code running concurrently.
+        In the specific case of escape_backslashes, the setting only applies to a top-level template at compile-time, not runtime, to
+        ensure that any nested template calls (e.g., include and import) do not inherit the (lack of) escaping behavior.
+        """
+        # FIXME: disable_lookups not supported here?
+
+        with _TemplateCompileContext(escape_backslashes=options.escape_backslashes):
+            return self.environment.compile_expression(expression, False)
 
     def _post_render_mutation(self, template: str, result: t.Any, options: TemplateOptions) -> t.Any:
         if options.preserve_trailing_newlines and isinstance(result, str):
@@ -606,12 +572,16 @@ class Templar:
             if src_pos:
                 cause += f'from {src_pos}'
 
+            ex_type = AnsibleTemplateError  # always raise an AnsibleTemplateError/subclass
             if isinstance(ex, RecursionError):
                 msg = f"Recursive loop detected in template {cause}"
+            elif isinstance(ex, TemplateSyntaxError):
+                msg = f"Syntax error in template {cause}: {ex}"
+                ex_type = AnsibleTemplateSyntaxError
             else:
                 msg = f"Unexpected exception rendering template {cause}: {ex}"
 
-            exception_to_raise = AnsibleTemplateError(NotATemplate().tag(msg), orig_exc=ex)
+            exception_to_raise = ex_type(NotATemplate().tag(msg), orig_exc=ex)
 
         # FIXME: apply captured context information from above onto `exception_to_raise` here, before (re)raising
 
@@ -725,31 +695,20 @@ class Templar:
                                        % name)
         return ran
 
-    def evaluate_expression(self, expression: str, disable_lookups: bool = False) -> t.Any:
+    # FIXME: where to move escape_backslashes?
+    def evaluate_expression(self, expression: str, disable_lookups: bool = False, escape_backslashes=True) -> t.Any:
         if not isinstance(expression, str):
             return expression
 
-        if not self._trust_check(expression):
-            return expression
+        return self.template_with_result(
+            expression,
+            options=TemplateOptions(disable_lookups=disable_lookups, escape_backslashes=escape_backslashes),
+            expression_mode=True,
+        ).result
 
-        # FIXME: this should ultimately use AnsibleEnvironment.compile_expression() once we've factored all the custom
-        #  vars setup into an AnsibleTemplate subclass that TemplateExpression can wrap.
-        secret_slug = secrets.token_hex(8)
-        block_marker = f'~{secret_slug}~'
-        variable_marker = f'<{secret_slug}>'
-        comment_marker = f'!{secret_slug}!'
-        overrides = dict(
-            block_start_string=block_marker,
-            block_end_string=block_marker,
-            variable_start_string=variable_marker,
-            variable_end_string=variable_marker,
-            comment_start_string=comment_marker,
-            comment_end_string=comment_marker,
-        )
-
-        expression_template = TrustedAsTemplate().tag(f'{variable_marker}{expression}{variable_marker}')
-
-        return self.template(expression_template, options=TemplateOptions(overrides=overrides, disable_lookups=disable_lookups))
+    # Also disable escape_backslashes when processing conditionals, to maintain backwards compatibility.
+    # This is necessary because conditionals were previously evaluated using {% %}, which was *NOT* affected by escape_backslashes.
+    # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
 
     # FIXME: make allow_inline_template=False by default
     def evaluate_conditional(self, conditional: str, allow_inline_template=True) -> bool:
@@ -766,19 +725,8 @@ class Templar:
         else:
             # FIXME: this should ultimately use AnsibleEnvironment.compile_expression() once we've factored all the custom
             #  vars setup into an AnsibleTemplate subclass that TemplateExpression can wrap.
-            secret_slug = secrets.token_hex(8)
-            block_marker = f'~{secret_slug}~'
-            variable_marker = f'<{secret_slug}>'
-            comment_marker = f'!{secret_slug}!'
-            overrides = dict(
-                block_start_string=block_marker,
-                block_end_string=block_marker,
-                variable_start_string=variable_marker,
-                variable_end_string=variable_marker,
-                comment_start_string=comment_marker,
-                comment_end_string=comment_marker,
-            )
 
+            # FIXME: redundant but informative?
             if not TrustedAsTemplate.is_tagged_on(conditional):
                 raise AnsibleConditionalError(
                     f'Conditional {self._repr_from(conditional)} is not trusted. '
@@ -786,32 +734,30 @@ class Templar:
                     'and not untrusted sources such as module results.'
                 )
 
-            conditional_template = TrustedAsTemplate().tag(f'{variable_marker}{conditional}{variable_marker}')
-            escape_backslashes = False  # prevent backslashes from being escaped in the generated template for backwards compatibility
-
-            env_overlay = self.environment.overlay(**overrides)
-
             try:
-                env_overlay.parse(conditional_template)
-            except TemplateSyntaxError:
-                if not allow_inline_template:
-                    raise
+                retry_as_inline_template = False
+                try:
+                    # Disable escape_backslashes when processing conditionals, to maintain backwards compatibility.
+                    # This is necessary because conditionals were previously evaluated using {% %}, which was *NOT* affected by escape_backslashes.
+                    # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
+                    result = self.evaluate_expression(conditional, escape_backslashes=False)
+                except AnsibleTemplateSyntaxError:
+                    if not allow_inline_template:
+                        raise
 
-                # assume the original conditional was actually a {{ }} style template, process it as such
-                conditional_template = conditional
-                escape_backslashes = True
-                overrides = None
-                _display.warning(
-                    # FIXME: should we deprecate and/or remove this capability?
-                    f'Conditional {self._repr_from(conditional)} could not be parsed as a Jinja2 expression, and will be '
-                    'evaluated as a template instead. Conditionals should not include templating delimiters '
-                    'such as {{ }} or {% %}.'
-                )
+                    retry_as_inline_template = True
+                    result = None  # static assignment check isn't smart enough to understand that this will always have a value
 
-            try:
-                # template the conditional with our overrides specified- any indirect template resolved from vars will be
-                # templated with the templar's default environment settings (eg {{ }} var blocks)
-                result = self.template(conditional_template, options=TemplateOptions(escape_backslashes=escape_backslashes, overrides=overrides))
+                if retry_as_inline_template:
+                    # the original eval might have failed because it was actually a {{ }} style template, process it as such
+                    _display.warning(
+                        # FIXME: should we deprecate and/or remove this capability?
+                        f'Conditional {self._repr_from(conditional)} could not be parsed as a Jinja2 expression, and will be '
+                        'evaluated as a template instead. Conditionals should not include templating delimiters '
+                        'such as {{ }} or {% %}.'
+                    )
+                    # FIXME: WTF escape_backslashes
+                    result = self.template(conditional, options=TemplateOptions(escape_backslashes=True))
             except AnsibleUndefinedVariable as e:
                 # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
                 #  at least the warning allows us a place to consistently present useful forensic information about the problem

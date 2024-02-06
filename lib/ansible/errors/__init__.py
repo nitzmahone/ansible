@@ -263,6 +263,10 @@ class AnsibleTemplateError(AnsibleRuntimeError):
     pass
 
 
+class AnsibleTemplateSyntaxError(AnsibleTemplateError):
+    """A syntax error was encountered while parsing a Jinja template or expression."""
+
+
 class AnsibleFilterError(AnsibleTemplateError):
     ''' a templating failure '''
     pass

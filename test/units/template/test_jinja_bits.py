@@ -1,10 +1,53 @@
 from __future__ import annotations
 
+import typing as t
+
 import pytest
 
 from ansible.module_utils.datatag import TrustedAsTemplate
-from ansible.template.templar import Templar
+from ansible.template.templar import Templar, TemplateOptions
 from jinja2.loaders import DictLoader
+
+TRUST = TrustedAsTemplate()
+
+
+@pytest.mark.parametrize("template,expected,variables,sources,options", [
+    # no change; non-template data should be ignored
+    (r'c:\newdir', r'c:\newdir', None, None, None),
+    # default behavior always escapes backslashes in string constants in template expressions
+    (r'{{ "c:\newdir" }}', r'c:\newdir', None, None, None),
+    # escaping applies only to string literals in expressions in the current template; includes are never escaped
+    (r'{{ "c:\newdir" }} {% include "foo" %}', r'c:\newdir c:\newdir', None,
+     dict(foo=TRUST.tag(r'{{ "c:\\newdir" }}')), None),
+    # escaping applies only to string literals in expressions in the current template; imports are never escaped
+    (r'{{ "c:\newdir" }} {% import "foo" as foo %}{{ foo.m() }}', r'c:\newdir c:\newdir', None,
+     dict(foo=TRUST.tag(r'{% macro m() %}{{ "c:\\newdir" }}{% endmacro %}')), None),
+    # escape disable only applies to the current template; includes are still never escaped
+    (r'{{ "c:\\newdir" }} {% include "foo" %}', r'c:\newdir c:\newdir', None,
+     dict(foo=TRUST.tag(r'{{ "c:\\newdir" }}')), TemplateOptions(escape_backslashes=False)),
+    # escape disable only applies to the current template; imports are still never escaped
+    (r'{{ "c:\\newdir" }} {% import "foo" as foo %}{{ foo.m() }}', r'c:\newdir c:\newdir', None,
+     dict(foo=TRUST.tag(r'{% macro m() %}{{ "c:\\newdir" }}{% endmacro %}')), TemplateOptions(escape_backslashes=False)),
+    # escaping behavior should not apply to string constants in non-expression blocks (eg, `set`)
+    (r'{% set foo="c:\\newdir" %}{{ foo }}', r'c:\newdir', None, None, None),
+    # default behavior escapes indirect templates
+    (r'{{ indirect }}', r'c:\newdir', dict(indirect=TRUST.tag(r'{{ "c:\newdir" }}')), None, None),
+    # disable does *not* propagate to indirect template rendering
+    (r'{{ "c:\\newdir" }} {{ indirect }}', r'c:\newdir c:\newdir',
+     dict(indirect=TRUST.tag(r'{{ "c:\newdir" }}')), None, TemplateOptions(escape_backslashes=False)),
+    # default escaping works on input containers
+    (dict(key=TRUST.tag(r'{{ "c:\newdir" }}')), dict(key=r'c:\newdir'), None, None, None),
+    # disable only applies to string templar inputs; templates in containers are always escaped
+    (dict(key=TRUST.tag(r'{{ "c:\newdir" }}')), dict(key=r'c:\newdir'), None, None, TemplateOptions(escape_backslashes=False)),
+
+])
+def test_escape_backslashes(template: t.Any, expected: t.Any, variables: dict[str, t.Any], sources: dict[str, str], options: TemplateOptions | None) -> None:
+    template = TRUST.tag(template)
+
+    templar = Templar(loader=None, variables=variables)
+    templar.environment.loader = DictLoader(sources or {})
+
+    assert templar.template(template, options=options) == expected
 
 
 @pytest.mark.xfail(reason="template local propagation to nested templar calls is not implemented")

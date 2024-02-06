@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import collections.abc as c
+import dataclasses
 import datetime
 import functools
 import tempfile
+
 from collections import ChainMap
 from contextlib import nullcontext
 from types import CodeType
@@ -13,11 +15,12 @@ from jinja2.environment import Environment, Template, TemplateModule
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
+from jinja2.lexer import TOKEN_VARIABLE_BEGIN, TOKEN_VARIABLE_END, TOKEN_STRING, Lexer
 from jinja2.nativetypes import NativeCodeGenerator
 from jinja2.nodes import Const
 from jinja2.runtime import Context
 from jinja2.sandbox import ImmutableSandboxedEnvironment
-from jinja2.utils import missing
+from jinja2.utils import missing, LRUCache
 
 from ansible.utils.display import Display
 from ansible.errors import AnsibleError
@@ -95,7 +98,7 @@ def _process_locals(_l):
     }
 
 
-class AnsibleNativeCodeGenerator(NativeCodeGenerator):
+class AnsibleCodeGenerator(NativeCodeGenerator):
     # prevent Jinja's code generation from stringifying single nodes before generating its repr
     # (this complements the behavioral change in our concat)
     # FIXME: contribute this back upstream as a fix to Jinja's native support?
@@ -111,9 +114,11 @@ class AnsibleNativeCodeGenerator(NativeCodeGenerator):
     def visit_Const(self, node: Const, frame: Frame) -> None:
         # FIXME: shortcut "is maybe template", then blindly wrap with TrustedAsTemplate if so
         # FIXME: this needs to consult the variable marker overrides
-        is_template = type(node.value) is str and '{{' in node.value  # pylint: disable=unidiomatic-typecheck
-
         val = node.as_const(frame.eval_ctx)
+
+        is_str = type(val) is str
+        is_template = is_str and '{{' in val  # pylint: disable=unidiomatic-typecheck
+
         if isinstance(val, float):
             self.write(str(val))  # FIXME: why is this not just using repr(val) below?
         elif is_template:
@@ -220,11 +225,67 @@ def _ansible_finalize(ctx, thing):
     return thing
 
 
+@dataclasses.dataclass(kw_only=True)
+class _TemplateCompileContext(AmbientContextBase):
+    escape_backslashes: bool
+
+
 class _CompileStateSmugglingCtx(AmbientContextBase):
     template_source: str | None = None
     python_source: str | None = None
-    # FIXME: tie the life of this tempfile to the template itself
     filename: str | None = None
+    tempfile: tempfile.NamedTemporaryFile | None = None
+
+
+class AnsibleLexer(Lexer):
+    """
+    Lexer override to escape backslashes in string constants within Jinja expressions; prevents Jinja from double-escaping them.
+
+    NOTE: This behavior is only applied to string constants within Jinja expressions (eg {{ "c:\newfile" }}), *not* statements ("{% set foo="c:\\newfile" %}").
+
+    This is useful when templates are sourced from YAML double-quoted strings, as it avoids having backslashes processed twice: first by the
+    YAML parser, and then again by the Jinja parser. Instead, backslashes are only processed by YAML.
+
+    Example YAML:
+
+    - debug:
+        msg: "Test Case 1\\3; {{ test1_name | regex_replace('^(.*)_name$', '\\1')}}"
+
+    Since the outermost YAML string is double-quoted, the YAML parser converts the double backslashes to single backslashes. Without escaping, Jinja
+    would see only a single backslash ('\1') while processing the embedded template expression, interpret it as an escape sequence, and convert it
+    to '\x01' (ASCII "SOH"). This is clearly not the intended `\1` backreference argument to the `regex_replace` filter (which would require the
+    double-escaped string '\\\\1' to yield the intended result).
+
+    Since the "\\3" in the input YAML was not part of a template expression, the YAML-parsed "\3" remains after Jinja rendering. This would be
+    confusing for playbook authors, as different escaping rules would be needed inside and outside the template expression.
+
+    When templates are not sourced from YAML, escaping backslashes will prevent use of backslash escape sequences such as "\n" and "\t".
+
+    See relevant Jinja lexer impl at e.g.: https://github.com/pallets/jinja/blob/3.1.2/src/jinja2/lexer.py#L646-L653.
+    """
+
+    def tokeniter(self, *args, **kwargs) -> t.Iterator[t.Tuple[int, str, str]]:
+        """Pre-escape backslashes in expression ({{ }}) raw string constants before Jinja's Lexer.wrap() can interpret them as ASCII escape sequences."""
+        token_stream = super().tokeniter(*args, **kwargs)
+
+        # if we have no context, Jinja's doing a nested compile at runtime (eg, import/include); historically, no backslash escaping is performed
+        if not (tcc := _TemplateCompileContext.current()) or not tcc.escape_backslashes:
+            yield from token_stream
+            return
+
+        in_variable = False
+
+        for token in token_stream:
+            token_type = token[1]
+
+            if token_type == TOKEN_VARIABLE_BEGIN:
+                in_variable = True
+            elif token_type == TOKEN_VARIABLE_END:
+                in_variable = False
+            elif in_variable and token_type == TOKEN_STRING:
+                token = token[0], token_type, token[2].replace('\\', '\\\\')
+
+            yield token
 
 
 class AnsibleEnvironment(ImmutableSandboxedEnvironment):
@@ -234,7 +295,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     """
     context_class = AnsibleContext
     template_class = AnsibleTemplate
-    code_generator_class = AnsibleNativeCodeGenerator
+    code_generator_class = AnsibleCodeGenerator
+    _lexer_cache = LRUCache(50)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -268,6 +330,30 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         self.optimized = False
 
         self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
+
+    @property
+    def lexer(self):
+        """Return/cache an AnsibleLexer with settings from the current AnsibleEnvironment"""
+        key = (
+            self.block_start_string,
+            self.block_end_string,
+            self.variable_start_string,
+            self.variable_end_string,
+            self.comment_start_string,
+            self.comment_end_string,
+            self.line_statement_prefix,
+            self.line_comment_prefix,
+            self.trim_blocks,
+            self.lstrip_blocks,
+            self.newline_sequence,
+            self.keep_trailing_newline,
+        )
+        lex = self._lexer_cache.get(key)
+
+        if lex is None:
+            self._lexer_cache[key] = lex = AnsibleLexer(self)
+
+        return lex
 
     _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = False
 
