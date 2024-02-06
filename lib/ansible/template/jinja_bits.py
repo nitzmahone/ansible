@@ -4,6 +4,7 @@ import collections.abc as c
 import dataclasses
 import datetime
 import functools
+import os
 import tempfile
 
 from collections import ChainMap
@@ -77,6 +78,13 @@ class AnsibleTemplate(Template):
     """
     A helper class, which prevents Jinja2 from running lazy containers through dict().
     """
+
+    _source_tempfile = None
+
+    # FIXME: this still isn't working reliably; something else must be keeping the template object alive
+    def __del__(self):
+        if self._source_tempfile:
+            os.unlink(self._source_tempfile.name)
 
     def new_context(
         self,
@@ -357,6 +365,17 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = False
 
+    def from_string(self, *args, **kwargs):
+        # FIXME: sane way to make this work outside from_string?
+        compilectx = _CompileStateSmugglingCtx if self._FIXME_DEBUGGABLE_TEMPLATE_SOURCE else nullcontext
+
+        with compilectx() as ctx:
+            template_obj = super().from_string(*args, **kwargs)
+            if compilectx is _CompileStateSmugglingCtx:
+                template_obj._source_tempfile = ctx.tempfile
+
+        return template_obj
+
     def _parse(self, source, *args, **kwargs):
         if csc := _CompileStateSmugglingCtx.current():
             csc.template_source = source
@@ -364,8 +383,12 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     def _compile(self, source, filename):
         if csc := _CompileStateSmugglingCtx.current():
-            template_source = '\n'.join(f'# {line}' for line in csc.template_source.splitlines()) + "\n\n"
-            source = template_source + source
+            source = '\n'.join((
+                "import sys; breakpoint() if type(sys.breakpointhook) is not type(breakpoint) else None",
+                "# original template source (FIXME include source position): ",
+                '\n'.join(f'# {line}' for line in (csc.template_source or '').splitlines()),
+                source
+            ))
 
             with tempfile.NamedTemporaryFile(mode='w', suffix='.py', prefix='j2_src_', delete=False) as source_file:
                 filename = source_file.name
@@ -373,14 +396,9 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
             csc.python_source = source
             csc.filename = filename
+            csc.tempfile = source_file
         res = super()._compile(source, filename)
         return res
-
-    def compile(self, source: t.Union[str, nodes.Template], *args, **kwargs) -> t.Union[str, CodeType]:  # type: ignore[override]
-        compilectx = _CompileStateSmugglingCtx if self._FIXME_DEBUGGABLE_TEMPLATE_SOURCE else nullcontext
-
-        with compilectx():
-            return super().compile(source, *args, **kwargs)
 
     def concat(self, nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
         node_list = list(_flatten_nodes(nodes))
