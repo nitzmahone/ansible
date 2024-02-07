@@ -9,9 +9,8 @@ import tempfile
 
 from collections import ChainMap
 from contextlib import nullcontext
-from types import CodeType
 
-from jinja2 import pass_context, nodes
+from jinja2 import pass_context, defaults
 from jinja2.environment import Environment, Template, TemplateModule
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.runtime import Undefined
@@ -38,6 +37,51 @@ from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixi
 RANGE_TYPE = type(range(0))
 
 display = Display()
+
+
+@dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
+class TemplateOverrides:
+    block_start_string: str = defaults.BLOCK_START_STRING
+    block_end_string: str = defaults.BLOCK_END_STRING
+    variable_start_string: str = defaults.VARIABLE_START_STRING
+    variable_end_string: str = defaults.VARIABLE_END_STRING
+    comment_start_string: str = defaults.COMMENT_START_STRING
+    comment_end_string: str = defaults.COMMENT_END_STRING
+    line_statement_prefix: str | None = defaults.LINE_STATEMENT_PREFIX
+    line_comment_prefix: str | None = defaults.LINE_COMMENT_PREFIX
+    trim_blocks: bool = defaults.TRIM_BLOCKS
+    lstrip_blocks: bool = defaults.LSTRIP_BLOCKS
+    newline_sequence: t.Literal['\n', '\r\n', '\r'] = defaults.NEWLINE_SEQUENCE
+    keep_trailing_newline: bool = defaults.KEEP_TRAILING_NEWLINE
+
+    def __post_init__(self) -> None:
+        types = t.get_type_hints(self, globalns=globals())
+
+        for field in dataclasses.fields(self):
+            value = getattr(self, field.name)
+            expected_type = types[field.name]
+
+            if t.get_origin(expected_type) is t.Literal:
+                if value not in t.get_args(expected_type):
+                    raise ValueError(f'Template override {field.name!r} is {value!r} instead of one of {t.get_args(expected_type)!r}.')
+            elif not isinstance(value, expected_type):
+                raise TypeError(f'Template override {field.name!r} is {type(value)!r} instead of {expected_type!r}.')
+
+        if not (self.block_start_string != self.variable_start_string != self.comment_start_string != self.block_start_string):
+            raise ValueError('Block, variable and comment start strings must be different.')
+
+    def overlay_kwargs(self) -> dict[str, str | bool]:
+        """
+        Return a dictionary of arguments for passing to Environment.overlay.
+        The dictionary will be empty if all fields have their default value.
+        """
+        fields = [(field, getattr(self, field.name)) for field in dataclasses.fields(self)]
+        kwargs = {field.name: value for field, value in fields if value != field.default}
+
+        return kwargs
+
+
+_TEMPLATE_OVERRIDE_FIELD_NAMES = tuple(sorted(field.name for field in dataclasses.fields(TemplateOverrides)))
 
 
 class AnsibleContext(Context):
@@ -342,20 +386,9 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     @property
     def lexer(self):
         """Return/cache an AnsibleLexer with settings from the current AnsibleEnvironment"""
-        key = (
-            self.block_start_string,
-            self.block_end_string,
-            self.variable_start_string,
-            self.variable_end_string,
-            self.comment_start_string,
-            self.comment_end_string,
-            self.line_statement_prefix,
-            self.line_comment_prefix,
-            self.trim_blocks,
-            self.lstrip_blocks,
-            self.newline_sequence,
-            self.keep_trailing_newline,
-        )
+        # FIXME: we should pre-generate the default cached lexer before forking, not leave it to chance (e.g. simple playbooks)
+        key = tuple(getattr(self, name) for name in _TEMPLATE_OVERRIDE_FIELD_NAMES)
+
         lex = self._lexer_cache.get(key)
 
         if lex is None:

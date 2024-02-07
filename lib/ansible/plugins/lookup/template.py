@@ -97,7 +97,7 @@ from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.plugin_utils.template import generate_ansible_template_vars
 from ansible.utils.display import Display
-from ansible.template.templar import TemplateOptions
+from ansible.template.templar import TemplateOptions, TemplateOverrides
 
 
 display = Display()
@@ -152,7 +152,7 @@ class LookupModule(LookupBase):
                 vars.update(lookup_template_vars)
 
                 with templar.set_temporary_context(available_variables=vars, searchpath=searchpath):
-                    overrides = dict(
+                    overrides = TemplateOverrides(
                         variable_start_string=variable_start_string,
                         variable_end_string=variable_end_string,
                         comment_start_string=comment_start_string,

@@ -27,7 +27,7 @@ from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.six import string_types
 from ansible.plugins.action import ActionBase
 from ansible.plugin_utils.template import generate_ansible_template_vars
-from ansible.template.templar import TemplateOptions
+from ansible.template.templar import TemplateOptions, TemplateOverrides
 
 
 class ActionModule(ActionBase):
@@ -136,7 +136,7 @@ class ActionModule(ActionBase):
                 templar = self._templar.copy_with_new_env(searchpath=searchpath,
                                                           newline_sequence=newline_sequence,
                                                           available_variables=temp_vars)
-                overrides = dict(
+                overrides = TemplateOverrides(
                     block_start_string=block_start_string,
                     block_end_string=block_end_string,
                     variable_start_string=variable_start_string,

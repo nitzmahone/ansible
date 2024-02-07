@@ -55,7 +55,7 @@ from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
 
 from .datatag import DeprecatedAccessAuditContext
-from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext
+from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext, TemplateDepthContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
@@ -91,7 +91,7 @@ class TemplateOptions:
     # FIXME: embedded sentinel
     preserve_trailing_newlines: bool = t.cast(bool, ...)
     escape_backslashes: bool = t.cast(bool, ...)
-    overrides: dict[str, t.Any] | None = t.cast(None, ...)
+    overrides: TemplateOverrides | None = t.cast(None, ...)
     disable_lookups: bool = t.cast(bool, ...)
     undefined_behavior: UndefinedBehavior = t.cast(UndefinedBehavior, ...)
     stop_on_container_result: bool = t.cast(bool, ...)
@@ -232,35 +232,32 @@ class Templar:
 
         return False
 
-    def _create_overlay(self, data: str, overrides: dict) -> tuple[str, AnsibleEnvironment, bool]:
-        if overrides is None:
-            overrides = {}
-
-        try:
-            has_override_header = data.startswith(_JINJA2_OVERRIDE)
-        except (TypeError, AttributeError):
-            has_override_header = False
-
-        if overrides or has_override_header:
-            overlay = self.environment.overlay(**overrides)
-        else:
-            overlay = self.environment
-
-        # Get jinja env overrides from template
-        if has_override_header:
+    def _create_overlay(self, data: str, overrides: TemplateOverrides | None) -> tuple[str, AnsibleEnvironment, bool]:
+        if has_override_header := data.startswith(_JINJA2_OVERRIDE):
             eol = data.find('\n')
             line = data[len(_JINJA2_OVERRIDE):eol]
             data = data[eol + 1:]
+            override_kwargs = {}
+
             for pair in line.split(','):
                 if ':' not in pair:
-                    raise AnsibleError("failed to parse jinja2 override '%s'."
-                                       " Did you use something different from colon as key-value separator?" % pair.strip())
-                (key, val) = pair.split(':', 1)
+                    raise AnsibleTemplateError(f"Failed to parse Jinja2 override {pair!r}. Did you use something different from colon as key-value separator?")
+
+                key, val = pair.split(':', 1)
                 key = key.strip()
-                if hasattr(overlay, key):
-                    setattr(overlay, key, ast.literal_eval(val.strip()))
+
+                if key in _TEMPLATE_OVERRIDE_FIELD_NAMES:
+                    override_kwargs[key] = ast.literal_eval(val)
                 else:
-                    _display.warning(f"Could not find Jinja2 environment setting to override: '{key}'")
+                    # FIXME: make this a deprecation warning so it can be an error in the future
+                    _display.warning(f"Could not find Jinja2 environment setting {key!r} to override.")
+
+            overrides = dataclasses.replace(overrides or TemplateOverrides(), **override_kwargs)
+
+        if overrides and (overlay_kwargs := overrides.overlay_kwargs()):
+            overlay = self.environment.overlay(**overlay_kwargs)
+        else:
+            overlay = self.environment
 
         return data, overlay, has_override_header
 
@@ -604,7 +601,7 @@ class Templar:
 
     templatable = is_template
 
-    def is_possibly_template(self, data, overrides=None):
+    def is_possibly_template(self, data, overrides: TemplateOverrides | None = None):
         data, env, has_override_header = self._create_overlay(data, overrides)
         return has_override_header or self._is_possibly_template_internal(data, env)
 
