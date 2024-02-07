@@ -49,7 +49,7 @@ class TemplateOverrides:
     comment_end_string: str = defaults.COMMENT_END_STRING
     line_statement_prefix: str | None = defaults.LINE_STATEMENT_PREFIX
     line_comment_prefix: str | None = defaults.LINE_COMMENT_PREFIX
-    trim_blocks: bool = defaults.TRIM_BLOCKS
+    trim_blocks: bool = True  # AnsibleEnvironment overrides this default, so don't use the Jinja default here
     lstrip_blocks: bool = defaults.LSTRIP_BLOCKS
     newline_sequence: t.Literal['\n', '\r\n', '\r'] = defaults.NEWLINE_SEQUENCE
     keep_trailing_newline: bool = defaults.KEEP_TRAILING_NEWLINE
@@ -458,13 +458,19 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         This method is for exclusive use by the template compiler to render embedded constant templates.
         Since these values may be stored in locals that will receive no further processing before use, they must be trusted and templated, not just trusted.
         """
+        # example: "{{ '{{ "hi" }}' }}" -- const_template is '{{ "hi" }}'
+        # access on const_template should not be necessary
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(const_template))
 
     def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
         # FIXME: do we actually need to managed-access both sides of templates/strings here?
+        # example: "{{ some['thing'] }}" -- obj is the "some" dict, argument is "thing"
+        # access on the result of super().getitem is necessary
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getitem(obj, argument), argument)
 
     def getattr(self, obj: t.Any, attribute: str) -> t.Any:
+        # example: "{{ some.thing }}" -- obj is the "some" dict, argument is "thing"
+        # access on the result of super().getattr is necessary
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getattr(obj, attribute), attribute)
 
     def _now(self, utc=False, fmt=None):

@@ -63,11 +63,7 @@ class _AnsibleLazyTemplateMixin:
         cls._empty_tags_as_native = False  # never revert to the native type when no tags remain
 
     def __init__(self):
-        if not (tc := TemplateContext.current()):
-            # FIXME: better exception type?
-            raise ReferenceError("no TemplateContext is available")
-
-        self._templar = tc.templar  # pylint: disable=assigning-non-slot  # slot defined in derived type
+        self._templar = TemplateContext.current_or_raise().templar  # pylint: disable=assigning-non-slot  # slot defined in derived type
 
     @staticmethod
     def try_create(item: t.Any) -> t.Any:
@@ -322,10 +318,8 @@ def _finalize_template_result(o: t.Any, raise_on_unsupported_type: bool) -> t.An
         value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
         value_type = set
     elif o_type is AnsibleUndefined:
-        # FIXME: move to allow top-level import
-        from .templar import TemplateDepthContext
         # FIXME: this assumes handle_undefined follows our variable type rules
-        return TemplateDepthContext.current_or_raise().options.undefined_behavior.handle_undefined(o)
+        return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o)
     elif raise_on_unsupported_type:  # unsupported type (raise)
         if o_type is _AnsibleTaggedVaultBomb:
             o.detonate()

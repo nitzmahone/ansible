@@ -57,7 +57,7 @@ from ansible.utils.vars import isidentifier
 from .datatag import DeprecatedAccessAuditContext
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
-from .utils import Omit, TemplateContext, TemplateDepthContext
+from .utils import Omit, TemplateContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
 from .undefined_behaviors import FAIL_ON_UNDEFINED, UndefinedBehavior
 
@@ -98,7 +98,7 @@ class TemplateOptions:
     value_for_omit: t.Any = ...
 
     def __post_init__(self):
-        if template_ctx := TemplateDepthContext.current():
+        if template_ctx := TemplateContext.current():
             if self.stop_on_container_result is not ...:
                 raise ValueError("stop_on_container_result is only valid for top-level template calls.")
             if self.value_for_omit is not ...:
@@ -419,42 +419,40 @@ class Templar:
         # FIXME: early exit on empty collections
 
         # FIXME: tighten this up, and figure out a better way to avoid propagating options
-        if template_depth_ctx := TemplateDepthContext.current():
+        if template_ctx := TemplateContext.current():
             # FIXME: ideally avoid re-creating TemplateOptions every time here
-            options = options or TemplateOptions()
+            options = options or TemplateOptions()  # FIXME: this is dangerous because it looks like it's the default, but it's a context-aware factory method
         else:
             options = options or _DEFAULT_TEMPLATE_OPTIONS
 
-        is_top_level_template = not template_depth_ctx
+        is_top_level_template = not template_ctx
 
         # track access to items that are tagged Deprecated during templating, handle accordingly
         with (
-                UndecryptableAccessMutator(),  # trigger injection of VaultBomb
-                DeprecatedAccessAuditContext() as deprecated,
-                TemplateDepthContext(options=options),
+            UndecryptableAccessMutator(),  # trigger injection of VaultBomb
+            DeprecatedAccessAuditContext() as deprecated,
+            TemplateContext(template_value=variable, templar=self, options=options),  # stack the current active var value we're templating
         ):
             try:
-                # stack the current active var value we're templating; this lets the deprecated tripwire ask for it
-                with TemplateContext(template_value=variable, templar=self):
-                    if not isinstance(variable, str):
-                        if options.overrides is not None:
-                            raise ValueError("Jinja overrides are only allowed on string inputs")
+                if not isinstance(variable, str):
+                    if options.overrides is not None:
+                        raise ValueError("Jinja overrides are only allowed on string inputs")
 
-                        template_result = _AnsibleLazyTemplateMixin.try_create(variable)
-                    elif not expression_mode and not self.is_possibly_template(variable, options.overrides):
-                        template_result = variable
-                    elif not self._trust_check(variable, expression_mode=expression_mode):
-                        template_result = variable
+                    template_result = _AnsibleLazyTemplateMixin.try_create(variable)
+                elif not expression_mode and not self.is_possibly_template(variable, options.overrides):
+                    template_result = variable
+                elif not self._trust_check(variable, expression_mode=expression_mode):
+                    template_result = variable
+                else:
+                    if expression_mode:
+                        compiled_expression = self._compile_expression(variable, options)
+                        template_result = compiled_expression(self.available_variables)
                     else:
-                        if expression_mode:
-                            compiled_expression = self._compile_expression(variable, options)
-                            template_result = compiled_expression(self.available_variables)
-                        else:
-                            compiled_template = self._compile_template(variable, options)
+                        compiled_template = self._compile_template(variable, options)
 
-                            template_result = compiled_template.render(self.available_variables)
+                        template_result = compiled_template.render(self.available_variables)
 
-                        template_result = self._post_render_mutation(variable, template_result, options)
+                    template_result = self._post_render_mutation(variable, template_result, options)
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
                 # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.

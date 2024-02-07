@@ -13,20 +13,11 @@ if t.TYPE_CHECKING:
     from .templar import Templar, TemplateOptions
 
 
-class TemplateDepthContext(AmbientContextBase):
-    # FIXME: HACK, this isn't exactly right yet
-    def __init__(self, options: TemplateOptions):
-        self._options = options
-
-    @property
-    def options(self):
-        return self._options
-
-
 class TemplateContext(AmbientContextBase):
-    def __init__(self, *, template_value: t.Any, templar: Templar):
+    def __init__(self, *, template_value: t.Any, templar: Templar, options: TemplateOptions):
         self._template_value = template_value
         self._templar = templar
+        self._options = options
 
     @property
     def template_value(self) -> t.Any:
@@ -35,6 +26,10 @@ class TemplateContext(AmbientContextBase):
     @property
     def templar(self) -> Templar:
         return self._templar
+
+    @property
+    def options(self):
+        return self._options
 
 
 class AnsibleUndefined(StrictUndefined):

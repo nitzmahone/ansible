@@ -5,6 +5,7 @@ import typing as t
 import pytest
 
 from ansible.module_utils.datatag import TrustedAsTemplate
+from ansible.template.jinja_bits import AnsibleEnvironment, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES
 from ansible.template.templar import Templar, TemplateOptions
 from jinja2.loaders import DictLoader
 
@@ -97,3 +98,11 @@ def test_context_local_propagation():
         "template local",
         dict(templated_scalar="template local"),
     ]
+
+
+@pytest.mark.parametrize("key", _TEMPLATE_OVERRIDE_FIELD_NAMES)
+def test_template_overrides_defaults(key: str) -> None:
+    overrides = TemplateOverrides()
+    env = AnsibleEnvironment()
+
+    assert getattr(overrides, key) == getattr(env, key)
