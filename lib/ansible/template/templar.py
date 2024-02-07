@@ -24,7 +24,7 @@ import ansible.module_utils.compat.typing as t
 
 from collections.abc import Mapping
 from contextlib import contextmanager
-from traceback import format_exc
+from traceback import format_exc, format_stack
 from collections import ChainMap
 
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
@@ -35,7 +35,6 @@ from jinja2 import __version__ as jinja2_version
 from ansible import constants as C
 from ansible.errors import (
     AnsibleAssertionError,
-    AnsibleConditionalError,
     AnsibleError,
     AnsibleLookupError,
     AnsibleValueOmittedError,
@@ -144,6 +143,7 @@ class Templar:
 
     # allow unit tests to easily patch trust check failures to raise instead of just warn
     _raise_on_trust_check_fail = False
+    _sentinel = object()
 
     def __init__(self, loader, variables=None):
         self._loader = loader
@@ -160,12 +160,14 @@ class Templar:
         self.environment.globals['lookup'] = self._lookup
         self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
 
-    # FIXME: FDI028 - initial prototype, is this what we want?
-    #        should it be part of our public interface?
-    #        should this be part of AnsibleSourcePosition or otherwise in the datatag module_utils?
     @staticmethod
     def _repr_from(value: t.Any) -> str:
         """Return the repr() of the given value, appending attribution of the source position, if available."""
+        # FIXME: FDI028 - initial prototype, is this what we want?
+        #        should it be part of our public interface?
+        #        should this be part of AnsibleSourcePosition or otherwise in the datatag module_utils?
+
+        # FIXME: need to elide container values and large strings
         src_pos = AnsibleSourcePosition.get_tag(value)
 
         if src_pos:
@@ -385,13 +387,16 @@ class Templar:
         components = stripped_expression.split('.')
         if not all(map(isidentifier, components)):
             raise AnsibleError(f'invalid variable expression: {expression}')
-        return self.__template_expression(stripped_expression)
+        return self.evaluate_expression(TrustedAsTemplate().tag(stripped_expression))
 
     # FIXME: implement a pylint check for proper usage of LiteralString args (even if mypy eventually supports it,
     # we'll want this to get checked for collections, too).
     def template_literal_expression(self, expression: t.LiteralString, var_overrides: dict[str, t.Any] | None = None) -> t.Any:
         """Template string literal expressions with blind trust."""
-        return self.__template_expression(expression, var_overrides=var_overrides)
+        # FIXME: propagate other tags? (source position, etc)
+        variables = ChainMap(var_overrides, self._available_variables) if var_overrides else self._available_variables
+        templar = Templar(self._loader, variables=variables)
+        return templar.evaluate_expression(TrustedAsTemplate().tag(expression))
 
     def variable_name_as_template(self, name: str) -> str:
         stripped_name = name.strip()
@@ -399,15 +404,8 @@ class Templar:
             # FIXME: better exception type here
             raise AnsibleError(f"invalid variable name: {stripped_name}")
         # FIXME: propagate other tags? (source position, etc)
+        # this is safe enough to blindly apply trust, since it can only be an identifier
         return TrustedAsTemplate().tag('{{' + stripped_name + '}}')
-
-    def __template_expression(self, expression: str, var_overrides: dict[str, t.Any] | None = None) -> t.Any:
-        """Template string expressions with blind trust."""
-        # FIXME: propagate other tags? (source position, etc)
-        expression_template = TrustedAsTemplate().tag('{{' + expression + '}}')
-        variables = ChainMap(var_overrides, self._available_variables) if var_overrides else self._available_variables
-        templar = Templar(self._loader, variables=variables)
-        return templar.template(expression_template)
 
     # FIXME: wrap tripwires in a template decorator so we can preserve/propagate args automatically
     def template(self, variable: t.Any, *, options: TemplateOptions | None = None) -> t.Any:
@@ -448,7 +446,7 @@ class Templar:
                         template_result = _AnsibleLazyTemplateMixin.try_create(variable)
                     elif not expression_mode and not self.is_possibly_template(variable, options.overrides):
                         template_result = variable
-                    elif not self._trust_check(variable):
+                    elif not self._trust_check(variable, expression_mode=expression_mode):
                         template_result = variable
                     else:
                         if expression_mode:
@@ -695,10 +693,9 @@ class Templar:
                                        % name)
         return ran
 
-    # FIXME: where to move escape_backslashes?
     def evaluate_expression(self, expression: str, disable_lookups: bool = False, escape_backslashes=True) -> t.Any:
         if not isinstance(expression, str):
-            return expression
+            raise TypeError(f"evaluate_expression requires {str!r}, got {type(expression)!r}")
 
         return self.template_with_result(
             expression,
@@ -706,67 +703,42 @@ class Templar:
             expression_mode=True,
         ).result
 
-    # Also disable escape_backslashes when processing conditionals, to maintain backwards compatibility.
-    # This is necessary because conditionals were previously evaluated using {% %}, which was *NOT* affected by escape_backslashes.
-    # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
-
-    # FIXME: make allow_inline_template=False by default
+    # FIXME: make allow_inline_template=False by default?
     def evaluate_conditional(self, conditional: str, allow_inline_template=True) -> bool:
-        if not isinstance(conditional, str):
-            # FIXME: this is a change in behavior from devel and needs to be documented
-            #        when removing this, be sure to remove the affected test_conditional unit test currently marked xfail
-            #        previously, templating could affect truthiness if omit was used, but that isn't something we want to encourage
-            #        using "is defined" is a suitable alternative
-            #        example:
-            #        assert:
-            #          that:
-            #            - something: "{{ test2_name | default(omit) }}"
-            result = conditional
-        else:
-            # FIXME: this should ultimately use AnsibleEnvironment.compile_expression() once we've factored all the custom
-            #  vars setup into an AnsibleTemplate subclass that TemplateExpression can wrap.
+        try:
+            result = self._sentinel
 
-            # FIXME: redundant but informative?
-            if not TrustedAsTemplate.is_tagged_on(conditional):
-                raise AnsibleConditionalError(
-                    f'Conditional {self._repr_from(conditional)} is not trusted. '
-                    'Conditionals must be defined by trusted sources such as playbooks, roles, etc., '
-                    'and not untrusted sources such as module results.'
-                )
-
-            try:
-                retry_as_inline_template = False
+            if isinstance(conditional, str):
                 try:
                     # Disable escape_backslashes when processing conditionals, to maintain backwards compatibility.
                     # This is necessary because conditionals were previously evaluated using {% %}, which was *NOT* affected by escape_backslashes.
                     # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
                     result = self.evaluate_expression(conditional, escape_backslashes=False)
                 except AnsibleTemplateSyntaxError:
-                    if not allow_inline_template:
+                    if not allow_inline_template or not self.is_template(conditional):
                         raise
 
-                    retry_as_inline_template = True
-                    result = None  # static assignment check isn't smart enough to understand that this will always have a value
+            elif not allow_inline_template:
+                # FIXME: mention "and allow_inline_template=False" when we figure out what we want
+                raise TypeError(f"evaluate_conditional requires {str!r}, got {type(conditional)!r}")
 
-                if retry_as_inline_template:
-                    # the original eval might have failed because it was actually a {{ }} style template, process it as such
-                    _display.warning(
-                        # FIXME: should we deprecate and/or remove this capability?
-                        f'Conditional {self._repr_from(conditional)} could not be parsed as a Jinja2 expression, and will be '
-                        'evaluated as a template instead. Conditionals should not include templating delimiters '
-                        'such as {{ }} or {% %}.'
-                    )
-                    # FIXME: WTF escape_backslashes
-                    result = self.template(conditional, options=TemplateOptions(escape_backslashes=True))
-            except AnsibleUndefinedVariable as e:
-                # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
-                #  at least the warning allows us a place to consistently present useful forensic information about the problem
+            if result is self._sentinel:
+                _display.warning(
+                    # FIXME: should we deprecate and/or remove this capability?
+                    f'Conditional {self._repr_from(conditional)} could not be parsed as a Jinja2 expression, and will be '
+                    'evaluated as a template instead. Conditionals should not include templating delimiters '
+                    'such as {{ }} or {% %}.'
+                )
+                result = self.template(conditional)
+        except AnsibleUndefinedVariable as e:
+            # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
+            #  at least the warning allows us a place to consistently present useful forensic information about the problem
 
-                conditional_repr = self._repr_from(conditional)
+            conditional_repr = self._repr_from(conditional)
 
-                _display.warning(f'Conditional {conditional_repr} evaluation failed: {e}')
+            _display.warning(f'Conditional {conditional_repr} evaluation failed: {e}')
 
-                raise AnsibleUndefinedVariable(f"error while evaluating conditional {conditional_repr}: {e}") from e
+            raise AnsibleUndefinedVariable(f"error while evaluating conditional {conditional_repr}: {e}") from e
 
         if isinstance(result, bool):
             return result
@@ -781,7 +753,7 @@ class Templar:
 
         return bool_result
 
-    def _trust_check(self, data: str) -> bool:
+    def _trust_check(self, data: str, expression_mode: bool = False) -> bool:
         """
         Return True if the given template data is trusted for templating, otherwise return False.
 
@@ -791,15 +763,15 @@ class Templar:
             return False
 
         if not TrustedAsTemplate.is_tagged_on(data):
-            from traceback import format_stack
+            if Templar._raise_on_trust_check_fail or expression_mode:
+                thing = "expression" if expression_mode else "template"
+                raise TemplateTrustCheckFailedError(f'Failing on untrusted {thing} {self._repr_from(data)}. '
+                                                    f'Expressions and templates must be defined by trusted sources such as playbooks, roles, etc., '
+                                                    'and not untrusted sources such as module results.')
 
             # FIXME: make traceback optional
             tb = "\n".join(format_stack())
             _display.warning(f'skipped untrusted template {self._repr_from(data)}; execution stack:\n{tb}')
-
-            if Templar._raise_on_trust_check_fail:
-                # FIXME: explicit exception type?
-                raise TemplateTrustCheckFailedError(f'failing on untrusted template {self._repr_from(data)}')
 
             return False
 

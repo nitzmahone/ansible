@@ -265,7 +265,7 @@
     assert:
       that:
       - result is failed
-      - "'not trusted' is in result.msg"
+      - "'untrusted expression' is in result.msg"
 
   - name: untrusted assert conditional list item indirected through template should hard fail (EXPECTED FAILURE)
     vars:
@@ -281,7 +281,7 @@
     assert:
       that:
       - result is failed
-      - "'not trusted' is in result.msg"
+      - "'untrusted expression' is in result.msg"
 
   - name: untrusted assert conditional scalar indirected through template should hard fail (EXPECTED FAILURE)
     vars:
@@ -295,4 +295,4 @@
     assert:
       that:
       - result is failed
-      - "'not trusted' is in result.msg"
+      - "'untrusted expression' is in result.msg"

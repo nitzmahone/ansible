@@ -18,15 +18,17 @@
 from __future__ import annotations
 
 import mock
+import typing as t
+
 from jinja2.runtime import Context
 
 import unittest
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleUndefinedVariable
-from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate
+from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplateError
+from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
-from ansible.template.templar import Templar, TemplateOptions
+from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext
 from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display
@@ -34,6 +36,8 @@ from units.mock.loader import DictDataLoader
 
 import pytest
 
+NOT_A_TEMPLATE = NotATemplate()
+TRUST = TrustedAsTemplate()
 
 class BaseTemplar(object):
     def setUp(self):
@@ -189,7 +193,7 @@ class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
     def test_weird(self):
         data = TrustedAsTemplate().tag(u'''1 2 #}huh{# %}ddfg{% }}dfdfg{{  {%what%} {{#foo#}} {%{bar}%} {#%blip%#} {{asdfsd%} 3 4 {{foo}} 5 6 7''')
         self.assertRaisesRegex(AnsibleError,
-                               'template error while templating string',
+                               'Syntax error in template',
                                self.templar.template,
                                data)
 
@@ -437,3 +441,56 @@ def test_dict_template(tagged: bool) -> None:
 
     assert result == test1
     assert AnsibleTaggedObject.tags(result) == AnsibleTaggedObject.tags(test1)
+
+
+@pytest.mark.parametrize("expr,expected,variables", [
+    ("'constant'", "constant", None),
+    (NOT_A_TEMPLATE.tag("non-template expression"), "non-template expression", None),
+    # FIXME: add more test cases
+])
+def test_evaluate_expression(expr: str, expected: t.Any, variables: dict[str, t.Any] | None):
+    templar = Templar(None, variables or {})
+
+    assert templar.evaluate_expression(TRUST.tag(expr)) == expected
+
+
+@pytest.mark.parametrize("expr,error_type", [
+    (TRUST.tag("fhdgsfk#$76&@#$&"), AnsibleTemplateSyntaxError),
+    (TRUST.tag("bogusvar"), AnsibleUndefinedVariable),
+    ("untrusted expression", TemplateTrustCheckFailedError),
+    (dict(hi="{{'mom'}}"), TypeError),
+])
+def test_evaluate_expression_errors(expr: str, error_type: type[Exception]):
+    templar = Templar(None, {})
+
+    with pytest.raises(error_type) as ex:
+        res = templar.evaluate_expression(expr)
+        pass
+
+
+@pytest.mark.parametrize("conditional,expected,variables,allow_inline_template", [
+    ("'constant'", True, None, False),
+    ("{{ 'constant' }}", True, None, True),
+    ("1 == 2", False, None, False),
+    (dict(something=TRUST.tag("{{ test2_name | default(omit) }}")), False, None, True),
+    (dict(something=TRUST.tag("{{ test2_name | default(True) }}")), True, None, True),
+])
+def test_evaluate_conditional(conditional: str, expected: t.Any, variables: dict[str, t.Any] | None, allow_inline_template: bool):
+    # FIXME: assert warnings occurred where apropos
+    templar = Templar(None, variables or {})
+
+    assert templar.evaluate_conditional(TRUST.tag(conditional), allow_inline_template=allow_inline_template) == expected
+
+
+@pytest.mark.parametrize("conditional,error_type,allow_inline_template", [
+    (TRUST.tag("fkjhs$#@^%$*& ldfkjds"), AnsibleTemplateSyntaxError, True),
+    (TRUST.tag("{{ 'i am truthy' }}"), AnsibleTemplateSyntaxError, False),
+    (TRUST.tag("bogusvar"), AnsibleUndefinedVariable, True),
+    ("untrusted expression", TemplateTrustCheckFailedError, True),
+    (dict(something=TRUST.tag("{{ test2_name | default(omit) }}")), TypeError, False),
+])
+def test_evaluate_conditional_errors(conditional: t.Any, error_type: type[Exception], allow_inline_template: bool):
+    templar = Templar(None, {})
+
+    with pytest.raises(error_type) as ex:
+        templar.evaluate_conditional(conditional, allow_inline_template=allow_inline_template)
