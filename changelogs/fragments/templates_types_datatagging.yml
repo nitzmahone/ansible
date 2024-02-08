@@ -10,12 +10,14 @@ minor_changes:
   - templating - Template evaluation is lazier than in previous versions. Template expressions which resolve only portions of a data structure no longer result in the entire structure being templated.
   - templating - Literal strings in templates can now contain templates. This was previously possible under certain limited circumstances due to multi-pass templating.
   - templating - Jinja2 overrides in templates with invalid override names or types are now templating errors.
+  - handlers - Templated handler names with syntax errors, or that resolve to ``omit`` are now skipped like handlers with undefined variables in their name.
 
 breaking_changes:
   - templating - Templates are always rendered in Jinja2 native mode. As a result, non-string values are no longer automatically converted to strings.
   - templating - Templates resulting in ``None`` are no longer automatically converted to an empty string.
   - template lookup - The ``convert_data`` option is deprecated and no longer has any effect. Use the ``from_json`` filter on the lookup result instead.
   - set_fact - The string values "yes", "no", "true" and "false" were previously converted (ignoring case) to boolean values when not using Jinja2 native mode. Since Jinja2 native mode is always used, this conversion no longer occurs. When boolean values are required, native boolean syntax should be used where variables are defined, such as in YAML. When native boolean syntax is not an option, the ``bool`` filter can be used to parse string values into booleans.
+  - templating - The ``allow_unsafe_lookups`` option no longer has any effect. Lookup plugins are responsible for tagging strings containing templates to allow evaluation as a template.
 
 security_fixes:
   - templating - Ansible's template engine no longer processes Jinja templates in strings unless they are marked as coming from a trusted source. Untrusted strings containing Jinja template markers are ignored with a warning. Examples of trusted sources include playbooks, vars files, and many inventory sources. Examples of untrusted sources include module results and facts. Plugins which have not been updated to preserve trust while manipulating strings may inadvertently cause them to lose their trusted status.

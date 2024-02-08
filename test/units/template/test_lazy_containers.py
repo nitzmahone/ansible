@@ -26,7 +26,7 @@ def test_container_equality(value: t.Any) -> None:
 
     rendered = templar.template(value)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         # NOTE: Assertion failure helper text may be misleading, since repr() will show rendered templates, which will appear to match expected values.
 
         lazy = _AnsibleLazyTemplateMixin.try_create(value)
@@ -46,7 +46,7 @@ def test_container_format(value: t.Any) -> None:
 
     rendered = templar.template(value)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         # NOTE: Assertion failure helper text may be misleading, since repr() will show rendered templates, which will appear to match expected values.
 
         lazy = _AnsibleLazyTemplateMixin.try_create(value)
@@ -65,7 +65,7 @@ def test_container_contains(container_type: type) -> None:
     value = container_type([VALUE_TO_TEMPLATE])
     rendered = templar.template(value)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         # NOTE: Assertion failure helper text may be misleading, since repr() will show rendered templates, which will appear to match expected values.
 
         lazy = _AnsibleLazyTemplateMixin.try_create(value)
@@ -86,7 +86,7 @@ def test_container_comparison(container_type: type) -> None:
     value = container_type([VALUE_TO_TEMPLATE])
     rendered = templar.template(value)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         # NOTE: Assertion failure helper text may be misleading, since repr() will show rendered templates, which will appear to match expected values.
 
         lazy = _AnsibleLazyTemplateMixin.try_create(value)
@@ -107,7 +107,7 @@ def test_container_comparison(container_type: type) -> None:
 def test_list_sort() -> None:
     templar = Templar(loader=None, variables=dict())
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         lazy: list = _AnsibleLazyTemplateMixin.try_create([])
 
         with pytest.raises(NotImplementedError):
@@ -119,7 +119,7 @@ def test_list_index() -> None:
 
     rendered = templar.template(VALUE_TO_TEMPLATE)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         lazy: list = _AnsibleLazyTemplateMixin.try_create([VALUE_TO_TEMPLATE])
 
         assert lazy.index(rendered) == 0
@@ -130,7 +130,7 @@ def test_list_remove() -> None:
 
     rendered = templar.template(VALUE_TO_TEMPLATE)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         lazy: list = _AnsibleLazyTemplateMixin.try_create([VALUE_TO_TEMPLATE])
 
         assert rendered in lazy
@@ -146,7 +146,7 @@ def test_dict_items_and_values() -> None:
     value = dict(key=VALUE_TO_TEMPLATE)
     rendered = templar.template(value)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         lazy: dict = _AnsibleLazyTemplateMixin.try_create(value)
 
         assert list(lazy.items()) == list(rendered.items())

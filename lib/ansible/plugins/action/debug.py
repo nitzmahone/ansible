@@ -22,7 +22,7 @@ import traceback
 from ansible.errors import AnsibleError, AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.plugins.action import ActionBase
-from ansible.template.templar import TemplateOptions
+from ansible.template.templar import TemplateOptions, TemplateMode
 from ansible.template.utils import Omit
 from ansible.template.undefined_behaviors import BestEffortWithWarnings, FAIL_ON_UNDEFINED
 
@@ -41,7 +41,7 @@ class ActionModule(ActionBase):
 
         # template splatted `args` only until we get a dictionary
         if vp := raw_task_args.pop('_variable_params', None):
-            raw_task_args = self._templar.template(vp, options=TemplateOptions(stop_on_container_result=True, value_for_omit={}))
+            raw_task_args = self._templar.template_with_result(vp, options=TemplateOptions(value_for_omit={}), mode=TemplateMode.STOP_ON_CONTAINER).result
 
             if not isinstance(raw_task_args, dict):
                 # FIXME: needs AnsibleTaggedObject.get_native_type() to avoid displaying internal type names

@@ -14,10 +14,11 @@ if t.TYPE_CHECKING:
 
 
 class TemplateContext(AmbientContextBase):
-    def __init__(self, *, template_value: t.Any, templar: Templar, options: TemplateOptions):
+    def __init__(self, *, template_value: t.Any, templar: Templar, options: TemplateOptions, stop_on_template: bool):
         self._template_value = template_value
         self._templar = templar
         self._options = options
+        self._stop_on_template = stop_on_template
 
     @property
     def template_value(self) -> t.Any:
@@ -30,6 +31,10 @@ class TemplateContext(AmbientContextBase):
     @property
     def options(self):
         return self._options
+
+    @property
+    def stop_on_template(self):
+        return self._stop_on_template
 
 
 class AnsibleUndefined(StrictUndefined):

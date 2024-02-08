@@ -70,18 +70,31 @@ class TemplateOverrides:
         if not (self.block_start_string != self.variable_start_string != self.comment_start_string != self.block_start_string):
             raise ValueError('Block, variable and comment start strings must be different.')
 
-    def overlay_kwargs(self) -> dict[str, str | bool]:
+    def overlay_kwargs(self) -> dict[str, t.Any]:
         """
         Return a dictionary of arguments for passing to Environment.overlay.
         The dictionary will be empty if all fields have their default value.
         """
+        # FIXME: calculate default/non-default during __post_init__
         fields = [(field, getattr(self, field.name)) for field in dataclasses.fields(self)]
         kwargs = {field.name: value for field, value in fields if value != field.default}
 
         return kwargs
 
+    def contains_start_string(self, value: str) -> bool:
+        """Returns True if the given value contains a variable, block or comment start string."""
+        # FIXME: this is inefficient, use a compiled regex instead
+        #        when fixing this, rename this function and include the line statement and line comment prefixes too (even though we don't yet need them)
 
-_TEMPLATE_OVERRIDE_FIELD_NAMES = tuple(sorted(field.name for field in dataclasses.fields(TemplateOverrides)))
+        for marker in (self.block_start_string, self.variable_start_string, self.comment_start_string):
+            if marker in value:
+                return True
+
+        return False
+
+
+_TEMPLATE_OVERRIDE_DEFAULT: t.Final[TemplateOverrides] = TemplateOverrides()
+_TEMPLATE_OVERRIDE_FIELD_NAMES: t.Final[tuple[str, ...]] = tuple(sorted(field.name for field in dataclasses.fields(TemplateOverrides)))
 
 
 class AnsibleContext(Context):
@@ -387,6 +400,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     def lexer(self):
         """Return/cache an AnsibleLexer with settings from the current AnsibleEnvironment"""
         # FIXME: we should pre-generate the default cached lexer before forking, not leave it to chance (e.g. simple playbooks)
+        # FIXME: more efficient key calculation
         key = tuple(getattr(self, name) for name in _TEMPLATE_OVERRIDE_FIELD_NAMES)
 
         lex = self._lexer_cache.get(key)

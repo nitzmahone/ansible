@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import enum
+import os
 
 import ansible.module_utils.compat.typing as t
 
-from collections.abc import Mapping
 from contextlib import contextmanager
 from traceback import format_exc, format_stack
 from collections import ChainMap
@@ -34,7 +35,6 @@ from jinja2 import __version__ as jinja2_version
 
 from ansible import constants as C
 from ansible.errors import (
-    AnsibleAssertionError,
     AnsibleError,
     AnsibleLookupError,
     AnsibleValueOmittedError,
@@ -53,9 +53,11 @@ from ansible.module_utils.datatag.access import AnsibleAccessContext
 
 from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
+from ansible.parsing.dataloader import DataLoader
 
 from .datatag import DeprecatedAccessAuditContext
-from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES
+from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, \
+    _TEMPLATE_OVERRIDE_DEFAULT
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
@@ -91,16 +93,13 @@ class TemplateOptions:
     # FIXME: embedded sentinel
     preserve_trailing_newlines: bool = t.cast(bool, ...)
     escape_backslashes: bool = t.cast(bool, ...)
-    overrides: TemplateOverrides | None = t.cast(None, ...)
+    overrides: TemplateOverrides = t.cast(TemplateOverrides, ...)  # FIXME: these aren't really overrides anymore, rename the dataclass and this field
     disable_lookups: bool = t.cast(bool, ...)
     undefined_behavior: UndefinedBehavior = t.cast(UndefinedBehavior, ...)
-    stop_on_container_result: bool = t.cast(bool, ...)
     value_for_omit: t.Any = ...
 
     def __post_init__(self):
         if template_ctx := TemplateContext.current():
-            if self.stop_on_container_result is not ...:
-                raise ValueError("stop_on_container_result is only valid for top-level template calls.")
             if self.value_for_omit is not ...:
                 raise ValueError("value_for_omit is only valid for top-level template calls.")
             defaults = template_ctx.options
@@ -117,7 +116,7 @@ class TemplateOptions:
             if getattr(self, field.name) is ...:
                 # FIXME: figure out a better way to avoid propagating options
                 # FIXME: review all options to determine correct propagation behavior
-                if field.name in ('stop_on_container_result', 'value_for_omit', 'overrides', 'escape_backslashes'):
+                if field.name in ('value_for_omit', 'overrides', 'escape_backslashes'):
                     value = getattr(_DEFAULT_TEMPLATE_OPTIONS, field.name)
                 else:
                     value = getattr(defaults, field.name)
@@ -128,12 +127,22 @@ class TemplateOptions:
 _DEFAULT_TEMPLATE_OPTIONS: t.Final = TemplateOptions(
     preserve_trailing_newlines=True,
     escape_backslashes=True,
-    overrides=None,
+    overrides=_TEMPLATE_OVERRIDE_DEFAULT,
     disable_lookups=False,
     undefined_behavior=FAIL_ON_UNDEFINED,
-    stop_on_container_result=False,
     value_for_omit=Omit,
 )
+
+
+class TemplateEncountered(Exception):
+    pass
+
+
+class TemplateMode(enum.Enum):
+    DEFAULT = enum.auto()
+    EXPRESSION = enum.auto()
+    STOP_ON_TEMPLATE = enum.auto()
+    STOP_ON_CONTAINER = enum.auto()
 
 
 class Templar:
@@ -145,20 +154,34 @@ class Templar:
     _raise_on_trust_check_fail = False
     _sentinel = object()
 
-    def __init__(self, loader, variables=None):
+    def __init__(
+        self,
+        loader: DataLoader | None = None,
+        variables: dict[str, t.Any] | ChainMap[str, t.Any] | None = None,
+        variables_factory: t.Callable[[], dict[str, t.Any] | ChainMap[str, t.Any]] | None = None,
+    ):
         self._loader = loader
-        self._available_variables = {} if variables is None else variables
+        self._variables = variables
+        self._variables_factory = variables_factory
+        self._environment: AnsibleEnvironment | None = None
 
-        self.environment = AnsibleEnvironment(
-            extensions=self._get_extensions(),
-            loader=FileSystemLoader(loader.get_basedir() if loader else '.'),
-        )
+    @property
+    def environment(self) -> AnsibleEnvironment:
+        if not self._environment:
+            env = AnsibleEnvironment(
+                extensions=self._get_extensions(),
+                loader=FileSystemLoader(self._loader.get_basedir() if self._loader else '.'),
+            )
 
-        # FIXME: move all this magic under our Jinja environment?
+            env.globals.update(
+                lookup=self._lookup,
+                query=self._query_lookup,
+                q=self._query_lookup,
+            )
 
-        # Custom globals
-        self.environment.globals['lookup'] = self._lookup
-        self.environment.globals['query'] = self.environment.globals['q'] = self._query_lookup
+            self._environment = env
+
+        return self._environment
 
     @staticmethod
     def _repr_from(value: t.Any) -> str:
@@ -175,65 +198,8 @@ class Templar:
 
         return f'{value!r}'
 
-    @staticmethod
-    def _is_possibly_template_internal(data, jinja_env):
-        """Determines if a string looks like a template, by seeing if it
-        contains a jinja2 start delimiter. Does not guarantee that the string
-        is actually a template.
-
-        This is different than ``is_template`` which is more strict.
-        This method may return ``True`` on a string that is not templatable.
-
-        Useful when guarding passing a string for templating, but when
-        you want to allow the templating engine to make the final
-        assessment which may result in ``TemplateSyntaxError``.
-        """
-        if isinstance(data, str):
-            for marker in (jinja_env.block_start_string, jinja_env.variable_start_string, jinja_env.comment_start_string):
-                if marker in data:
-                    return True
-        return False
-
-    def _is_template_internal(self, data):
-        """This function attempts to quickly detect whether a value is a jinja2
-        template. To do so, we look for the first 2 matching jinja2 tokens for
-        start and end delimiters.
-        """
-        found = None
-        start = True
-        comment = False
-        env = self.environment
-        d2 = env.preprocess(data)
-
-        # Quick check to see if this is remotely like a template before doing
-        # more expensive investigation.
-        if not self._is_possibly_template_internal(d2, env):
-            return False
-
-        # This wraps a lot of code, but this is due to lex returning a generator
-        # so we may get an exception at any part of the loop
-        try:
-            for token in env.lex(d2):
-                if token[1] in _JINJA2_BEGIN_TOKENS:
-                    if start and token[1] == 'comment_begin':
-                        # Comments can wrap other token types
-                        comment = True
-                    start = False
-                    # Example: variable_end -> variable
-                    found = token[1].split('_')[0]
-                elif token[1] in _JINJA2_END_TOKENS:
-                    if token[1].split('_')[0] == found:
-                        return True
-                    elif comment:
-                        continue
-                    return False
-        except TemplateSyntaxError:
-            return False
-
-        return False
-
-    def _create_overlay(self, data: str, overrides: TemplateOverrides | None) -> tuple[str, AnsibleEnvironment, bool]:
-        if has_override_header := data.startswith(_JINJA2_OVERRIDE):
+    def _create_overlay(self, data: str, overrides: TemplateOverrides) -> tuple[str, AnsibleEnvironment]:
+        if data.startswith(_JINJA2_OVERRIDE):
             eol = data.find('\n')
             line = data[len(_JINJA2_OVERRIDE):eol]
             data = data[eol + 1:]
@@ -252,14 +218,14 @@ class Templar:
                     # FIXME: make this a deprecation warning so it can be an error in the future
                     _display.warning(f"Could not find Jinja2 environment setting {key!r} to override.")
 
-            overrides = dataclasses.replace(overrides or TemplateOverrides(), **override_kwargs)
+            overrides = dataclasses.replace(overrides, **override_kwargs)
 
-        if overrides and (overlay_kwargs := overrides.overlay_kwargs()):
-            overlay = self.environment.overlay(**overlay_kwargs)
-        else:
-            overlay = self.environment
+        env = self.environment
 
-        return data, overlay, has_override_header
+        if overrides is not _TEMPLATE_OVERRIDE_DEFAULT and (overlay_kwargs := overrides.overlay_kwargs()):
+            env = t.cast(AnsibleEnvironment, env.overlay(**overlay_kwargs))
+
+        return data, env
 
     @staticmethod
     def _count_newlines_from_end(in_str):
@@ -281,101 +247,72 @@ class Templar:
 
         return i - 1 - j
 
-    # FIXME: this needs to die, badly
-    def copy_with_new_env(self, **kwargs):
-        r"""Creates a new copy of Templar with a new environment.
-
-        :kwarg \*\*kwargs: Optional arguments for the new environment that override existing
-            environment attributes.
-
-        :returns: Copy of Templar with updated environment.
-        """
-        # We need to use __new__ to skip __init__, mainly not to create a new
-        # environment there only to override it below
-        new_env = object.__new__(AnsibleEnvironment)
-        new_env.__dict__.update(self.environment.__dict__)
-
-        new_templar = object.__new__(Templar)
-        new_templar.__dict__.update(self.__dict__)
-        new_templar.environment = new_env
-
-        mapping = {
-            'available_variables': new_templar,
-            'searchpath': new_env.loader,
-        }
-
-        for key, value in kwargs.items():
-            obj = mapping.get(key, new_env)
-            try:
-                if value is not None:
-                    setattr(obj, key, value)
-            except AttributeError:
-                # Ignore invalid attrs
-                pass
-
-        return new_templar
-
-    def _get_extensions(self):
+    @staticmethod
+    def _get_extensions():
         """
         Return jinja2 extensions to load.
 
         If some extensions are set via jinja_extensions in ansible.cfg, we try
         to load them with the jinja environment.
         """
-
         jinja_exts = []
-        if C.DEFAULT_JINJA2_EXTENSIONS:
+
+        if default_exts := C.DEFAULT_JINJA2_EXTENSIONS:
             # make sure the configuration directive doesn't contain spaces
             # and split extensions in an array
-            jinja_exts = C.DEFAULT_JINJA2_EXTENSIONS.replace(" ", "").split(',')
+            jinja_exts = default_exts.replace(" ", "").split(',')
 
+        # FIXME: cache this
         return jinja_exts
 
     @property
-    def available_variables(self):
-        return self._available_variables
+    def available_variables(self) -> dict[str, t.Any] | ChainMap[str, t.Any]:
+        if self._variables is None:
+            self._variables = self._variables_factory() if self._variables_factory else {}
+
+        return self._variables
 
     @available_variables.setter
-    def available_variables(self, variables):
+    def available_variables(self, variables: dict[str, t.Any]) -> None:
         """
         Sets the list of template variables this Templar instance will use
         to template things, so we don't have to pass them around between
         internal methods.
         """
-
-        if not isinstance(variables, Mapping):
-            raise AnsibleAssertionError("the type of 'variables' should be a Mapping but was a %s" % (type(variables)))
-        self._available_variables = variables
+        self._variables = variables
 
     @contextmanager
-    def set_temporary_context(self, **kwargs):
-        """Context manager used to set temporary templating context, without having to worry about resetting
-        original values afterward
+    def set_temporary_context(
+        self,
+        searchpath: t.Union[str, os.PathLike, t.Sequence[t.Union[str, os.PathLike]]] | None = None,
+        available_variables: dict[str, t.Any] | ChainMap[str, t.Any] | None = None,
+    ) -> t.Generator[None, None, None]:
+        """Context manager used to set temporary templating context, without having to worry about resetting original values afterward."""
+        env = self.environment
 
-        Use a keyword that maps to the attr you are setting. Applies to ``self.environment`` by default, to
-        set context on another object, it must be in ``mapping``.
-        """
-        mapping = {
-            'available_variables': self,
-            'searchpath': self.environment.loader,
-        }
-        original = {}
+        targets = dict(
+            available_variables=self,
+            searchpath=env.loader,
+        )
+
+        kwargs = dict(
+            searchpath=searchpath,
+            available_variables=available_variables,
+        )
+
+        original: dict[str, t.Any] = {}
 
         for key, value in kwargs.items():
-            obj = mapping.get(key, self.environment)
-            try:
-                original[key] = getattr(obj, key)
-                if value is not None:
-                    setattr(obj, key, value)
-            except AttributeError:
-                # Ignore invalid attrs
-                pass
+            if value is not None:
+                target = targets[key]
+                original[key] = getattr(target, key)
+                setattr(target, key, value)
 
-        yield
-
-        for key in original:
-            obj = mapping.get(key, self.environment)
-            setattr(obj, key, original[key])
+        try:
+            yield
+        finally:
+            for key, value in original.items():
+                setattr(targets[key], key, value)
 
     # FIXME: ditch this?
     def resolve_variable_expression(self, expression: str) -> t.Any:
@@ -391,11 +328,12 @@ class Templar:
     def template_literal_expression(self, expression: t.LiteralString, var_overrides: dict[str, t.Any] | None = None) -> t.Any:
         """Template string literal expressions with blind trust."""
         # FIXME: propagate other tags? (source position, etc)
-        variables = ChainMap(var_overrides, self._available_variables) if var_overrides else self._available_variables
+        variables = ChainMap(var_overrides, self.available_variables) if var_overrides else self.available_variables
         templar = Templar(self._loader, variables=variables)
         return templar.evaluate_expression(TrustedAsTemplate().tag(expression))
 
-    def variable_name_as_template(self, name: str) -> str:
+    @staticmethod
+    def variable_name_as_template(name: str) -> str:
         stripped_name = name.strip()
         if not isidentifier(stripped_name):
             # FIXME: better exception type here
@@ -408,8 +346,14 @@ class Templar:
     def template(self, variable: t.Any, *, options: TemplateOptions | None = None) -> t.Any:
         return self.template_with_result(variable, options=options).result
 
-    # FIXME: expression_mode should be strings only- enforce (or use a different entrypoint)
-    def template_with_result(self, variable: t.Any, *, options: TemplateOptions | None = None, expression_mode=False) -> TemplateResult:
+    # FIXME: TemplateMode.EXPRESSION should be strings only- enforce (or use a different entrypoint)
+    def template_with_result(
+            self,
+            variable: t.Any,
+            *,
+            options: TemplateOptions | None = None,
+            mode: TemplateMode = TemplateMode.DEFAULT,
+    ) -> TemplateResult:
         """Templates (possibly recursively) any given data as input."""
 
         # bail out if we know we're looking at something that's been explicitly tagged as not a template
@@ -422,8 +366,13 @@ class Templar:
         if template_ctx := TemplateContext.current():
             # FIXME: ideally avoid re-creating TemplateOptions every time here
             options = options or TemplateOptions()  # FIXME: this is dangerous because it looks like it's the default, but it's a context-aware factory method
+            stop_on_template = template_ctx.stop_on_template
         else:
             options = options or _DEFAULT_TEMPLATE_OPTIONS
+            stop_on_template = False
+
+        if mode == TemplateMode.STOP_ON_TEMPLATE:
+            stop_on_template = True
 
         is_top_level_template = not template_ctx
 
@@ -431,22 +380,25 @@ class Templar:
         with (
             UndecryptableAccessMutator(),  # trigger injection of VaultBomb
             DeprecatedAccessAuditContext() as deprecated,
-            TemplateContext(template_value=variable, templar=self, options=options),  # stack the current active var value we're templating
+            # stack the current active var value we're templating
+            TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template),
         ):
             try:
                 if not isinstance(variable, str):
-                    if options.overrides is not None:
+                    if options.overrides is not _TEMPLATE_OVERRIDE_DEFAULT:
                         raise ValueError("Jinja overrides are only allowed on string inputs")
 
                     template_result = _AnsibleLazyTemplateMixin.try_create(variable)
-                elif not expression_mode and not self.is_possibly_template(variable, options.overrides):
+                elif mode is not TemplateMode.EXPRESSION and not self._is_possibly_template(variable, options.overrides):
                     template_result = variable
-                elif not self._trust_check(variable, expression_mode=expression_mode):
+                elif not self._trust_check(variable, mode):
                     template_result = variable
                 else:
-                    if expression_mode:
+                    if mode is TemplateMode.EXPRESSION:
                         compiled_expression = self._compile_expression(variable, options)
                         template_result = compiled_expression(self.available_variables)
+                    elif stop_on_template:
+                        raise TemplateEncountered()
                     else:
                         compiled_template = self._compile_template(variable, options)
                         template_result = compiled_template.render(self.available_variables)
@@ -462,8 +414,8 @@ class Templar:
 
                         return TemplateResult(result=options.value_for_omit)  # value_for_omit was not manipulated, trust that it contains only allowed types
 
-                    if options.stop_on_container_result and type(template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
-                        # Use of stop_on_container_result implies the caller will perform necessary checks on values,
+                    if mode is TemplateMode.STOP_ON_CONTAINER and type(template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
+                        # Use of STOP_ON_CONTAINER implies the caller will perform necessary checks on values,
                         # most likely by passing them back into the templating system.
                         return TemplateResult(
                             result=template_result.native_copy() if template_result in AnsibleTaggedObject._collection_types else template_result,
@@ -473,6 +425,8 @@ class Templar:
                     with DetonateVaultBombsTripwire():
                         template_result = _finalize_template_result(template_result, raise_on_unsupported_type=True)
                         template_result = options.undefined_behavior.post_finalize(template_result)
+            except TemplateEncountered:
+                raise
             except Exception as ex:
                 self._raise_template_error(ex, variable)
 
@@ -484,7 +438,7 @@ class Templar:
         # NOTE: Creating an overlay that lives only inside _compile_template means that overrides are not applied
         # when templating nested variables, where Templar.environment is used, not the overlay. They are, however,
         # applied to includes and imports.
-        stripped_template, env, _has_override_header = self._create_overlay(template, options.overrides)
+        stripped_template, env = self._create_overlay(template, options.overrides)
 
         with _TemplateCompileContext(escape_backslashes=options.escape_backslashes):
             compiled_template = t.cast(AnsibleTemplate, env.from_string(stripped_template))
@@ -494,7 +448,7 @@ class Templar:
 
         return compiled_template
 
-    def _compile_expression(self, expression: str, options: TemplateOptions | None = None) -> TemplateExpression:
+    def _compile_expression(self, expression: str, options: TemplateOptions) -> TemplateExpression:
         """
         Compile a Jinja expression, applying optional compile-time behavior via an environment overlay (if needed). The overlay is
         necessary to avoid mutating settings on the Templar's shared environment, which could be visible to other code running concurrently.
@@ -522,7 +476,7 @@ class Templar:
             res_newlines = self._count_newlines_from_end(result)
 
             if data_newlines > res_newlines:
-                newlines = self.environment.newline_sequence * (data_newlines - res_newlines)
+                newlines = options.overrides.newline_sequence * (data_newlines - res_newlines)
                 result = AnsibleTaggedObject.tag_copy(result, result + newlines)
 
         # FIXME: ensure tag propagation behavior is working for containers
@@ -583,25 +537,21 @@ class Templar:
 
         raise exception_to_raise from ex
 
-    def is_template(self, data):
-        """lets us know if data has a template"""
-        if isinstance(data, str):
-            return self._is_template_internal(data)
-        elif isinstance(data, (list, tuple)):
-            for v in data:
-                if self.is_template(v):
-                    return True
-        elif isinstance(data, dict):
-            for k in data:
-                if self.is_template(k) or self.is_template(data[k]):
-                    return True
-        return False
+    def is_template(self, data) -> bool:
+        try:
+            self.template_with_result(data, mode=TemplateMode.STOP_ON_TEMPLATE)
+        except TemplateEncountered:
+            return True
+        else:
+            return False
 
-    templatable = is_template
-
-    def is_possibly_template(self, data, overrides: TemplateOverrides | None = None):
-        data, env, has_override_header = self._create_overlay(data, overrides)
-        return has_override_header or self._is_possibly_template_internal(data, env)
+    @staticmethod
+    def _is_possibly_template(value: str, overrides: TemplateOverrides):
+        """
+        A lightweight check to determine if the given string looks like it contains a template, even if that template is invalid.
+        Return True if the given string starts with a Jinja overrides header or if it contains template start strings.
+        """
+        return value.startswith(_JINJA2_OVERRIDE) or overrides.contains_start_string(value)
 
     def _fail_lookup(self, name, *args, **kwargs):
         raise AnsibleError("The lookup `%s` was found, however lookups were disabled from templating" % name)
@@ -623,12 +573,11 @@ class Templar:
         args = list(args)
 
         wantlist = kwargs.pop('wantlist', False)
-        allow_unsafe = kwargs.pop('allow_unsafe', C.DEFAULT_ALLOW_UNSAFE_LOOKUPS)
         errors = kwargs.pop('errors', 'strict')
 
         # safely catch run failures per #5059
         try:
-            ran = instance.run(args, variables=self._available_variables, **kwargs)
+            ran = instance.run(args, variables=self.available_variables, **kwargs)
         except AnsibleUndefinedVariable:
             # this is just to prevent the broad `except Exception` from firing below
             raise
@@ -671,7 +620,7 @@ class Templar:
                 version='2.18'
             )
 
-        if ran and allow_unsafe is False:
+        if ran:
             if wantlist:
                 return ran
 
@@ -695,7 +644,7 @@ class Templar:
         return self.template_with_result(
             expression,
             options=TemplateOptions(disable_lookups=disable_lookups, escape_backslashes=escape_backslashes),
-            expression_mode=True,
+            mode=TemplateMode.EXPRESSION,
         ).result
 
     # FIXME: make allow_inline_template=False by default?
@@ -710,7 +659,7 @@ class Templar:
                     # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
                     result = self.evaluate_expression(conditional, escape_backslashes=False)
                 except AnsibleTemplateSyntaxError:
-                    if not allow_inline_template or not self.is_template(conditional):
+                    if not allow_inline_template or not self._is_possibly_template(conditional, _TEMPLATE_OVERRIDE_DEFAULT):
                         raise
 
             elif not allow_inline_template:
@@ -748,18 +697,15 @@ class Templar:
 
         return bool_result
 
-    def _trust_check(self, data: str, expression_mode: bool = False) -> bool:
+    def _trust_check(self, data: str, mode: TemplateMode) -> bool:
         """
         Return True if the given template data is trusted for templating, otherwise return False.
 
-        Emits a warning if the data is not trusted, unless it was tagged with `NotATemplate`.
+        Emits a warning if the data is not trusted.
         """
-        if NotATemplate.is_tagged_on(data):
-            return False
-
         if not TrustedAsTemplate.is_tagged_on(data):
-            if Templar._raise_on_trust_check_fail or expression_mode:
-                thing = "expression" if expression_mode else "template"
+            if Templar._raise_on_trust_check_fail or mode is TemplateMode.EXPRESSION:
+                thing = "expression" if mode is TemplateMode.EXPRESSION else "template"
                 raise TemplateTrustCheckFailedError(f'Failing on untrusted {thing} {self._repr_from(data)}. '
                                                     f'Expressions and templates must be defined by trusted sources such as playbooks, roles, etc., '
                                                     'and not untrusted sources such as module results.')

@@ -33,9 +33,9 @@ lazy_serializable_types = tuple(t.cast(c.Collection, known_type) for known_type 
 # FIXME: restructure the tests so we're not sharing values that get mutated (lazy templates for example)
 #        this may also apply to the non-lazy datatag tests
 def values_and_types() -> list[tuple[t.Any, t.Optional[type], type]]:
-    templar = Templar(None)
+    templar = Templar()
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         lazy_serializable_instances = [_AnsibleLazyTemplateMixin.try_create(instance) for instance in taggable_container_instances]
 
     return container_values_and_types(lazy_serializable_types, lazy_serializable_instances)
@@ -50,7 +50,7 @@ def test_repr(taggable_instance) -> None:
     """Ensure the repr() of tagged instance is identical to the repr() returned by the underlying native Python type."""
     templar = Templar(None)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         tagged_instance = _AnsibleLazyTemplateMixin.try_create(taggable_instance)
 
         assert tagged_instance
@@ -62,7 +62,7 @@ def test_str(taggable_instance) -> None:
     """Ensure the str() of tagged instance is identical to the str() returned by the underlying native Python type."""
     templar = Templar(None)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         tagged_instance = _AnsibleLazyTemplateMixin.try_create(taggable_instance)
 
         assert tagged_instance
@@ -74,7 +74,7 @@ def test_untag(taggable_instance):
     """Ensure tagging and then untagging a taggable instance returns new instances as appropriate, with the correct tags and type."""
     templar = Templar(None)
 
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         tagged_instance = _AnsibleLazyTemplateMixin.try_create(taggable_instance)
 
         assert tagged_instance
@@ -92,7 +92,7 @@ def test_tag(value: t.Any, value_type: t.Optional[type], type_under_test: type) 
     templar = Templar(None)
 
     # FIXME: Is it valid to use a different TemplateContext (and Templar) from the one used to create the value originally?
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         if isinstance(value, _AnsibleLazyTemplateMixin):
             assert value._templar
             value._templar = None  # remove the templar, forcing an error if lazy behavior is triggered during tagging
@@ -109,7 +109,7 @@ def test_tag_copy(value: t.Any, value_type: t.Optional[type], type_under_test: t
     templar = Templar(None)
 
     # FIXME: Is it valid to use a different TemplateContext (and Templar) from the one used to create the value originally?
-    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions()):
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         if isinstance(value, _AnsibleLazyTemplateMixin):
             assert value._templar
             value._templar = None  # remove the templar, forcing an error if lazy behavior is triggered during tagging

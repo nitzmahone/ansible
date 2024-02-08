@@ -131,11 +131,6 @@ class ActionModule(ActionBase):
                 temp_vars = task_vars.copy()
                 temp_vars.update(generate_ansible_template_vars(self._task.args.get('src', None), source, dest))
 
-                # force templar to use AnsibleEnvironment to prevent issues with native types
-                # https://github.com/ansible/ansible/issues/46169
-                templar = self._templar.copy_with_new_env(searchpath=searchpath,
-                                                          newline_sequence=newline_sequence,
-                                                          available_variables=temp_vars)
                 overrides = TemplateOverrides(
                     block_start_string=block_start_string,
                     block_end_string=block_end_string,
@@ -144,10 +139,12 @@ class ActionModule(ActionBase):
                     comment_start_string=comment_start_string,
                     comment_end_string=comment_end_string,
                     trim_blocks=trim_blocks,
-                    lstrip_blocks=lstrip_blocks
+                    lstrip_blocks=lstrip_blocks,
+                    newline_sequence=newline_sequence,
                 )
 
-                resultant = templar.template(template_data, options=TemplateOptions(escape_backslashes=False, overrides=overrides))
+                with self._templar.set_temporary_context(searchpath=searchpath, available_variables=temp_vars):
+                    resultant = self._templar.template(template_data, options=TemplateOptions(escape_backslashes=False, overrides=overrides))
             except AnsibleAction:
                 raise
             except Exception as e:

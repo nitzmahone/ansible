@@ -474,8 +474,7 @@ class VariableManager:
         if self._inventory is not None:
             variables['groups'] = self._inventory.get_groups_dict()
             if play:
-                templar = Templar(loader=self._loader)
-                if not play.finalized and templar.is_template(play.hosts):
+                if not play.finalized and Templar().is_template(play.hosts):
                     pattern = 'all'
                 else:
                     pattern = play.hosts or 'all'
@@ -593,9 +592,6 @@ class VariableManager:
                     fail = False
                 try:
                     loop_terms = listify_lookup_plugin_terms(terms=task.loop, templar=templar, fail_on_undefined=fail)
-
-                    if not fail:
-                        loop_terms = [t for t in loop_terms if not templar.is_template(t)]
 
                     mylookup = lookup_loader.get(task.loop_with, loader=self._loader, templar=templar)
 

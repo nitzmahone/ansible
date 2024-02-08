@@ -88,6 +88,7 @@ class Conditional:
 
     def _check_conditional(self, conditional: str, templar: Templar, all_vars: dict[str, t.Any]) -> bool:
         # ensure we have a "known state" templar config (eg, no overridden junk)
+        # FIXME: can we do this better?
         conditional_templar = Templar(templar._loader, all_vars)
 
         return conditional_templar.evaluate_conditional(conditional)

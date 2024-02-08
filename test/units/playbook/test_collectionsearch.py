@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 from ansible.errors import AnsibleParserError
+from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.playbook.play import Play
 from ansible.playbook.task import Task
 from ansible.playbook.block import Block
@@ -31,7 +32,7 @@ def test_collection_static_warning(capsys):
 
     Also, make sure that users see the warning message for the referenced name.
     """
-    collection_name = "foo.{{bar}}"
+    collection_name = TrustedAsTemplate().tag("foo.{{bar}}")
     p = Play.load(dict(
         name="test play",
         hosts=['foo'],

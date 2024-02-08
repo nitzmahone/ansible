@@ -29,7 +29,7 @@ from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTempla
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
 from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError
-from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext
+from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, _TEMPLATE_OVERRIDE_DEFAULT
 from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display
 from units.mock.loader import DictDataLoader
@@ -91,72 +91,10 @@ class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
         assert "skipped untrusted template" in all_args
         assert untrusted_template in all_args
 
-    def test_is_possibly_template_true(self):
-        tests = [
-            '{{ foo }}',
-            '{% foo %}',
-            '{# foo #}',
-            '{# {{ foo }} #}',
-            '{# {{ nothing }} {# #}',
-            '{# {{ nothing }} {# #} #}',
-            '{% raw %}{{ foo }}{% endraw %}',
-            '{{',
-            '{%',
-            '{#',
-            '{% raw',
-        ]
-        for test in tests:
-            self.assertTrue(self.templar.is_possibly_template(test))
-
-    def test_is_possibly_template_false(self):
-        tests = [
-            '{',
-            '%',
-            '#',
-            'foo',
-            '}}',
-            '%}',
-            'raw %}',
-            '#}',
-        ]
-        for test in tests:
-            self.assertFalse(self.templar.is_possibly_template(test))
-
     def test_is_possible_template(self):
         """This test ensures that a broken template still gets templated"""
         # Purposefully invalid jinja
         self.assertRaises(AnsibleError, self.templar.template, TrustedAsTemplate().tag('{{ foo|default(False)) }}'))
-
-    def test_is_template_true(self):
-        tests = [
-            '{{ foo }}',
-            '{% foo %}',
-            '{# foo #}',
-            '{# {{ foo }} #}',
-            '{# {{ nothing }} {# #}',
-            '{# {{ nothing }} {# #} #}',
-            '{% raw %}{{ foo }}{% endraw %}',
-        ]
-        for test in tests:
-            self.assertTrue(self.templar.is_template(test))
-
-    def test_is_template_false(self):
-        tests = [
-            'foo',
-            '{{ foo',
-            '{% foo',
-            '{# foo',
-            '{{ foo %}',
-            '{{ foo #}',
-            '{% foo }}',
-            '{% foo #}',
-            '{# foo %}',
-            '{# foo }}',
-            '{{ foo {{',
-            '{% raw %}{% foo %}',
-        ]
-        for test in tests:
-            self.assertFalse(self.templar.is_template(test))
 
     def test_is_template_raw_string(self):
         res = self.templar.is_template('foo')
@@ -495,3 +433,67 @@ def test_evaluate_conditional_errors(conditional: t.Any, error_type: type[Except
 
     with pytest.raises(error_type) as ex:
         templar.evaluate_conditional(conditional, allow_inline_template=allow_inline_template)
+
+
+@pytest.mark.parametrize("value", (
+    '{{ foo }}',
+    '{% foo %}',
+    '{# foo #}',
+    '{# {{ foo }} #}',
+    '{# {{ nothing }} {# #}',
+    '{# {{ nothing }} {# #} #}',
+    '{% raw %}{{ foo }}{% endraw %}',
+    # in 2.16 and earlier these were not considered templates due to syntax errors
+    # now syntax errors in templates are still reported as templates, since is_template no longer compiles the template
+    '{{ foo',
+    '{% foo',
+    '{# foo',
+    '{{ foo %}',
+    '{{ foo #}',
+    '{% foo }}',
+    '{% foo #}',
+    '{# foo %}',
+    '{# foo }}',
+    '{{ foo {{',
+    '{% raw %}{% foo %}',
+))
+def test_is_template_true(value: str) -> None:
+    assert Templar().is_template(TRUST.tag(value))
+
+
+@pytest.mark.parametrize("value", (
+    'foo',
+))
+def test_is_template_false(value: str) -> None:
+    assert not Templar().is_template(TRUST.tag(value))
+
+
+@pytest.mark.parametrize("value", (
+    '{{ foo }}',
+    '{% foo %}',
+    '{# foo #}',
+    '{# {{ foo }} #}',
+    '{# {{ nothing }} {# #}',
+    '{# {{ nothing }} {# #} #}',
+    '{% raw %}{{ foo }}{% endraw %}',
+    '{{',
+    '{%',
+    '{#',
+    '{% raw',
+))
+def test_is_possibly_template_true(value: str) -> None:
+    assert Templar()._is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT)
+
+
+@pytest.mark.parametrize("value", (
+    '{',
+    '%',
+    '#',
+    'foo',
+    '}}',
+    '%}',
+    'raw %}',
+    '#}',
+))
+def test_is_possibly_template_false(value: str) -> None:
+    assert not Templar()._is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT)

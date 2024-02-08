@@ -20,5 +20,4 @@ def test_cond_eval():
     cond = Conditional(loader=fake_loader)
     cond.when = [TrustedAsTemplate().tag("foo")]
 
-    with templar.set_temporary_context(jinja2_native=True):
-        assert cond.evaluate_conditional(templar, variables)
+    assert cond.evaluate_conditional(templar, variables)

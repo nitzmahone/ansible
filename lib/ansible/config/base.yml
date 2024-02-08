@@ -438,6 +438,10 @@ DEFAULT_ALLOW_UNSAFE_LOOKUPS:
   - {key: allow_unsafe_lookups, section: defaults}
   type: boolean
   version_added: "2.2.3"
+  deprecated:
+    why: This option is no longer used in the Ansible Core code base.
+    version: "2.21"
+    alternatives: Lookup plugins are responsible for tagging strings containing templates to allow evaluation as a template.
 DEFAULT_ASK_PASS:
   name: Ask for the login password
   default: False
