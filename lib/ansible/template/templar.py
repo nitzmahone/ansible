@@ -481,8 +481,9 @@ class Templar:
         return TemplateResult(result=template_result)
 
     def _compile_template(self, template: str, options: TemplateOptions) -> AnsibleTemplate:
-        # NOTE: Creating an overlay that lives only inside _do_template means that overrides are not applied
-        # when templating nested variables, where Templar.environment is used, not the overlay.
+        # NOTE: Creating an overlay that lives only inside _compile_template means that overrides are not applied
+        # when templating nested variables, where Templar.environment is used, not the overlay. They are, however,
+        # applied to includes and imports.
         stripped_template, env, _has_override_header = self._create_overlay(template, options.overrides)
 
         with _TemplateCompileContext(escape_backslashes=options.escape_backslashes):
