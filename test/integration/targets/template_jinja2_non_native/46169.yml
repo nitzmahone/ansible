@@ -15,20 +15,10 @@
         that:
           - diff_result.stdout == ""
 
-# FIXME: FDI026
-#    - block:
-#      - set_fact:
-#          non_native_lookup: "{{ lookup('template', 'templates/46169.json.j2') }}"
-#
-#      - assert:
-#          that:
-#            - non_native_lookup is tagged_with('_NativeJinjaText')
-#
-#
-#
-#      - set_fact:
-#          native_lookup: "{{ lookup('template', 'templates/46169.json.j2', jinja2_native=true) }}"
-#
-#      - assert:
-#          that:
-#            - native_lookup | type_debug == '_AnsibleTaggedDict'
+    - block:
+      - set_fact:
+          non_native_lookup: "{{ lookup('template', 'templates/46169.json.j2') }}"
+
+      - assert:
+          that:
+            - non_native_lookup | type_debug == '_AnsibleTaggedStr'

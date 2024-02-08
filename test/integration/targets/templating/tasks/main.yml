@@ -7,16 +7,14 @@
   vars:
     expected: !unsafe '{{ foo }}'
 
-# FIXME: FDI026
-#- name: Assert that templating can convert JSON null, true, and false to Python
-#  assert:
-#    that:
-#      - foo.null | python_literal_eval is none
-#      - foo.true is true
-#      - foo.false is false
-#  vars:
-#    # Kind of hack to just send a JSON string through jinja, by templating out nothing
-#    foo: '{{ "" }}{"null": null, "true": true, "false": false}'
+- name: Assert that templating treats strings that look like Python as strings (previously some conversions would apply)
+  assert:
+    that:
+      - foo | type_debug == '_AnsibleTaggedStr'
+      - |
+        foo == '{"null": null, "true": true, "false": false}'
+  vars:
+    foo: '{{ "" }}{"null": null, "true": true, "false": false}'
 
 - name: Make sure that test with name that isn't a valid Ansible plugin name does not result in a crash (1/2)
   set_fact:

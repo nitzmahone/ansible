@@ -29,7 +29,6 @@
 # 77004
 - assert:
     that:
-# FIXME: FDI026
-#      - lookup('template', 'dict.j2') is mapping
-#      - lookup('template', 'dict.j2', convert_data=True) is mapping
+      - lookup('template', 'dict.j2') is not mapping
+      - lookup('template', 'dict.j2', convert_data=True) is not mapping
       - lookup('template', 'dict.j2', convert_data=False) is not mapping

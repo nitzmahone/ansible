@@ -14,6 +14,7 @@ minor_changes:
 breaking_changes:
   - templating - Templates are always rendered in Jinja2 native mode. As a result, non-string values are no longer automatically converted to strings.
   - templating - Templates resulting in ``None`` are no longer automatically converted to an empty string.
+  - template lookup - The ``convert_data`` option is deprecated and no longer has any effect. Use the ``from_json`` filter on the lookup result instead.
   - set_fact - The string values "yes", "no", "true" and "false" were previously converted (ignoring case) to boolean values when not using Jinja2 native mode. Since Jinja2 native mode is always used, this conversion no longer occurs. When boolean values are required, native boolean syntax should be used where variables are defined, such as in YAML. When native boolean syntax is not an option, the ``bool`` filter can be used to parse string values into booleans.
 
 security_fixes:
