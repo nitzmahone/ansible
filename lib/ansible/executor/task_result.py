@@ -42,7 +42,6 @@ class TaskResult:
 
         # FIXME: do this inline and on everything (or more things)?
         if msg := self._result.get('msg'):
-            # FIXME: FDI013
             if isinstance(msg, str):
                 msg = NotATemplate().tag(msg)
 

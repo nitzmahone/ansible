@@ -304,7 +304,7 @@ class TrustedAsTemplate(AnsibleSingletonTagBase):
 
 
 # used for internal things like error messages that might contain a template-ish looking thing but that we don't
-# want to spam users with untrusted warnings or (worse) actually try to template...
+# want to spam users with untrusted warnings or unnecessarily recurse into containers we know shouldn't be templated (for performance, not security)
 class NotATemplate(AnsibleSingletonTagBase):
     __slots__ = _NO_INSTANCE_STORAGE
 
