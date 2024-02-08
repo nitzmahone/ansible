@@ -55,7 +55,7 @@ class TemplateOverrides:
     keep_trailing_newline: bool = defaults.KEEP_TRAILING_NEWLINE
 
     def __post_init__(self) -> None:
-        types = t.get_type_hints(self, globalns=globals())
+        types = t.get_type_hints(TemplateOverrides, globalns=globals())
 
         for field in dataclasses.fields(self):
             value = getattr(self, field.name)
@@ -168,8 +168,8 @@ class AnsibleCodeGenerator(NativeCodeGenerator):
         # FIXME: this needs to consult the variable marker overrides
         val = node.as_const(frame.eval_ctx)
 
-        is_str = type(val) is str
-        is_template = is_str and '{{' in val  # pylint: disable=unidiomatic-typecheck
+        is_str = type(val) is str  # pylint: disable=unidiomatic-typecheck
+        is_template = is_str and '{{' in val
 
         if isinstance(val, float):
             self.write(str(val))  # FIXME: why is this not just using repr(val) below?
@@ -286,7 +286,7 @@ class _CompileStateSmugglingCtx(AmbientContextBase):
     template_source: str | None = None
     python_source: str | None = None
     filename: str | None = None
-    tempfile: tempfile.NamedTemporaryFile | None = None
+    tempfile: t.Any = None  # FIXME: what should this type hint be?
 
 
 class AnsibleLexer(Lexer):

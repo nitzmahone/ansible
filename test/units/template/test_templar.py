@@ -25,7 +25,7 @@ from jinja2.runtime import Context
 import unittest
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplateError
+from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
 from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError
@@ -38,6 +38,7 @@ import pytest
 
 NOT_A_TEMPLATE = NotATemplate()
 TRUST = TrustedAsTemplate()
+
 
 class BaseTemplar(object):
     def setUp(self):

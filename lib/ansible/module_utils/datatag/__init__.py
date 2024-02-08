@@ -515,7 +515,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
     ) -> t.Self:
         if type(value) in AnsibleTaggedObject._collection_types:
             # use the underlying iterator to avoid access/iteration side effects (e.g. templating/wrapping on Lazy subclasses)
-            instance = cls(cls.item_source(value))  # type: ignore[call-arg]
+            instance = cls(cls.item_source(value))  # type: ignore[call-arg,misc]
         else:
             # this is used when the value is a generator
             instance = cls(value)  # type: ignore[call-arg]
@@ -526,7 +526,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
 
     def _copy_collection(self) -> AnsibleTaggedObject:
         # use the underlying iterator to avoid access/iteration side effects (e.g. templating/wrapping on Lazy subclasses)
-        return AnsibleTaggedObject.tag_copy(self, self.item_source(), value_type=type(self))
+        return AnsibleTaggedObject.tag_copy(self, self.item_source(), value_type=type(self))  # type: ignore[misc]
 
     @classmethod
     def _new(cls, value: t.Any, *args, **kwargs) -> t.Self:
