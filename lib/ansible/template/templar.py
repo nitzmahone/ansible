@@ -449,7 +449,6 @@ class Templar:
                         template_result = compiled_expression(self.available_variables)
                     else:
                         compiled_template = self._compile_template(variable, options)
-
                         template_result = compiled_template.render(self.available_variables)
 
                     template_result = self._post_render_mutation(variable, template_result, options)
