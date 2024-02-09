@@ -41,7 +41,7 @@ class ActionModule(ActionBase):
 
         # template splatted `args` only until we get a dictionary
         if vp := raw_task_args.pop('_variable_params', None):
-            raw_task_args = self._templar.template_with_result(vp, options=TemplateOptions(value_for_omit={}), mode=TemplateMode.STOP_ON_CONTAINER).result
+            raw_task_args = self._templar.template(vp, options=TemplateOptions(value_for_omit={}), mode=TemplateMode.STOP_ON_CONTAINER)
 
             if not isinstance(raw_task_args, dict):
                 # FIXME: needs AnsibleTaggedObject.get_native_type() to avoid displaying internal type names
@@ -100,7 +100,7 @@ class ActionModule(ActionBase):
                 template_wrapped_arg = AnsibleTaggedObject.tag_copy(raw_var_arg, "{{" + raw_var_arg + "}}")
 
                 try:
-                    template_result = self._templar.template_with_result(template_wrapped_arg, options=TemplateOptions(undefined_behavior=best_effort))
+                    results = self._templar.template(template_wrapped_arg, options=TemplateOptions(undefined_behavior=best_effort))
                 except AnsibleValueOmittedError:
                     results = repr(Omit)
                     result.setdefault('warnings', []).append(
@@ -112,8 +112,6 @@ class ActionModule(ActionBase):
                         exception=NotATemplate().tag(str(traceback.format_exc())),
                         failed=True,
                     )
-                else:
-                    results = template_result.result
 
                 # handle the corner case where the input was untrusted- if so, return the raw input, not the
                 # generated template

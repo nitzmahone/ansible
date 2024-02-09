@@ -70,14 +70,8 @@ if tuple(map(int, jinja2_version.split('.'))) < (3, 1):
     raise RuntimeError('Jinja 3.1+ required')
 
 
-# FIXME: do we still need a class for this?
-@dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
-class TemplateResult:
-    result: t.Any
-
-    def as_text(self):
-        result = self.result
-        return AnsibleTaggedObject.tag(str(result), AnsibleTaggedObject.tags(result) | {NotATemplate()})
+def as_non_templatable_text(value: t.Any) -> str:
+    return AnsibleTaggedObject.tag(str(value), AnsibleTaggedObject.tags(value) | {NotATemplate()})
 
 
 class TemplateTrustCheckFailedError(AnsibleTemplateError):
@@ -338,23 +332,19 @@ class Templar:
         # this is safe enough to blindly apply trust, since it can only be an identifier
         return TrustedAsTemplate().tag('{{' + stripped_name + '}}')
 
-    # FIXME: wrap tripwires in a template decorator so we can preserve/propagate args automatically
-    def template(self, variable: t.Any, *, options: TemplateOptions | None = None) -> t.Any:
-        return self.template_with_result(variable, options=options).result
-
     # FIXME: TemplateMode.EXPRESSION should be strings only- enforce (or use a different entrypoint)
-    def template_with_result(
+    def template(
             self,
             variable: t.Any,
             *,
             options: TemplateOptions | None = None,
             mode: TemplateMode = TemplateMode.DEFAULT,
-    ) -> TemplateResult:
+    ) -> t.Any:
         """Templates (possibly recursively) any given data as input."""
 
         # bail out if we know we're looking at something that's been explicitly tagged as not a template
         if variable is None or NotATemplate.is_tagged_on(variable):
-            return TemplateResult(result=variable)  # input was not manipulated, trust that it contains only allowed types
+            return variable  # input was not manipulated, assume that it contains only allowed types
 
         # FIXME: early exit on empty collections
 
@@ -408,14 +398,12 @@ class Templar:
                         if options.value_for_omit is Omit:
                             raise AnsibleValueOmittedError()
 
-                        return TemplateResult(result=options.value_for_omit)  # value_for_omit was not manipulated, trust that it contains only allowed types
+                        return options.value_for_omit  # value_for_omit was not manipulated, trust that it contains only allowed types
 
                     if mode is TemplateMode.STOP_ON_CONTAINER and type(template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
                         # Use of STOP_ON_CONTAINER implies the caller will perform necessary checks on values,
                         # most likely by passing them back into the templating system.
-                        return TemplateResult(
-                            result=template_result.native_copy() if template_result in AnsibleTaggedObject._collection_types else template_result,
-                        )
+                        return template_result.native_copy() if template_result in AnsibleTaggedObject._collection_types else template_result
 
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire():
@@ -428,7 +416,7 @@ class Templar:
 
         self._emit_deprecation_warnings(deprecated)
 
-        return TemplateResult(result=template_result)
+        return template_result
 
     def _compile_template(self, template: str, options: TemplateOptions) -> AnsibleTemplate:
         # NOTE: Creating an overlay that lives only inside _compile_template means that overrides are not applied
@@ -535,7 +523,7 @@ class Templar:
 
     def is_template(self, data) -> bool:
         try:
-            self.template_with_result(data, mode=TemplateMode.STOP_ON_TEMPLATE)
+            self.template(data, mode=TemplateMode.STOP_ON_TEMPLATE)
         except TemplateEncountered:
             return True
         else:
@@ -629,11 +617,11 @@ class Templar:
         if not isinstance(expression, str):
             raise TypeError(f"evaluate_expression requires {str!r}, got {type(expression)!r}")
 
-        return self.template_with_result(
+        return self.template(
             expression,
             options=TemplateOptions(disable_lookups=disable_lookups, escape_backslashes=escape_backslashes),
             mode=TemplateMode.EXPRESSION,
-        ).result
+        )
 
     # FIXME: make allow_inline_template=False by default?
     def evaluate_conditional(self, conditional: str, allow_inline_template=True) -> bool:
