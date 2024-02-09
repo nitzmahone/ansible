@@ -181,7 +181,7 @@ class AnsibleCodeGenerator(NativeCodeGenerator):
     def visit_Const(self, node: Const, frame: Frame) -> None:
         value = node.as_const(frame.eval_ctx)
 
-        if type(value) is str and is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT):
+        if type(value) is str and is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT):  # pylint: disable=unidiomatic-typecheck
             # FIXME: propagate other tags from parent template (for forensic/debug)?
             # FIXME: if lookup nerfing is restored, this could end up assigning trust to an embedded constant we don't want to trust.
             #        Keep this note until we're sure it's not coming back.
