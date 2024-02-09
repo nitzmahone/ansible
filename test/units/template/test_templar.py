@@ -29,7 +29,7 @@ from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTempla
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
 from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError
-from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, _TEMPLATE_OVERRIDE_DEFAULT
+from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template
 from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display
 from units.mock.loader import DictDataLoader
@@ -482,7 +482,7 @@ def test_is_template_false(value: str) -> None:
     '{% raw',
 ))
 def test_is_possibly_template_true(value: str) -> None:
-    assert Templar()._is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT)
+    assert is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT)
 
 
 @pytest.mark.parametrize("value", (
@@ -496,4 +496,4 @@ def test_is_possibly_template_true(value: str) -> None:
     '#}',
 ))
 def test_is_possibly_template_false(value: str) -> None:
-    assert not Templar()._is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT)
+    assert not is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT)

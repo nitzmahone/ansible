@@ -57,17 +57,13 @@ from ansible.parsing.dataloader import DataLoader
 
 from .datatag import DeprecatedAccessAuditContext
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, \
-    _TEMPLATE_OVERRIDE_DEFAULT
+    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, JINJA2_OVERRIDE
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
 from .undefined_behaviors import FAIL_ON_UNDEFINED, UndefinedBehavior
 
 _display = Display()
-
-_JINJA2_OVERRIDE = '#jinja2:'
-_JINJA2_BEGIN_TOKENS = frozenset(('variable_begin', 'block_begin', 'comment_begin', 'raw_begin'))
-_JINJA2_END_TOKENS = frozenset(('variable_end', 'block_end', 'comment_end', 'raw_end'))
 
 # FIXME: remove/harden- just here for development backstop for now
 if tuple(map(int, jinja2_version.split('.'))) < (3, 1):
@@ -199,9 +195,9 @@ class Templar:
         return f'{value!r}'
 
     def _create_overlay(self, data: str, overrides: TemplateOverrides) -> tuple[str, AnsibleEnvironment]:
-        if data.startswith(_JINJA2_OVERRIDE):
+        if data.startswith(JINJA2_OVERRIDE):
             eol = data.find('\n')
-            line = data[len(_JINJA2_OVERRIDE):eol]
+            line = data[len(JINJA2_OVERRIDE):eol]
             data = data[eol + 1:]
             override_kwargs = {}
 
@@ -389,7 +385,7 @@ class Templar:
                         raise ValueError("Jinja overrides are only allowed on string inputs")
 
                     template_result = _AnsibleLazyTemplateMixin.try_create(variable)
-                elif mode is not TemplateMode.EXPRESSION and not self._is_possibly_template(variable, options.overrides):
+                elif mode is not TemplateMode.EXPRESSION and not is_possibly_template(variable, options.overrides):
                     template_result = variable
                 elif not self._trust_check(variable, mode):
                     template_result = variable
@@ -545,14 +541,6 @@ class Templar:
         else:
             return False
 
-    @staticmethod
-    def _is_possibly_template(value: str, overrides: TemplateOverrides):
-        """
-        A lightweight check to determine if the given string looks like it contains a template, even if that template is invalid.
-        Return True if the given string starts with a Jinja overrides header or if it contains template start strings.
-        """
-        return value.startswith(_JINJA2_OVERRIDE) or overrides.contains_start_string(value)
-
     def _fail_lookup(self, name, *args, **kwargs):
         raise AnsibleError("The lookup `%s` was found, however lookups were disabled from templating" % name)
 
@@ -659,7 +647,7 @@ class Templar:
                     # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
                     result = self.evaluate_expression(conditional, escape_backslashes=False)
                 except AnsibleTemplateSyntaxError:
-                    if not allow_inline_template or not self._is_possibly_template(conditional, _TEMPLATE_OVERRIDE_DEFAULT):
+                    if not allow_inline_template or not is_possibly_template(conditional, _TEMPLATE_OVERRIDE_DEFAULT):
                         raise
 
             elif not allow_inline_template:

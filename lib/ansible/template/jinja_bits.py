@@ -36,6 +36,8 @@ from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixi
 
 RANGE_TYPE = type(range(0))
 
+JINJA2_OVERRIDE = '#jinja2:'
+
 display = Display()
 
 
@@ -174,25 +176,18 @@ class AnsibleCodeGenerator(NativeCodeGenerator):
             return repr(group_list[0])
         return repr("".join(map(str, group_list)))
 
-    # this override causes embedded inline template strings to be marked TrustedAsTemplate at runtime
+    # this override causes embedded inline template strings to proxied or rendered at runtime
     # so that some inline templates can be processed with multiple passes, eg, {{ lookup("file", "{{output_dir}}/bla") }}
     def visit_Const(self, node: Const, frame: Frame) -> None:
-        # FIXME: shortcut "is maybe template", then blindly wrap with TrustedAsTemplate if so
-        # FIXME: this needs to consult the variable marker overrides
-        val = node.as_const(frame.eval_ctx)
+        value = node.as_const(frame.eval_ctx)
 
-        is_str = type(val) is str  # pylint: disable=unidiomatic-typecheck
-        is_template = is_str and '{{' in val
-
-        if isinstance(val, float):
-            self.write(str(val))  # FIXME: why is this not just using repr(val) below?
-        elif is_template:
+        if type(value) is str and is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT):
             # FIXME: propagate other tags from parent template (for forensic/debug)?
             # FIXME: if lookup nerfing is restored, this could end up assigning trust to an embedded constant we don't want to trust.
-            #  Keep this note until we're sure it's not coming back.
-            self.write(f'environment._render_const_template({val!r})')
+            #        Keep this note until we're sure it's not coming back.
+            self.write(f'environment._render_const_template({value!r})')
         else:
-            self.write(repr(val))
+            self.write(repr(value))
 
 
 class JinjaPluginIntercept(c.MutableMapping):
@@ -604,3 +599,11 @@ def _new_context(
 
     # the `parent` cast is only to satisfy Jinja's overly-strict type hint
     return environment.context_class(environment, t.cast(dict, parent), template_name, blocks, globals=globals)
+
+
+def is_possibly_template(value: str, overrides: TemplateOverrides):
+    """
+    A lightweight check to determine if the given string looks like it contains a template, even if that template is invalid.
+    Return True if the given string starts with a Jinja overrides header or if it contains template start strings.
+    """
+    return value.startswith(JINJA2_OVERRIDE) or overrides.contains_start_string(value)
