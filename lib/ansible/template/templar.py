@@ -55,7 +55,7 @@ from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
 from ansible.parsing.dataloader import DataLoader
 
-from .datatag import DeprecatedAccessAuditContext
+from .datatag import DeprecatedAccessAuditContext, _JinjaConstToTrustedTemplate, _RenderJinjaConstAsTemplate
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, \
     _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, JINJA2_OVERRIDE
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
@@ -633,7 +633,8 @@ class Templar:
                     # Disable escape_backslashes when processing conditionals, to maintain backwards compatibility.
                     # This is necessary because conditionals were previously evaluated using {% %}, which was *NOT* affected by escape_backslashes.
                     # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
-                    result = self.evaluate_expression(conditional, escape_backslashes=False)
+                    with _RenderJinjaConstAsTemplate():
+                        result = self.evaluate_expression(conditional, escape_backslashes=False)
                 except AnsibleTemplateSyntaxError:
                     if not allow_inline_template or not is_possibly_template(conditional, _TEMPLATE_OVERRIDE_DEFAULT):
                         raise
@@ -649,7 +650,8 @@ class Templar:
                     'evaluated as a template instead. Conditionals should not include templating delimiters '
                     'such as {{ }} or {% %}.'
                 )
-                result = self.template(conditional)
+                with _RenderJinjaConstAsTemplate():
+                    result = self.template(conditional)
         except AnsibleUndefinedVariable as e:
             # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
             #  at least the warning allows us a place to consistently present useful forensic information about the problem

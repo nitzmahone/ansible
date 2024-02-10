@@ -10,11 +10,11 @@ import tempfile
 from collections import ChainMap
 from contextlib import nullcontext
 
-from jinja2 import pass_context, defaults
+from jinja2 import pass_context, defaults, nodes
 from jinja2.environment import Environment, Template, TemplateModule
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.runtime import Undefined
-from jinja2.compiler import Frame
+from jinja2.compiler import Frame, operators
 from jinja2.lexer import TOKEN_VARIABLE_BEGIN, TOKEN_VARIABLE_END, TOKEN_STRING, Lexer
 from jinja2.nativetypes import NativeCodeGenerator
 from jinja2.nodes import Const
@@ -30,6 +30,7 @@ from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 from ansible.module_utils.six import string_types
 from ansible.plugins.loader import filter_loader, test_loader
+from .datatag import _JinjaConstTemplate, _JinjaConstToTrustedTemplate
 
 from .utils import AnsibleUndefined, Omit, TemplateContext
 from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateDict, _AnsibleTaggedDict
@@ -185,10 +186,24 @@ class AnsibleCodeGenerator(NativeCodeGenerator):
             # FIXME: propagate other tags from parent template (for forensic/debug)?
             # FIXME: if lookup nerfing is restored, this could end up assigning trust to an embedded constant we don't want to trust.
             #        Keep this note until we're sure it's not coming back.
-            self.write(f'environment._render_const_template({value!r})')
+            self.write(f'environment._access_const({value!r})')
         else:
             self.write(repr(value))
-
+    #
+    # def visit_Operand(self, node: nodes.Operand, frame: Frame) -> None:
+    #     self.write(f'("{operators[node.op]}", ')
+    #     self.visit(node.expr, frame)
+    #     self.write(")")
+    #
+    # def visit_Compare(self, node: nodes.Compare, frame: Frame) -> None:
+    #     self.write("environment.call_compare(")
+    #     self.visit(node.expr, frame)
+    #     self.write(", ")
+    #     for op in node.ops:
+    #         self.visit(op, frame)
+    #         self.write(", ")
+    #     self.write(")")
+    #
 
 class JinjaPluginIntercept(c.MutableMapping):
     """
@@ -282,6 +297,8 @@ def _ansible_finalize(ctx, thing):
         # FIXME: make sure this handles lazy lists properly
         thing = list(thing)
 
+#    thing = TemplateContext.current_or_raise().templar.proxy_or_render_template(thing)
+
     return thing
 
 
@@ -356,6 +373,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     context_class = AnsibleContext
     template_class = AnsibleTemplate
     code_generator_class = AnsibleCodeGenerator
+    intercepted_binops = frozenset({'eq',})
     _lexer_cache = LRUCache(50)
 
     def __init__(self, *args, **kwargs):
@@ -391,6 +409,18 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
 
+    # def call_compare(self, left, *args) -> bool:
+    #     left = TemplateContext.current_or_raise().templar.proxy_or_render_template(left)
+    #
+
+    # def call_binop(
+    #     self, context: Context, operator: str, left: t.Any, right: t.Any
+    # ) -> t.Any:
+    #     left = TemplateContext.current_or_raise().templar.proxy_or_render_template(left)
+    #     right = TemplateContext.current_or_raise().templar.proxy_or_render_template(right)
+    #
+    #     return super().call_binop(context, operator, left, right)
+
     @property
     def lexer(self):
         """Return/cache an AnsibleLexer with settings from the current AnsibleEnvironment"""
@@ -405,7 +435,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         return lex
 
-    _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = False
+    _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = True
 
     def from_string(self, *args, **kwargs):
         # FIXME: sane way to make this work outside from_string?
@@ -462,6 +492,10 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         return ''.join([to_text(v) for v in node_list])
 
     @staticmethod
+    def _access_const(const_template: t.LiteralString) -> t.Any:
+        return AnsibleAccessContext.current().access(_JinjaConstTemplate().tag(const_template))
+
+    @staticmethod
     def _render_const_template(const_template: t.LiteralString) -> t.Any:
         """
         This method is for exclusive use by the template compiler to render embedded constant templates.
@@ -481,6 +515,23 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # example: "{{ some.thing }}" -- obj is the "some" dict, argument is "thing"
         # access on the result of super().getattr is necessary
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getattr(obj, attribute), attribute)
+
+    def call(
+        self,  # noqa: B902
+        context: Context,
+        obj: t.Any,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> t.Any:
+        tc = TemplateContext.current_or_raise()
+        port = tc.templar.proxy_or_render_template
+
+        ctx = _JinjaConstToTrustedTemplate if obj == tc.templar._lookup else nullcontext
+
+        with ctx():
+            res = super().call(context, obj, *port(args), **port(kwargs))
+
+        return port(res)
 
     def _now(self, utc=False, fmt=None):
         """Jinja2 global function (now) to return current datetime, potentially formatted via strftime."""
@@ -519,10 +570,11 @@ def _unroll_iterator(func):
     explicitly use ``|list`` to unroll.
     """
     def wrapper(*args, **kwargs):
-        ret = func(*args, **kwargs)
+        port = TemplateContext.current_or_raise().templar.proxy_or_render_template
+        ret = func(*port(args), **port(kwargs))
         if _is_rolled(ret):
-            return list(ret)
-        return ret
+            ret = list(ret)
+        return port(ret)
 
     return functools.update_wrapper(wrapper, func)
 

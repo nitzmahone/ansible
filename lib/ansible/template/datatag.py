@@ -1,10 +1,34 @@
 from __future__ import annotations
 
 from ansible.module_utils.compat import typing as t
-from ansible.module_utils.datatag import Deprecated, NotATemplate, AnsibleSourcePosition
-from ansible.module_utils.datatag.access import _NotifiableAccessContextBase, POORLY_NAMED_SENTINEL
+from ansible.module_utils.datatag import Deprecated, NotATemplate, AnsibleSourcePosition, AnsibleSingletonTagBase, TrustedAsTemplate
+from ansible.module_utils.datatag.access import _NotifiableAccessContextBase, _MutatingAccessContextBase, POORLY_NAMED_SENTINEL
+from ansible.utils.display import Display
 
 from .utils import TemplateContext
+
+
+display = Display()
+
+
+class _JinjaConstTemplate(AnsibleSingletonTagBase):
+    pass
+
+
+class _JinjaConstToTrustedTemplate(_MutatingAccessContextBase):
+    _tag_type_interest = frozenset([_JinjaConstTemplate])
+
+    def _notify(self, o: t.Any) -> t.Any:
+        display.deprecated("FIXME trusting inline templates is bad, mmmkay?")
+        return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
+
+
+class _RenderJinjaConstAsTemplate(_MutatingAccessContextBase):
+    _tag_type_interest = frozenset([_JinjaConstTemplate])
+
+    def _notify(self, o: t.Any) -> t.Any:
+        display.deprecated("FIXME rendering inline templates is bad, mmmkay?")
+        return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o)))
 
 
 class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):

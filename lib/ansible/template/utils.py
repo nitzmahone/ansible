@@ -19,6 +19,7 @@ class TemplateContext(AmbientContextBase):
         self._templar = templar
         self._options = options
         self._stop_on_template = stop_on_template
+        self._parent_ctx = TemplateContext.current()
 
     @property
     def template_value(self) -> t.Any:
