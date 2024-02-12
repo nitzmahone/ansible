@@ -650,8 +650,7 @@ class Templar:
                     'evaluated as a template instead. Conditionals should not include templating delimiters '
                     'such as {{ }} or {% %}.'
                 )
-                with _RenderJinjaConstAsTemplate():
-                    result = self.template(conditional)
+                result = self.template(conditional)
         except AnsibleUndefinedVariable as e:
             # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
             #  at least the warning allows us a place to consistently present useful forensic information about the problem

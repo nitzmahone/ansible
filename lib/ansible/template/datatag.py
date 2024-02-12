@@ -19,7 +19,9 @@ class _JinjaConstToTrustedTemplate(_MutatingAccessContextBase):
     _tag_type_interest = frozenset([_JinjaConstTemplate])
 
     def _notify(self, o: t.Any) -> t.Any:
-        display.deprecated("FIXME trusting inline templates is bad, mmmkay?")
+        # FIXME: error message, and do we even want this here, since this hook is hopefully not permanent?
+        from .templar import Templar
+        display.deprecated(f"FIXME trusting inline templates is bad, mmmkay? {Templar._repr_from(o)}")
         return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
 
 
@@ -27,7 +29,9 @@ class _RenderJinjaConstAsTemplate(_MutatingAccessContextBase):
     _tag_type_interest = frozenset([_JinjaConstTemplate])
 
     def _notify(self, o: t.Any) -> t.Any:
-        display.deprecated("FIXME rendering inline templates is bad, mmmkay?")
+        # FIXME: error message, and do we even want this here, since this hook is hopefully not permanent?
+        from .templar import Templar
+        display.deprecated(f"FIXME rendering inline templates is bad, mmmkay? {Templar._repr_from(o)}")
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o)))
 
 

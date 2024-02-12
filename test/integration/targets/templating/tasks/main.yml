@@ -136,12 +136,46 @@
   assert:
     that: "\"'y' is undefined\" in error.msg"
 
-# FIXME: trying to kill this off, remove if we succeed
-#- name: verify locals are templated early enough to be used in expressions
-#  debug:
-#    msg: |
-#      {% set a = '{{ 1 }}' %}
-#      {% set b = '{{ 2 }}' %}
-#      {{ a + b }}
-#  register: result
-#  failed_when: result.msg != 3
+- name: test inline constant template arg to a lookup in a non-optimizable expression
+  vars:
+    echo_me: hi mom
+  debug:
+    msg: |-
+      {{ lookup('pipe', 'echo "{{ echo_me }}"') }}
+  register: result
+  failed_when: result.msg != "hi mom"
+
+- name: ensure that embedded template constants are ignored outside conditionals and lookup args
+  raw: echo {{ "{{ 1 }}" }}
+  register: result
+  failed_when: result.stdout is not contains "{"
+
+- name: ensure that embedded template constants in locals work in lookup args
+  debug:
+    msg: |-        
+      {{ lookup('pipe', 'echo {{ "h" + "i" | string }}') }}
+  register: result
+
+- name: ensure that embedded template constants in locals are ignored outside conditionals and lookups
+  raw: |-
+    echo "{% set a = '{{ 1 }}' %}{% set b = '{{ 2 }}' %}{{ a + b }}"
+  register: result
+  failed_when: result.stdout is not contains("{")
+
+- name: ensure that embedded template constants in locals do not work in conditional-as-template fallback (pre-2.17 compat)
+  assert:
+    that: |-
+      {% set a = '{{ 1 }}' %}
+      {% set b = '{{ 2 }}' %}
+      {{ a + b == ("{" ~ "{ 1 }}{" ~ "{ 2 }}") }}
+  register: result
+
+- name: ensure that embedded non-string templates fail
+  raw: echo {{ {{ 1 }} }}
+  register: result
+  ignore_errors: true
+
+- assert:
+    that:
+    - result is failed
+    - result.msg is contains("Syntax error")

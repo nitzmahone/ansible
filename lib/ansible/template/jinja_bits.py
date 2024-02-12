@@ -10,11 +10,11 @@ import tempfile
 from collections import ChainMap
 from contextlib import nullcontext
 
-from jinja2 import pass_context, defaults, nodes
+from jinja2 import pass_context, defaults
 from jinja2.environment import Environment, Template, TemplateModule
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.runtime import Undefined
-from jinja2.compiler import Frame, operators
+from jinja2.compiler import Frame
 from jinja2.lexer import TOKEN_VARIABLE_BEGIN, TOKEN_VARIABLE_END, TOKEN_STRING, Lexer
 from jinja2.nativetypes import NativeCodeGenerator
 from jinja2.nodes import Const
@@ -26,7 +26,7 @@ from ansible.utils.display import Display
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
-from ansible.module_utils.datatag import TrustedAsTemplate
+from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePosition, AnsibleTaggedObject
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 from ansible.module_utils.six import string_types
 from ansible.plugins.loader import filter_loader, test_loader
@@ -493,7 +493,12 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     @staticmethod
     def _access_const(const_template: t.LiteralString) -> t.Any:
-        return AnsibleAccessContext.current().access(_JinjaConstTemplate().tag(const_template))
+        tags = [_JinjaConstTemplate()]
+        # FIXME: do we want to propagate source tags here, since this hook may go away?
+        if (tv := TemplateContext.current().template_value) and (source_pos := AnsibleSourcePosition.get_tag(tv)):
+            tags.append(source_pos)
+
+        return AnsibleAccessContext.current().access(AnsibleTaggedObject.tag(const_template, tags))
 
     @staticmethod
     def _render_const_template(const_template: t.LiteralString) -> t.Any:

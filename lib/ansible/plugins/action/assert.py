@@ -21,6 +21,8 @@ from ansible.playbook.conditional import Conditional
 from ansible.plugins.action import ActionBase
 from ansible.module_utils.six import string_types
 from ansible.module_utils.parsing.convert_bool import boolean
+from ansible.template.jinja_bits import is_possibly_template, TemplateOverrides
+from ansible.template.templar import TemplateMode, TemplateOptions
 
 
 class ActionModule(ActionBase):
@@ -29,6 +31,7 @@ class ActionModule(ActionBase):
     _requires_connection = False
 
     _VALID_ARGS = frozenset(('fail_msg', 'msg', 'quiet', 'success_msg', 'that'))
+    FIXME_DOES_OWN_TEMPLATING = True
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -78,9 +81,10 @@ class ActionModule(ActionBase):
             thats = self._task.args['that']
 
         # FIXME: this is a case where we only want to resolve indirections, NOT recurse containers (and even then, we
-        #  the leaf-most expression being wrapped is at least suboptimal (since its expression will be "eaten").
-        if isinstance(thats, str):
-            thats = self._templar.template(thats)
+        #  the leaf-most expression being wrapped is at least suboptimal (since its expression will be "eaten"). This is STOP_ON_CONTAINER-ish, but not
+        #  quite...
+        #if isinstance(thats, str):
+        #    thats = self._templar.template(thats, mode=TemplateMode.STOP_ON_CONTAINER)
 
         # ensure the final value is a list
         if not isinstance(thats, list):

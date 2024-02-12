@@ -744,22 +744,6 @@
   assert:
     that: lookup('file', output_dir + '/empty_template.templated')|length == 0
 
-- name: test inline constant template arg to a lookup in a non-optimizable expression
-  vars:
-    echo_me: hi mom
-  debug:
-    msg: |-
-      {{ lookup('pipe', 'echo "{{ echo_me }}"') }}
-  register: result
-  failed_when: result.msg != "hi mom"
-
-- name: test inline constant template in an optimizable expression
-  debug:
-    msg: |-
-      {{ "{{'hi'}}" == "hi" }}
-  register: result
-  failed_when: result.msg != true
-
 - name: test jinja2 override without colon throws proper error
   block:
   - template:
