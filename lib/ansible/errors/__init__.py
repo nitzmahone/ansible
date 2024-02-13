@@ -267,6 +267,10 @@ class AnsibleTemplateSyntaxError(AnsibleTemplateError):
     """A syntax error was encountered while parsing a Jinja template or expression."""
 
 
+class AnsibleBrokenConditionalError(AnsibleTemplateError):
+    """A broken conditional with non-boolean result was used."""
+
+
 class AnsibleFilterError(AnsibleTemplateError):
     ''' a templating failure '''
     pass

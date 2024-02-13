@@ -442,6 +442,20 @@ DEFAULT_ALLOW_UNSAFE_LOOKUPS:
     why: This option is no longer used in the Ansible Core code base.
     version: "2.21"
     alternatives: Lookup plugins are responsible for tagging strings containing templates to allow evaluation as a template.
+ALLOW_BROKEN_CONDITIONALS:
+  name: Allow broken conditionals
+  default: False
+  description:
+    - When enabled, this option allows conditionals with non-boolean results to be used.
+      A warning will be emitted when this occurs.
+    - By default, non-boolean conditionals result in an error.
+      Such results often indicate unintentional use of templates where they are not supported, resulting in a conditional that is always true.
+    - When this option is enabled, conditional expressions which are a literal ``None`` or empty string will evaluate as true, for backwards compatibility.
+  env: [{name: ANSIBLE_ALLOW_BROKEN_CONDITIONALS}]
+  ini:
+  - {key: allow_broken_conditionals, section: defaults}
+  type: boolean
+  version_added: "2.17"
 DEFAULT_ASK_PASS:
   name: Ask for the login password
   default: False

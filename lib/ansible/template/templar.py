@@ -42,6 +42,7 @@ from ansible.errors import (
     AnsibleUndefinedVariable,
     AnsibleTemplateError,
     AnsibleTemplateSyntaxError,
+    AnsibleBrokenConditionalError,
 )
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
@@ -143,6 +144,7 @@ class Templar:
     # allow unit tests to easily patch trust check failures to raise instead of just warn
     _raise_on_trust_check_fail = False
     _sentinel = object()
+    _allow_broken_conditionals = C.config.get_config_value('ALLOW_BROKEN_CONDITIONALS')
 
     def __init__(
         self,
@@ -664,15 +666,23 @@ class Templar:
         if isinstance(result, bool):
             return result
 
-        # FIXME: make this a deprecation warning?
-        # FIXME: include location info?
         bool_result = bool(result)
         # FIXME: `type(result)` should probably be the base type of the data structure
-        # FIXME: add an option to make these errors, enabled by default for integration tests
-        _display.warning(f'Conditional {self._repr_from(conditional)} had result {result!r} of type {type(result)}, '
-                         f'which evaluates to {bool_result}. Conditionals should always have a boolean result.')
+        message = (
+            f'Conditional {self._repr_from(conditional)} had result {result!r} of type {type(result)}, which evaluates to {bool_result}. '
+            f'Conditionals must have a boolean result.'
+        )
 
-        return bool_result
+        if self._allow_broken_conditionals:
+            message += ' Broken conditionals are currently allowed because the `ALLOW_BROKEN_CONDITIONALS` configuration option is enabled.'
+
+            _display.deprecated(msg=message, version='2.21')
+
+            return bool_result
+
+        message += ' Broken conditionals can be temporarily allowed by enabling the `ALLOW_BROKEN_CONDITIONALS` configuration option.'
+
+        raise AnsibleBrokenConditionalError(message)
 
     def _trust_check(self, data: str, mode: TemplateMode) -> bool:
         """
