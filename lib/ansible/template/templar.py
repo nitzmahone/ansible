@@ -402,10 +402,10 @@ class Templar:
 
                         return options.value_for_omit  # value_for_omit was not manipulated, trust that it contains only allowed types
 
-                    if mode is TemplateMode.STOP_ON_CONTAINER and type(template_result) in _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES:
+                    if mode is TemplateMode.STOP_ON_CONTAINER and (result_type := type(template_result)) in AnsibleTaggedObject._collection_types:
                         # Use of STOP_ON_CONTAINER implies the caller will perform necessary checks on values,
                         # most likely by passing them back into the templating system.
-                        return template_result.native_copy() if template_result in AnsibleTaggedObject._collection_types else template_result
+                        return template_result.native_copy() if result_type in AnsibleTaggedObject._tagged_collection_types else template_result
 
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire():

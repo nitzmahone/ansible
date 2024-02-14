@@ -316,6 +316,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
     item_source: t.Optional[t.Callable] = None
 
     _tagged_type_map: t.Dict[type, t.Type['AnsibleTaggedObject']] = {}
+    _tagged_collection_types: t.Set[t.Type[Collection]] = set()
     _collection_types: t.Set[t.Type[Collection]] = set()
 
     _empty_tags_as_native = True  # by default, untag will revert to the native type when no tags remain
@@ -349,6 +350,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
         AnsibleTaggedObject._tagged_type_map[cls.__mro__[1]] = cls
 
         if is_non_scalar_collection_type(cls):
+            AnsibleTaggedObject._tagged_collection_types.add(t.cast(t.Collection, cls))
             AnsibleTaggedObject._collection_types.update({cls, cls.__mro__[1]})
 
     def native_copy(self) -> t.Any:

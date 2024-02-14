@@ -28,7 +28,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
-from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError
+from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError, TemplateMode
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template
 from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display
@@ -497,3 +497,8 @@ def test_is_possibly_template_true(value: str) -> None:
 ))
 def test_is_possibly_template_false(value: str) -> None:
     assert not is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT)
+
+
+def test_stop_on_container() -> None:
+    # FIXME: add more test cases
+    assert Templar().template(TRUST.tag('{{ [ 1 ] }}'), mode=TemplateMode.STOP_ON_CONTAINER) == [1]
