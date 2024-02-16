@@ -406,7 +406,7 @@ class Constructable(_BaseInventoryPlugin):
                 conditional = groups[group_name]
                 group_name = self._sanitize_group_name(group_name)
                 try:
-                    result = self.templar.evaluate_conditional(conditional, allow_inline_template=False)
+                    result = self.templar.evaluate_conditional(conditional)
                 except Exception as e:
                     if strict:
                         raise AnsibleParserError("Could not add host %s to group %s: %s" % (host, group_name, to_native(e)))

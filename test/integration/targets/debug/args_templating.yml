@@ -7,7 +7,7 @@
 - assert:
     that:
     - result is failed
-    - '"instead of a dict" in result.msg'
+    - '"is not a dictionary" in result.msg'
 
 - name: merge splatted and local args with omit (local takes precedence for conflicts)
   vars:

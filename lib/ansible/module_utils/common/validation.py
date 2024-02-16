@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
+import typing as t
 
 from ast import literal_eval
 from ansible.module_utils.common.text.converters import to_native
@@ -387,6 +389,11 @@ def check_type_str(value, allow_conversion=True, param=None, prefix=''):
     raise TypeError(to_native(msg))
 
 
+# FIXME: bikeshed name
+check_type_str_no_conversion = functools.partial(check_type_str, allow_conversion=False)
+check_type_str_no_conversion.__name__ = "str_no_conversion"
+
+
 def check_type_list(value):
     """Verify that the value is a list or convert to a list
 
@@ -408,6 +415,14 @@ def check_type_list(value):
         return [str(value)]
 
     raise TypeError('%s cannot be converted to a list' % type(value))
+
+
+# FIXME: bikeshed name
+def check_type_list_that_does_not_suck_FIXME(value):
+    if isinstance(value, list):
+        return value
+
+    return [value]
 
 
 def check_type_dict(value):

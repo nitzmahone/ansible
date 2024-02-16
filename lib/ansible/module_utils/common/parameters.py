@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import datetime
-import functools
 import os
 
 from collections import deque
@@ -109,8 +108,6 @@ PASS_BOOLS = ('check_mode', 'debug', 'diff', 'keep_remote_files', 'ignore_unknow
 
 DEFAULT_TYPE_VALIDATORS = {
     'str': check_type_str,
-    # FIXME: do we want to merge this? bikeshed name, etc
-    'str_no_conversion': functools.partial(check_type_str, allow_conversion=False),
     'list': check_type_list,
     'dict': check_type_dict,
     'bool': check_type_bool,
@@ -633,7 +630,7 @@ def _validate_argument_types(argument_spec, parameters, prefix='', options_conte
             elements_wanted_type = spec.get('elements', None)
             if elements_wanted_type:
                 elements = parameters[param]
-                if wanted_type != 'list' or not isinstance(elements, list):
+                if not isinstance(parameters[param], list) or not isinstance(elements, list):
                     msg = "Invalid type %s for option '%s'" % (wanted_name, elements)
                     if options_context:
                         msg += " found in '%s'." % " -> ".join(options_context)

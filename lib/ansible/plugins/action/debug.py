@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import traceback
 
-from ansible.errors import AnsibleError, AnsibleValueOmittedError
+from ansible.errors import AnsibleValueOmittedError
+from ansible.module_utils.common.validation import check_type_str_no_conversion
 from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.plugins.action import ActionBase
-from ansible.template.templar import TemplateOptions, TemplateMode
+from ansible.template.templar import TemplateOptions
 from ansible.template.utils import Omit
 from ansible.template.undefined_behaviors import BestEffortWithWarnings, FAIL_ON_UNDEFINED
 
@@ -37,36 +38,22 @@ class ActionModule(ActionBase):
     def run(self, tmp=None, task_vars=None):
         best_effort = BestEffortWithWarnings()
 
-        raw_task_args = self._task.untemplated_args
-
-        # template splatted `args` only until we get a dictionary
-        if vp := raw_task_args.pop('_variable_params', None):
-            raw_task_args = self._templar.template(vp, options=TemplateOptions(value_for_omit={}), mode=TemplateMode.STOP_ON_CONTAINER)
-
-            if not isinstance(raw_task_args, dict):
-                # FIXME: needs AnsibleTaggedObject.get_native_type() to avoid displaying internal type names
-                raise AnsibleError(NotATemplate().tag(f"variable args {vp!r} resolved to a {type(raw_task_args)!r} instead of a dict"))
-
-            # merge any explicitly-defined args on top of splatted args, then put them back on untemplated_args
-            # FIXME: or not put them back?
-            raw_task_args.update(self._task.untemplated_args)
-
         argument_spec = {
             'msg': {'type': 'raw', 'default': 'Hello world!'},
-            'var': {'type': 'str_no_conversion'},
+            'var': {'type': check_type_str_no_conversion},
             'verbosity': {'type': 'int', 'default': 0},
         }
 
         custom_undefined_handlers = dict(msg=best_effort, var=best_effort)
 
         # special omit handling; we're popping omitted items, so need to iterate a static copy
-        for arg_name, arg in list(raw_task_args.items()):
+        for arg_name, arg in list(self._task.args.items()):
             undefined_handler = custom_undefined_handlers.get(arg_name, FAIL_ON_UNDEFINED)
 
             try:
-                result = self._templar.template(arg, options=TemplateOptions(undefined_behavior=undefined_handler))
+                self._task.args[arg_name] = self._templar.template(arg, options=TemplateOptions(undefined_behavior=undefined_handler))
             except AnsibleValueOmittedError:
-                raw_task_args.pop(arg_name)
+                self._task.args.pop(arg_name)
                 continue
             except Exception as ex:
                 return dict(
@@ -75,10 +62,6 @@ class ActionModule(ActionBase):
                     exception=NotATemplate().tag(str(traceback.format_exc())),
                     failed=True,  # FIXME: should debug fail in this case?
                 )
-
-            raw_task_args[arg_name] = result
-
-        self._task.args = raw_task_args
 
         validation_result, new_module_args = self.validate_argument_spec(
             argument_spec=argument_spec,

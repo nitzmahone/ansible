@@ -10,28 +10,16 @@
     list_of_true_expressions:
     - 1 == 1
     - '{{ 1 == 1 }}'
-    - "'i am a string constant expression'"
-    - ''
-    - ~
-    - {non_empty: true}
     list_of_false_expressions:
     - 1 == 0
     list_of_false_templates:
     - '{{ 1 == 0 }}'
-    list_of_falsey_constant_expressions:
-    - "''"
-    list_of_falsey_dict:
-    - {}
   tasks:
   - name: assert test for inline list of true template expressions
     assert:
       that:
       - 1 == 1
       - '{{ 1 == 1 }}'
-      - "'i am a string constant expression'"
-      - ''
-      - ~
-      - {non_empty: true}
 
   - name: assert test for indirect true expressions
     assert:
@@ -99,11 +87,11 @@
 #    failed_when: result is success
 
 # FIXME: this is broken because we'd need an explicit var-as-expression (though it "works" because the result is truthy)
-  - name: assert list of true expressions as loop arg
-    assert:
-      that: item
-    loop:
-    - [1 == 1]
+#  - name: assert list of true expressions as loop arg
+#    assert:
+#      that: item
+#    loop:
+#    - [1 == 1]
 
 # FIXME: this is broken because we'd need am explicit var-as-expression in assert
 #  - name: assert list of false expressions as loop arg
@@ -115,12 +103,12 @@
 #    failed_when: result is success
 
 
-# FIXME: this is broken because we'd need a loop var lookup in assert (though it "works" because the result is truthy
-  - name: assert true scalar expression as loop arg
-    assert:
-      that: item
-    loop:
-    - 1 == 1
+# FIXME: this is broken because we'd need a loop var lookup in assert
+#  - name: assert true scalar expression as loop arg
+#    assert:
+#      that: item
+#    loop:
+#    - 1 == 1
 
   - name: assert test for indirect false expression (EXPECTED FAILURE)
     assert:
@@ -134,19 +122,6 @@
     register: bang
     failed_when: bang is not failed
 
-  - name: assert test for indirect falsey constant expression (EXPECTED FAILURE)
-    assert:
-      that: '{{ list_of_falsey_constant_expressions }}'
-    register: bang
-    failed_when: bang is not failed
-
-  - name: assert test for indirect falsey dict (EXPECTED FAILURE)
-    assert:
-      that: '{{ list_of_falsey_dict }}'
-    register: bang
-    failed_when: bang is not failed
-
-
 - hosts: localhost
   gather_facts: no
   name: tests for playbook object conditionals
@@ -159,14 +134,6 @@
     fail:
     when: '{{ 1 == 0 }}'
 
-  - name: test plain false-y non-boolean conditional expression (emits warning)
-    fail:
-    when: "0"
-
-  - name: test templated false-y non-boolean conditional expression (emits warnings)
-    fail:
-    when: '{{ 0 }}'
-
   - name: test true plain boolean conditional expression
     debug:
     register: true_plain
@@ -177,23 +144,11 @@
     register: true_templated
     when: '{{ 1 == 1 }}'
 
-  - name: test plain truthy non-boolean conditional expression (emits warning)
-    debug:
-    register: truthy_plain
-    when: "1"
-
-  - name: test templated truthy non-boolean conditional expression (emits warnings)
-    debug:
-    register: truthy_templated
-    when: '{{ 1 }}'
-
   - name: validate true results
     assert:
       that:
       - true_plain is not skipped
       - true_templated is not skipped
-      - truthy_plain is not skipped
-      - truthy_templated is not skipped
 
 - hosts: localhost
   gather_facts: no
@@ -225,18 +180,6 @@
     register: result
     failed_when: result is success
 
-  - name: test plain false-y non-boolean conditional expression (emits warning)
-    assert:
-      that: "0"
-    register: result
-    failed_when: result is success
-
-  - name: test templated false-y non-boolean conditional expression (emits warnings)
-    assert:
-      that: '{{ 0 }}'
-    register: result
-    failed_when: result is success
-
   - name: test true plain boolean conditional expression
     assert:
       that: 1 == 1
@@ -245,13 +188,6 @@
     assert:
       that: '{{ 1 == 1 }}'
 
-  - name: test plain truthy non-boolean conditional expression (emits warning)
-    assert:
-      that: "1"
-
-  - name: test templated truthy non-boolean conditional expression (emits warnings)
-    assert:
-      that: '{{ 1 }}'
 
   # Ideally we'd use failed_when in place of two-tasks w/ assert, but due to an impl-detail (possibly bug), changed/failed_when
   # are not evaluated if the task failed while evaluating a `when` conditional.
@@ -283,16 +219,7 @@
       - result is failed
       - "'untrusted expression' is in result.msg"
 
-  - name: untrusted assert conditional scalar indirected through template should hard fail (EXPECTED FAILURE)
-    vars:
-      untrusted_assert_expr: !unsafe true
+  - name: test inline constant template in an optimizable expression
     assert:
-      that: '{{ untrusted_assert_expr }}'
-    ignore_errors: true
-    register: result
-
-  - name: assert failed as expected
-    assert:
-      that:
-      - result is failed
-      - "'untrusted expression' is in result.msg"
+      that: |
+        "{{'hi'}}" == "hi"

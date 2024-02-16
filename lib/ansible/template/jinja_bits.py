@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import collections.abc as c
 import dataclasses
 import datetime
@@ -12,7 +13,7 @@ from contextlib import nullcontext
 
 from jinja2 import pass_context, defaults
 from jinja2.environment import Environment, Template, TemplateModule
-from jinja2.exceptions import TemplateSyntaxError, UndefinedError
+from jinja2.exceptions import UndefinedError
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
 from jinja2.lexer import TOKEN_VARIABLE_BEGIN, TOKEN_VARIABLE_END, TOKEN_STRING, Lexer
@@ -23,13 +24,13 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing, LRUCache
 
 from ansible.utils.display import Display
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleTemplateSyntaxError
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
 from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePosition, AnsibleTaggedObject
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 from ansible.module_utils.six import string_types
-from ansible.plugins.loader import filter_loader, test_loader
+from ansible.plugins.loader import filter_loader, test_loader, Jinja2Loader
 from .datatag import _JinjaConstTemplate, _JinjaConstToTrustedTemplate
 
 from .utils import AnsibleUndefined, Omit, TemplateContext
@@ -94,6 +95,53 @@ class TemplateOverrides:
                 return True
 
         return False
+
+    def starts_and_ends_with_jinja_delimiters(self, value: str) -> bool:
+        """Returns True if the given value starts and ends with Jinja variable, block or comment delimiters."""
+        # FIXME: this is inefficient, use a compiled regex instead
+        #        when fixing this, rename this function and include the line statement and line comment prefixes too (even though we don't yet need them)
+
+        for marker in (self.block_start_string, self.variable_start_string, self.comment_start_string):
+            if value.startswith(marker):
+                break
+        else:
+            return False
+
+        for marker in (self.block_end_string, self.variable_end_string, self.comment_end_string):
+            if value.endswith(marker):
+                return True
+
+        return False
+
+    def extract_template_overrides(self, template: str) -> tuple[str, TemplateOverrides]:
+        if template.startswith(JINJA2_OVERRIDE):
+            eol = template.find('\n')
+
+            if eol == -1:
+                from .templar import Templar
+                raise ValueError(f"Missing newline after Jinja2 override: {Templar._repr_from(template)}")
+
+            line = template[len(JINJA2_OVERRIDE):eol]
+            template = template[eol + 1:]
+            override_kwargs = {}
+
+            for pair in line.split(','):
+                if ':' not in pair:
+                    raise ValueError(f"Failed to parse Jinja2 override {pair!r}. Did you use something different from colon as key-value separator?")
+
+                key, val = pair.split(':', 1)
+                key = key.strip()
+
+                if key not in _TEMPLATE_OVERRIDE_FIELD_NAMES:
+                    raise ValueError(f"Invalid Jinja2 environment override key: {key!r}.")
+
+                override_kwargs[key] = ast.literal_eval(val)
+
+            overrides = dataclasses.replace(self, **override_kwargs)
+        else:
+            overrides = self
+
+        return template, overrides
 
 
 _TEMPLATE_OVERRIDE_DEFAULT: t.Final[TemplateOverrides] = TemplateOverrides()
@@ -214,7 +262,7 @@ class JinjaPluginIntercept(c.MutableMapping):
     start so only collection plugins are really at request.
     """
 
-    def __init__(self, delegatee, pluginloader, *args, **kwargs):
+    def __init__(self, delegatee, pluginloader: Jinja2Loader, *args, **kwargs):
 
         super(JinjaPluginIntercept, self).__init__(*args, **kwargs)
 
@@ -252,9 +300,10 @@ class JinjaPluginIntercept(c.MutableMapping):
         # raise template syntax error if we could not find ours or jinja2 one
         try:
             func = self._delegatee[key]
-        except KeyError as e:
+        except KeyError:
             self._seen_it.remove(key)
-            raise TemplateSyntaxError('Could not load "%s": %s' % (key, to_native(original_exc or e)), 0)
+            plugin_type = self._pluginloader.type
+            raise AnsibleTemplatePluginNotFoundError(f'{plugin_type} plugin {key!r} not found') from None
 
         # FIXME: can/should we handle this in finalize instead, or at least allow plugins to opt into/out of this behavior?
         # if i do have func and it is a filter, it needs wrapping
@@ -435,7 +484,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         return lex
 
-    _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = True
+    _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = False
 
     def from_string(self, *args, **kwargs):
         # FIXME: sane way to make this work outside from_string?
@@ -531,9 +580,11 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         tc = TemplateContext.current_or_raise()
         port = tc.templar.proxy_or_render_template
 
-        ctx = _JinjaConstToTrustedTemplate if obj == tc.templar._lookup else nullcontext
-
-        with ctx():
+        # FUTURE: this doesn't scale well- as we add more globals that need special handling, we may want to move that down into the globals
+        if obj == tc.templar._lookup or obj == tc.templar._query_lookup:  # we can't use reference equality here; bound methods differ by instance
+            with _JinjaConstToTrustedTemplate():
+                res = super().call(context, obj, args[0], *port(args[1:]), **port(kwargs))
+        else:
             res = super().call(context, obj, *port(args), **port(kwargs))
 
         return port(res)
@@ -575,6 +626,7 @@ def _unroll_iterator(func):
     explicitly use ``|list`` to unroll.
     """
     def wrapper(*args, **kwargs):
+        # FIXME: blind PorRTing *args/**kwargs tries to wrap Jinja context/eval_ctx and other unknown objects; causes a type warning
         port = TemplateContext.current_or_raise().templar.proxy_or_render_template
         ret = func(*port(args), **port(kwargs))
         if _is_rolled(ret):
@@ -664,3 +716,11 @@ def is_possibly_template(value: str, overrides: TemplateOverrides):
     Return True if the given string starts with a Jinja overrides header or if it contains template start strings.
     """
     return value.startswith(JINJA2_OVERRIDE) or overrides.contains_start_string(value)
+
+
+def is_possibly_all_template(value: str, overrides: TemplateOverrides):
+    """
+    A lightweight check to determine if the given string looks like it contains *only* a template, even if that template is invalid.
+    Return True if the given string starts with a Jinja overrides header or if it starts and ends with Jinja template delimiters.
+    """
+    return value.startswith(JINJA2_OVERRIDE) or overrides.starts_and_ends_with_jinja_delimiters(value)

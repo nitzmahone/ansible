@@ -22,14 +22,15 @@ import typing as t
 
 from jinja2.runtime import Context
 
+import dataclasses
 import unittest
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError
+from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplateError, AnsibleTemplatePluginNotFoundError
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
 from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError, TemplateMode
-from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template
+from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, TemplateOverrides
 from ansible.template.undefined_behaviors import BEST_EFFORT
 from ansible.utils.display import Display
 from units.mock.loader import DictDataLoader
@@ -207,8 +208,8 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
 
 class TestTemplarLookup(BaseTemplar, unittest.TestCase):
     def test_lookup_missing_plugin(self):
-        self.assertRaisesRegex(AnsibleError,
-                               r'lookup plugin \(not_a_real_lookup_plugin\) not found',
+        self.assertRaisesRegex(AnsibleTemplatePluginNotFoundError,
+                               "lookup plugin 'not_a_real_lookup_plugin' not found",
                                self.templar._lookup,
                                'not_a_real_lookup_plugin',
                                'an_arg', a_keyword_arg='a_keyword_arg_value')
@@ -388,51 +389,45 @@ def test_dict_template(tagged: bool) -> None:
     # FIXME: add more test cases
 ])
 def test_evaluate_expression(expr: str, expected: t.Any, variables: dict[str, t.Any] | None):
-    templar = Templar(None, variables or {})
-
-    assert templar.evaluate_expression(TRUST.tag(expr)) == expected
+    assert Templar().evaluate_expression(TRUST.tag(expr)) == expected
 
 
 @pytest.mark.parametrize("expr,error_type", [
-    (TRUST.tag("fhdgsfk#$76&@#$&"), AnsibleTemplateSyntaxError),
-    (TRUST.tag("bogusvar"), AnsibleUndefinedVariable),
+    ("fhdgsfk#$76&@#$&", AnsibleTemplateSyntaxError),
+    ("bogusvar", AnsibleUndefinedVariable),
     ("untrusted expression", TemplateTrustCheckFailedError),
     (dict(hi="{{'mom'}}"), TypeError),
 ])
 def test_evaluate_expression_errors(expr: str, error_type: type[Exception]):
-    templar = Templar(None, {})
+    if error_type is not TemplateTrustCheckFailedError:
+        expr = TRUST.tag(expr)
 
-    with pytest.raises(error_type) as ex:
-        res = templar.evaluate_expression(expr)
-        pass
+    with pytest.raises(error_type):
+        Templar().evaluate_expression(expr)
 
 
-@pytest.mark.parametrize("conditional,expected,variables,allow_inline_template", [
-    ("'constant'", True, None, False),
-    ("{{ 'constant' }}", True, None, True),
-    ("1 == 2", False, None, False),
-    (dict(something=TRUST.tag("{{ test2_name | default(omit) }}")), False, None, True),
-    (dict(something=TRUST.tag("{{ test2_name | default(True) }}")), True, None, True),
+@pytest.mark.parametrize("conditional,expected,variables", [
+    ("1 == 2", False, None),
+    ("test2_name | default(True)", True, None),
+    # FIXME: more success cases?
 ])
-def test_evaluate_conditional(conditional: str, expected: t.Any, variables: dict[str, t.Any] | None, allow_inline_template: bool):
-    # FIXME: assert warnings occurred where apropos
-    templar = Templar(None, variables or {})
-
-    assert templar.evaluate_conditional(TRUST.tag(conditional), allow_inline_template=allow_inline_template) == expected
+def test_evaluate_conditional(conditional: str, expected: t.Any, variables: dict[str, t.Any] | None):
+    assert Templar().evaluate_conditional(TRUST.tag(conditional)) == expected
 
 
-@pytest.mark.parametrize("conditional,error_type,allow_inline_template", [
-    (TRUST.tag("fkjhs$#@^%$*& ldfkjds"), AnsibleTemplateSyntaxError, True),
-    (TRUST.tag("{{ 'i am truthy' }}"), AnsibleTemplateSyntaxError, False),
-    (TRUST.tag("bogusvar"), AnsibleUndefinedVariable, True),
-    ("untrusted expression", TemplateTrustCheckFailedError, True),
-    (dict(something=TRUST.tag("{{ test2_name | default(omit) }}")), TypeError, False),
+@pytest.mark.parametrize("conditional,error_type", [
+    ("fkjhs$#@^%$*& ldfkjds", AnsibleTemplateSyntaxError),
+    ("#jinja2:variable_start_string:2\n{{blah}}", AnsibleTemplateSyntaxError),
+    ("#jinja2:bogus_key:'val'\n{{blah}}", AnsibleTemplateSyntaxError),
+    ("bogusvar", AnsibleUndefinedVariable),
+    ("not trusted", TemplateTrustCheckFailedError),
 ])
-def test_evaluate_conditional_errors(conditional: t.Any, error_type: type[Exception], allow_inline_template: bool):
-    templar = Templar(None, {})
+def test_evaluate_conditional_errors(conditional: t.Any, error_type: type[Exception]):
+    if error_type is not TemplateTrustCheckFailedError:
+        conditional = TRUST.tag(conditional)
 
-    with pytest.raises(error_type) as ex:
-        templar.evaluate_conditional(conditional, allow_inline_template=allow_inline_template)
+    with pytest.raises(error_type):
+        Templar().evaluate_conditional(conditional)
 
 
 @pytest.mark.parametrize("value", (
@@ -502,3 +497,8 @@ def test_is_possibly_template_false(value: str) -> None:
 def test_stop_on_container() -> None:
     # FIXME: add more test cases
     assert Templar().template(TRUST.tag('{{ [ 1 ] }}'), mode=TemplateMode.STOP_ON_CONTAINER) == [1]
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_stripped_conditionals(value: bool) -> None:
+    assert Templar().evaluate_conditional(TRUST.tag(f"""\n \r\n \t{{{{ {value} }}}} \n\n  \t \t\t  """)) == value

@@ -12,26 +12,27 @@ display = Display()
 
 
 class _JinjaConstTemplate(AnsibleSingletonTagBase):
+    # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
     pass
 
 
 class _JinjaConstToTrustedTemplate(_MutatingAccessContextBase):
+    # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
     _tag_type_interest = frozenset([_JinjaConstTemplate])
 
     def _notify(self, o: t.Any) -> t.Any:
-        # FIXME: error message, and do we even want this here, since this hook is hopefully not permanent?
         from .templar import Templar
-        display.deprecated(f"FIXME trusting inline templates is bad, mmmkay? {Templar._repr_from(o)}")
+        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {Templar._repr_from(o)}", version="2.21")
         return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
 
 
 class _RenderJinjaConstAsTemplate(_MutatingAccessContextBase):
+    # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
     _tag_type_interest = frozenset([_JinjaConstTemplate])
 
     def _notify(self, o: t.Any) -> t.Any:
-        # FIXME: error message, and do we even want this here, since this hook is hopefully not permanent?
         from .templar import Templar
-        display.deprecated(f"FIXME rendering inline templates is bad, mmmkay? {Templar._repr_from(o)}")
+        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {Templar._repr_from(o)}", version="2.21")
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o)))
 
 

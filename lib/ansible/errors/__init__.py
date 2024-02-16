@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import traceback
+import sys
 
 from collections.abc import Sequence
 
@@ -271,6 +272,10 @@ class AnsibleBrokenConditionalError(AnsibleTemplateError):
     """A broken conditional with non-boolean result was used."""
 
 
+class AnsibleTemplatePluginNotFoundError(AnsibleTemplateError):
+    """The specified template plugin (lookup/filter/test) was not found."""
+
+
 class AnsibleFilterError(AnsibleTemplateError):
     ''' a templating failure '''
     pass
@@ -343,7 +348,12 @@ class AnsibleActionFail(AnsibleAction):
     def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=False, orig_exc=None, result=None):
         super(AnsibleActionFail, self).__init__(message=message, obj=obj, show_content=show_content,
                                                 suppress_extended_error=suppress_extended_error, orig_exc=orig_exc, result=result)
-        self.result.update({'failed': True, 'msg': message, 'exception': traceback.format_exc()})
+
+        result_overrides = {'failed': True, 'msg': message}
+        if sys.exception():
+            result_overrides['exception'] = traceback.format_exc()
+
+        self.result.update(result_overrides)
 
 
 class _AnsibleActionDone(AnsibleAction):

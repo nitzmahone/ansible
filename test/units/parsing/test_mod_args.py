@@ -20,8 +20,8 @@ class TestModArgsDwim:
 
     INVALID_MULTIPLE_ACTIONS = (
         ({'action': 'shell echo hi', 'local_action': 'shell echo hi'}, "action and local_action are mutually exclusive"),
-        ({'action': 'shell echo hi', 'shell': 'echo hi'}, "conflicting action statements: shell, shell"),
-        ({'local_action': 'shell echo hi', 'shell': 'echo hi'}, "conflicting action statements: shell, shell"),
+        ({'action': 'shell echo hi', 'shell': 'echo hi'}, "conflicting action statements: action: shell, shell"),
+        ({'local_action': 'shell echo hi', 'shell': 'echo hi'}, "conflicting action statements: action: shell, shell"),
     )
 
     def _debug(self, mod, args, to):

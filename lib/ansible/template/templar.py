@@ -42,13 +42,13 @@ from ansible.errors import (
     AnsibleUndefinedVariable,
     AnsibleTemplateError,
     AnsibleTemplateSyntaxError,
-    AnsibleBrokenConditionalError,
+    AnsibleBrokenConditionalError, AnsibleTemplatePluginNotFoundError,
 )
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
 from ansible.plugins.loader import lookup_loader
 from ansible.module_utils.datatag import (
-    AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError, _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES,
+    AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError
 )
 from ansible.module_utils.datatag.access import AnsibleAccessContext
 
@@ -56,9 +56,9 @@ from ansible.utils.display import Display
 from ansible.utils.vars import isidentifier
 from ansible.parsing.dataloader import DataLoader
 
-from .datatag import DeprecatedAccessAuditContext, _JinjaConstToTrustedTemplate, _RenderJinjaConstAsTemplate
+from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, \
-    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, JINJA2_OVERRIDE
+    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, JINJA2_OVERRIDE
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
@@ -158,11 +158,15 @@ class Templar:
         self._environment: AnsibleEnvironment | None = None
 
     @property
+    def basedir(self) -> str:
+        return self._loader.get_basedir() if self._loader else '.'
+
+    @property
     def environment(self) -> AnsibleEnvironment:
         if not self._environment:
             env = AnsibleEnvironment(
                 extensions=self._get_extensions(),
-                loader=FileSystemLoader(self._loader.get_basedir() if self._loader else '.'),
+                loader=FileSystemLoader(self.basedir),
             )
 
             env.globals.update(
@@ -190,34 +194,18 @@ class Templar:
 
         return f'{value!r}'
 
-    def _create_overlay(self, data: str, overrides: TemplateOverrides) -> tuple[str, AnsibleEnvironment]:
-        if data.startswith(JINJA2_OVERRIDE):
-            eol = data.find('\n')
-            line = data[len(JINJA2_OVERRIDE):eol]
-            data = data[eol + 1:]
-            override_kwargs = {}
-
-            for pair in line.split(','):
-                if ':' not in pair:
-                    raise AnsibleTemplateError(f"Failed to parse Jinja2 override {pair!r}. Did you use something different from colon as key-value separator?")
-
-                key, val = pair.split(':', 1)
-                key = key.strip()
-
-                if key in _TEMPLATE_OVERRIDE_FIELD_NAMES:
-                    override_kwargs[key] = ast.literal_eval(val)
-                else:
-                    # FIXME: make this a deprecation warning so it can be an error in the future
-                    _display.warning(f"Could not find Jinja2 environment setting {key!r} to override.")
-
-            overrides = dataclasses.replace(overrides, **override_kwargs)
+    def _create_overlay(self, template: str, overrides: TemplateOverrides) -> tuple[str, AnsibleEnvironment]:
+        try:
+            template, overrides = overrides.extract_template_overrides(template)
+        except (TypeError, ValueError) as ex:
+            raise AnsibleTemplateSyntaxError(str(ex)) from ex
 
         env = self.environment
 
         if overrides is not _TEMPLATE_OVERRIDE_DEFAULT and (overlay_kwargs := overrides.overlay_kwargs()):
             env = t.cast(AnsibleEnvironment, env.overlay(**overlay_kwargs))
 
-        return data, env
+        return template, env
 
     @staticmethod
     def _count_newlines_from_end(in_str):
@@ -414,7 +402,7 @@ class Templar:
             except TemplateEncountered:
                 raise
             except Exception as ex:
-                self._raise_template_error(ex, variable)
+                self._raise_template_error(ex, variable, mode)
 
         self._emit_deprecation_warnings(deprecated)
 
@@ -489,30 +477,31 @@ class Templar:
             )
 
     @staticmethod
-    def _raise_template_error(ex: Exception, variable: t.Any) -> t.NoReturn:
+    def _raise_template_error(ex: Exception, variable: t.Any, mode: TemplateMode) -> t.NoReturn:
         # FIXME: capture useful context information from each context early
 
         if isinstance(ex, AnsibleTemplateError):
             exception_to_raise = ex
         else:
+            cause = 'expression' if mode is TemplateMode.EXPRESSION else 'template'
             src_pos = AnsibleSourcePosition.get_tag(variable)
 
             if isinstance(variable, str):
-                cause = repr(variable)
+                cause += f' {variable!r}'
             else:
-                cause = f'of type {type(variable)}'
+                cause += f' of type {type(variable)}'
 
             if src_pos:
-                cause += f'from {src_pos}'
+                cause += f' from {src_pos}'
 
             ex_type = AnsibleTemplateError  # always raise an AnsibleTemplateError/subclass
             if isinstance(ex, RecursionError):
-                msg = f"Recursive loop detected in template {cause}"
+                msg = f"Recursive loop detected in {cause}"
             elif isinstance(ex, TemplateSyntaxError):
-                msg = f"Syntax error in template {cause}: {ex}"
+                msg = f"Syntax error in {cause}: {ex}"
                 ex_type = AnsibleTemplateSyntaxError
             else:
-                msg = f"Unexpected exception rendering template {cause}: {ex}"
+                msg = f"Unexpected exception rendering {cause}: {ex}"
 
             exception_to_raise = ex_type(NotATemplate().tag(msg), orig_exc=ex)
 
@@ -545,7 +534,7 @@ class Templar:
         instance = lookup_loader.get(name, loader=self._loader, templar=self)
 
         if instance is None:
-            raise AnsibleError("lookup plugin (%s) not found" % name)
+            raise AnsibleTemplatePluginNotFoundError(f"lookup plugin {name!r} not found")
 
         # some plugins make a poor assumption that `run` takes a list
         args = list(args)
@@ -625,33 +614,42 @@ class Templar:
             mode=TemplateMode.EXPRESSION,
         )
 
-    # FIXME: make allow_inline_template=False by default?
-    def evaluate_conditional(self, conditional: str, allow_inline_template=True) -> bool:
-        try:
-            result = self._sentinel
+    _BROKEN_CONDITIONAL_ALLOWED_FRAGMENT = ' Broken conditionals are currently allowed because the `ALLOW_BROKEN_CONDITIONALS` configuration option is enabled.'
+    _BROKEN_CONDITIONAL_DISALLOWED_FRAGMENT = ' Broken conditionals can be temporarily allowed with the `ALLOW_BROKEN_CONDITIONALS` configuration option.'
 
-            if isinstance(conditional, str):
-                try:
+    def evaluate_conditional(self, conditional: str | bool | None) -> bool:
+        if type(conditional) is bool:
+            return conditional
+
+        if is_str := isinstance(conditional, str):
+            # Always strip conditional input strings. Neither conditional expressions nor all-template conditionals have legit reasons to preserve
+            # surrounding whitespace, and they complicate detection and processing of all-template fallback cases.
+            conditional = conditional.strip()
+
+        if conditional in (None, ''):
+            # deprecated backward-compatible behavior; None/empty input conditionals are always True
+            if not self._allow_broken_conditionals:
+                raise AnsibleBrokenConditionalError("Empty conditional expressions are not allowed." + self._BROKEN_CONDITIONAL_DISALLOWED_FRAGMENT)
+
+            _display.deprecated(msg='Empty conditional expression was evaluated as True.' + self._BROKEN_CONDITIONAL_ALLOWED_FRAGMENT, version='2.21')
+            return True
+
+        is_expression = is_str and not is_possibly_all_template(conditional, _TEMPLATE_OVERRIDE_DEFAULT)
+
+        if is_str and not is_expression:
+            _display.deprecated(
+                msg=f'Conditional {self._repr_from(conditional)} should not be surrounded by templating delimiters such as {{{{ }}}} or {{% %}}.',
+                version='2.21',
+            )
+
+        try:
+            if is_expression:
+                with _RenderJinjaConstAsTemplate():
                     # Disable escape_backslashes when processing conditionals, to maintain backwards compatibility.
                     # This is necessary because conditionals were previously evaluated using {% %}, which was *NOT* affected by escape_backslashes.
                     # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
-                    with _RenderJinjaConstAsTemplate():
-                        result = self.evaluate_expression(conditional, escape_backslashes=False)
-                except AnsibleTemplateSyntaxError:
-                    if not allow_inline_template or not is_possibly_template(conditional, _TEMPLATE_OVERRIDE_DEFAULT):
-                        raise
-
-            elif not allow_inline_template:
-                # FIXME: mention "and allow_inline_template=False" when we figure out what we want
-                raise TypeError(f"evaluate_conditional requires {str!r}, got {type(conditional)!r}")
-
-            if result is self._sentinel:
-                _display.warning(
-                    # FIXME: should we deprecate and/or remove this capability?
-                    f'Conditional {self._repr_from(conditional)} could not be parsed as a Jinja2 expression, and will be '
-                    'evaluated as a template instead. Conditionals should not include templating delimiters '
-                    'such as {{ }} or {% %}.'
-                )
+                    result = self.evaluate_expression(conditional, escape_backslashes=False)
+            else:
                 result = self.template(conditional)
         except AnsibleUndefinedVariable as e:
             # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
@@ -674,13 +672,13 @@ class Templar:
         )
 
         if self._allow_broken_conditionals:
-            message += ' Broken conditionals are currently allowed because the `ALLOW_BROKEN_CONDITIONALS` configuration option is enabled.'
+            message += self._BROKEN_CONDITIONAL_ALLOWED_FRAGMENT
 
             _display.deprecated(msg=message, version='2.21')
 
             return bool_result
 
-        message += ' Broken conditionals can be temporarily allowed by enabling the `ALLOW_BROKEN_CONDITIONALS` configuration option.'
+        message += self._BROKEN_CONDITIONAL_DISALLOWED_FRAGMENT
 
         raise AnsibleBrokenConditionalError(message)
 

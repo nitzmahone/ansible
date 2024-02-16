@@ -38,6 +38,7 @@ from ansible.playbook.loop_control import LoopControl
 from ansible.playbook.notifiable import Notifiable
 from ansible.playbook.role import Role
 from ansible.playbook.taggable import Taggable
+from ansible.template.templar import TemplateOptions, TemplateMode
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
@@ -141,16 +142,26 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
     def _post_validate_args(self, attr, value, templar):
         # smuggle an untemplated copy of the task args for actions that need more control over the templating of their
         # input (eg, debug's var/msg, assert's "that" conditional expressions)
+        # FIXME: should the _variable_params splat be stored here or not? Probably...
         self.untemplated_args = value
 
         # FIXME: this is None for pseudo-actions like include_tasks, should it be?
+        # FIXME: this is None for anything using old `action: assert` or `action: module: assert`, should it be?
         if self.resolved_action:
             ctx = action_loader.get_with_context(self.resolved_action, collection_list=self.collections, class_only=True)
 
             # FIXME: decide the final name for this class attribute
             # FIXME: need to preserve resolved action and resolved as module separately to handle action subsystems that want to do their own templating?
+            # FIXME: centralized k=v handling?
+            # FIXME: verify module_defaults behavior; looks like {{ my_args }} does not merge properly; handling embedded omit fallbacks is also "fun"
             if ctx.plugin_load_context.resolved and getattr(ctx.object, 'FIXME_DOES_OWN_TEMPLATING', False):
-                # FIXME: are we making self-templated plugins handle their own _variable_params (eg debug: args={{someargdict}}) or ?
+                # template _variable_params, but stop if we encounter a container, let plugin template from there
+                if vp := value.pop('_variable_params', None):
+                    value = templar.template(vp, options=TemplateOptions(value_for_omit={}), mode=TemplateMode.STOP_ON_CONTAINER)
+                    # merge any explicitly-defined args back on top
+                    if isinstance(value, dict):
+                        value.update(self.untemplated_args)
+                    # FIXME: raw_params handling- we should
                 return value
 
         # if we didn't resolve, it's probably a module, just move along like normal

@@ -5,7 +5,7 @@ import typing as t
 import pytest
 
 from ansible.module_utils.datatag import TrustedAsTemplate
-from ansible.template.jinja_bits import AnsibleEnvironment, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES
+from ansible.template.jinja_bits import AnsibleEnvironment, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, _TEMPLATE_OVERRIDE_DEFAULT
 from ansible.template.templar import Templar, TemplateOptions
 from jinja2.loaders import DictLoader
 
@@ -106,3 +106,29 @@ def test_template_overrides_defaults(key: str) -> None:
     env = AnsibleEnvironment()
 
     assert getattr(overrides, key) == getattr(env, key)
+
+
+@pytest.mark.parametrize("value, expected_overrides", [
+    ("#jinja2:newline_sequence:'\\r\\n'\n", TemplateOverrides(newline_sequence='\r\n')),
+    ("#jinja2:trim_blocks:False\n", TemplateOverrides(trim_blocks=False)),
+    ("#jinja2:line_statement_prefix:None\n{{'template constant'}}\n{{'another'}}\n", _TEMPLATE_OVERRIDE_DEFAULT),
+    ("#jinja2:line_statement_prefix:'!!'\n{{'template constant'}}\n{{'another'}}\n", TemplateOverrides(line_statement_prefix="!!")),
+], ids=lambda value: repr(value.overlay_kwargs() if isinstance(value, TemplateOverrides) else value))
+def test_template_override_extract_success(value: str, expected_overrides: TemplateOverrides):
+    expected_template = value.split('\n', maxsplit=1)[1]
+    template, overrides = _TEMPLATE_OVERRIDE_DEFAULT.extract_template_overrides(value)
+
+    assert template == expected_template
+    assert overrides == expected_overrides
+
+
+@pytest.mark.parametrize("value", [
+    "#jinja2:newline_sequence:'\\n\\r'\n",
+    "#jinja2:bogus_key:''\n",
+    "#jinja2:variable_start_string:2\n",
+    "#jinja2:variable_start_string:'{{'",
+    "#jinja2:variable_start_string\n",
+])
+def test_template_override_extract_failure(value: str):
+    with pytest.raises(tuple([TypeError, ValueError])):
+        _TEMPLATE_OVERRIDE_DEFAULT.extract_template_overrides(value)

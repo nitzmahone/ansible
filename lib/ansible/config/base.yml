@@ -447,7 +447,7 @@ ALLOW_BROKEN_CONDITIONALS:
   default: False
   description:
     - When enabled, this option allows conditionals with non-boolean results to be used.
-      A warning will be emitted when this occurs.
+      A deprecation warning will be emitted when this occurs.
     - By default, non-boolean conditionals result in an error.
       Such results often indicate unintentional use of templates where they are not supported, resulting in a conditional that is always true.
     - When this option is enabled, conditional expressions which are a literal ``None`` or empty string will evaluate as true, for backwards compatibility.
