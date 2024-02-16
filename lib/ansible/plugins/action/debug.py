@@ -36,6 +36,7 @@ class ActionModule(ActionBase):
     FIXME_DOES_OWN_TEMPLATING = True
 
     def run(self, tmp=None, task_vars=None):
+        # FIXME: we need more consistent error handling, either all failures should be ignored or none of them
         best_effort = BestEffortWithWarnings()
 
         argument_spec = {
