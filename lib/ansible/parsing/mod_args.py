@@ -300,13 +300,6 @@ class ModuleArgsParser:
         # filter out task attributes so we're only querying unrecognized keys as actions/modules
         non_task_ds = dict((k, v) for k, v in self._task_ds.items() if (k not in self._task_attrs) and (not k.startswith('with_')))
 
-        # FIXME: clean up normalize_parameters to do this for us?
-        if action:
-            # write the action into the DS, ensuring the same key isn't already present
-            if non_task_ds.setdefault(action, args) is not args:
-                raise AnsibleParserError(f"conflicting action statements: 'action: {action}', '{action}'")
-            action = None  # so we don't trip the duplicate handler and let it set `resolved_action` for us the same way all the time
-
         # walk the filtered input dictionary to see if we recognize a module name
         for item, value in non_task_ds.items():
             context = None
