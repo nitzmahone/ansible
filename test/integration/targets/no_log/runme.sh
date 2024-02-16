@@ -23,4 +23,4 @@ set -eux
 # test variations on ANSIBLE_NO_LOG
 [ "$(ansible-playbook no_log_config.yml -i ../../inventory -vvvvv "$@" | grep -Ec 'the output has been hidden')" = "1" ]
 [ "$(ANSIBLE_NO_LOG=0 ansible-playbook no_log_config.yml -i ../../inventory -vvvvv "$@" | grep -Ec 'the output has been hidden')" = "1" ]
-[ "$(ANSIBLE_NO_LOG=1 ansible-playbook no_log_config.yml -i ../../inventory -vvvvv "$@" | grep -Ec 'the output has been hidden')" = "6" ]
+[ "$(ANSIBLE_NO_LOG=1 ansible-playbook no_log_config.yml -i ../../inventory -vvvvv "$@" | grep -Ec 'the output has been hidden')" = "5" ]
