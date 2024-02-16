@@ -23,7 +23,6 @@ from ansible.playbook.task_include import TaskInclude
 from ansible.playbook.role import Role
 from ansible.playbook.role.include import RoleInclude
 from ansible.utils.display import Display
-from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.six import string_types
 from ansible.template.templar import Templar
 

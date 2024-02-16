@@ -8,7 +8,6 @@ import functools
 import json
 import os
 import re
-import typing as t
 
 from ast import literal_eval
 from ansible.module_utils.common.text.converters import to_native

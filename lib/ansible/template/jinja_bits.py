@@ -24,10 +24,10 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing, LRUCache
 
 from ansible.utils.display import Display
-from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleTemplateSyntaxError
+from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
-from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePosition, AnsibleTaggedObject
+from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePosition, AnsibleTaggedObject, AnsibleDatatagBase
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 from ansible.module_utils.six import string_types
 from ansible.plugins.loader import filter_loader, test_loader, Jinja2Loader
@@ -237,21 +237,7 @@ class AnsibleCodeGenerator(NativeCodeGenerator):
             self.write(f'environment._access_const({value!r})')
         else:
             self.write(repr(value))
-    #
-    # def visit_Operand(self, node: nodes.Operand, frame: Frame) -> None:
-    #     self.write(f'("{operators[node.op]}", ')
-    #     self.visit(node.expr, frame)
-    #     self.write(")")
-    #
-    # def visit_Compare(self, node: nodes.Compare, frame: Frame) -> None:
-    #     self.write("environment.call_compare(")
-    #     self.visit(node.expr, frame)
-    #     self.write(", ")
-    #     for op in node.ops:
-    #         self.visit(op, frame)
-    #         self.write(", ")
-    #     self.write(")")
-    #
+
 
 class JinjaPluginIntercept(c.MutableMapping):
     """
@@ -272,7 +258,7 @@ class JinjaPluginIntercept(c.MutableMapping):
         self._delegatee = delegatee
 
         # our names take precedence over Jinja's, but let things we've tried to resolve skip the pluginloader
-        self._seen_it = set()
+        self._seen_it: set[str] = set()
 
     def __getitem__(self, key):
         if not isinstance(key, string_types):
@@ -422,7 +408,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     context_class = AnsibleContext
     template_class = AnsibleTemplate
     code_generator_class = AnsibleCodeGenerator
-    intercepted_binops = frozenset({'eq',})
+    intercepted_binops = frozenset({'eq', })
     _lexer_cache = LRUCache(50)
 
     def __init__(self, *args, **kwargs):
@@ -542,7 +528,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     @staticmethod
     def _access_const(const_template: t.LiteralString) -> t.Any:
-        tags = [_JinjaConstTemplate()]
+        tags: list[AnsibleDatatagBase] = [_JinjaConstTemplate()]
         # FIXME: do we want to propagate source tags here, since this hook may go away?
         if (tv := TemplateContext.current().template_value) and (source_pos := AnsibleSourcePosition.get_tag(tv)):
             tags.append(source_pos)

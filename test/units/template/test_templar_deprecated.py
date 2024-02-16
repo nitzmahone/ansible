@@ -119,6 +119,3 @@ def test_broken_conditionals_as_warning(value: t.Any, expected_result: bool, moc
         assert "Empty conditional" in deprecated_spy.call_args_list[-1].kwargs['msg']
     else:
         assert "must have a boolean result" in deprecated_spy.call_args_list[-1].kwargs['msg']
-
-
-

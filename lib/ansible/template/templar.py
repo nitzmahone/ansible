@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import ast
 import dataclasses
 import enum
 import os
@@ -57,8 +56,8 @@ from ansible.utils.vars import isidentifier
 from ansible.parsing.dataloader import DataLoader
 
 from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
-from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, \
-    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, JINJA2_OVERRIDE
+from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, \
+    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
@@ -618,7 +617,7 @@ class Templar:
     _BROKEN_CONDITIONAL_DISALLOWED_FRAGMENT = ' Broken conditionals can be temporarily allowed with the `ALLOW_BROKEN_CONDITIONALS` configuration option.'
 
     def evaluate_conditional(self, conditional: str | bool | None) -> bool:
-        if type(conditional) is bool:
+        if type(conditional) is bool:  # pylint: disable=unidiomatic-typecheck
             return conditional
 
         if is_str := isinstance(conditional, str):

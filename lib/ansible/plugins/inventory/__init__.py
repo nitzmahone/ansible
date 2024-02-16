@@ -505,10 +505,13 @@ class _AutoTrustInputTemplar(Templar):
         self._visitor = AnsibleVariableVisitor(trusted_as_template=True)
 
     def template(self, variable: t.Any, *args, **kwargs) -> t.Any:
+        # FIXME: why does this pass *args and **kwargs instead of discrete arguments?
         return super().template(self._visitor.visit(variable), *args, **kwargs)
 
     def evaluate_expression(self, expression: str, *args, **kwargs) -> t.Any:
+        # FIXME: why does this pass *args and **kwargs instead of discrete arguments?
         return super().evaluate_expression(self._visitor.visit(expression), *args, **kwargs)
 
     def evaluate_conditional(self, conditional: str, *args, **kwargs) -> bool:
-        return super().evaluate_conditional(self._visitor.visit(conditional), *args, **kwargs)
+        # FIXME: why does this eat *args and **kwargs?
+        return super().evaluate_conditional(self._visitor.visit(conditional))
