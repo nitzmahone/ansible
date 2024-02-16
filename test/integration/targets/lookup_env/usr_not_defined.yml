@@ -1,0 +1,10 @@
+- hosts: testhost
+  gather_facts: no
+  tasks:
+    - name: var is not defined, so should return 'nobody'
+      assert:
+        that: lookup('env', 'USR', default='nobody') == 'nobody'
+
+    - name: var is not defined, so should return undef()
+      assert:
+        that: lookup('env', 'USR', default=undef()) is undefined

@@ -3,6 +3,8 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 from __future__ import annotations
 
+from ansible.template.utils import AnsibleUndefined
+
 DOCUMENTATION = """
     name: env
     author: Jan-Piet Mens (@jpmens) <jpmens(at)gmail.com>
@@ -39,10 +41,6 @@ EXAMPLES = """
   ansible.builtin.debug:
     msg: "{{ lookup('ansible.builtin.env', 'USR', default='nobody') }} is the user."
 
-- name: Set default value to Undefined, if the variable is not defined
-  ansible.builtin.debug:
-    msg: "{{ lookup('ansible.builtin.env', 'USR', default=Undefined) }} is the user."
-
 - name: Set default value to undef(), if the variable is not defined
   ansible.builtin.debug:
     msg: "{{ lookup('ansible.builtin.env', 'USR', default=undef()) }} is the user."
@@ -55,11 +53,10 @@ RETURN = """
     type: list
 """
 
-from jinja2.runtime import Undefined
+import os
 
-from ansible.errors import AnsibleUndefinedVariable
+from ansible.template.jinja_bits import AnsibleUndefined
 from ansible.plugins.lookup import LookupBase
-from ansible.utils import py3compat
 
 
 class LookupModule(LookupBase):
@@ -71,8 +68,8 @@ class LookupModule(LookupBase):
         d = self.get_option('default')
         for term in terms:
             var = term.split()[0]
-            val = py3compat.environ.get(var, d)
-            if isinstance(val, Undefined):
-                raise AnsibleUndefinedVariable('The "env" lookup, found an undefined variable: %s' % var)
+            val = os.environ.get(var, d)
+            if isinstance(val, AnsibleUndefined):
+                val = AnsibleUndefined(f'The envionrment variable {var!r} is not set.')
             ret.append(val)
         return ret
