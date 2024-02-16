@@ -17,11 +17,14 @@
 
 from __future__ import annotations
 
+import pytest
 import unittest
+
+from ansible.errors import AnsibleParserError
 from ansible.playbook.block import Block
-from ansible.playbook.task import Task
 
 
+@pytest.mark.usefixtures('inject_collection_root_package_stub')
 class TestBlock(unittest.TestCase):
 
     def test_construct_empty_block(self):
@@ -51,19 +54,14 @@ class TestBlock(unittest.TestCase):
             always=[dict(action='always')],
             # otherwise=[dict(action='otherwise')],
         )
-        b = Block.load(ds)
-        self.assertEqual(len(b.block), 1)
-        self.assertIsInstance(b.block[0], Task)
-        self.assertEqual(len(b.rescue), 1)
-        self.assertIsInstance(b.rescue[0], Task)
-        self.assertEqual(len(b.always), 1)
-        self.assertIsInstance(b.always[0], Task)
-        # not currently used
-        # self.assertEqual(len(b.otherwise), 1)
-        # self.assertIsInstance(b.otherwise[0], Task)
+        with pytest.raises(AnsibleParserError) as err:
+            Block.load(ds)
+
+        assert "couldn't resolve module/action" in err.value.message
 
     def test_load_implicit_block(self):
         ds = [dict(action='foo')]
-        b = Block.load(ds)
-        self.assertEqual(len(b.block), 1)
-        self.assertIsInstance(b.block[0], Task)
+        with pytest.raises(AnsibleParserError) as err:
+            Block.load(ds)
+
+        assert "couldn't resolve module/action" in err.value.message

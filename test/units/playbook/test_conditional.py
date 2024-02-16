@@ -77,7 +77,7 @@ class TestConditional(unittest.TestCase):
                      'some_defined_dict': {'key1': 'value1',
                                            'key2': '{{ dict_value }}'}}
 
-        when = [u"some_defined_dict"]
+        when = [u"some_defined_dict is defined"]
         ret = self._eval_con(when, variables)
         self.assertTrue(ret)
 
@@ -179,26 +179,10 @@ class TestConditional(unittest.TestCase):
                      }
         when = [u"hostvars['some_host'] is defined",
                 u'hostvars["some_host"] is defined',
-                u"{{ compare_targets.double }} is defined",
-                u"{{ compare_targets.single }} is defined"]
+                u"compare_targets.double is defined",
+                u"compare_targets.single is defined"]
         ret = self._eval_con(when, variables)
         self.assertTrue(ret)
-
-    def test_is_hostvars_quotes_is_defined_but_is_not_defined(self):
-        variables = {'hostvars': {'some_host': {}},
-                     'compare_targets_single': "hostvars['some_host']",
-                     'compare_targets_double': 'hostvars["some_host"]',
-                     'compare_targets': {'double': '{{ compare_targets_double }}',
-                                         'single': "{{ compare_targets_single }}"},
-                     }
-        when = [u"hostvars['some_host'] is defined",
-                u'hostvars["some_host"] is defined',
-                u"{{ compare_targets.triple }} is defined",
-                u"{{ compare_targets.quadruple }} is defined"]
-        self.assertRaisesRegex(errors.AnsibleError,
-                               "The conditional check '{{ compare_targets.triple }} is defined' failed",
-                               self._eval_con,
-                               when, variables)
 
     def test_is_hostvars_host_is_defined(self):
         variables = {'hostvars': {'some_host': {}, }}

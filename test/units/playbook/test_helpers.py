@@ -21,6 +21,10 @@ import os
 
 import unittest
 from unittest.mock import MagicMock
+
+import pytest
+
+from ansible.errors import AnsibleParserError
 from units.mock.loader import DictDataLoader
 
 from ansible import errors
@@ -76,6 +80,7 @@ class MixinForMocks(object):
                                                    """})
 
 
+@pytest.mark.usefixtures('inject_collection_root_package_stub')
 class TestLoadListOfTasks(unittest.TestCase, MixinForMocks):
     def setUp(self):
         self._setup()
@@ -125,21 +130,21 @@ class TestLoadListOfTasks(unittest.TestCase, MixinForMocks):
     def test_unknown_action(self):
         action_name = 'foo_test_unknown_action'
         ds = [{'action': action_name}]
-        res = helpers.load_list_of_tasks(ds, play=self.mock_play,
-                                         variable_manager=self.mock_variable_manager, loader=self.fake_loader)
-        self._assert_is_task_list_or_blocks(res)
-        self.assertEqual(res[0].action, action_name)
+
+        with pytest.raises(AnsibleParserError) as err:
+            helpers.load_list_of_tasks(ds, play=self.mock_play, variable_manager=self.mock_variable_manager, loader=self.fake_loader)
+
+        assert "couldn't resolve module/action" in err.value.message
 
     def test_block_unknown_action(self):
         action_name = 'foo_test_block_unknown_action'
         ds = [{
             'block': [{'action': action_name}]
         }]
-        res = helpers.load_list_of_tasks(ds, play=self.mock_play,
-                                         variable_manager=self.mock_variable_manager, loader=self.fake_loader)
-        self._assert_is_task_list_or_blocks(res)
-        self.assertIsInstance(res[0], Block)
-        self._assert_default_block(res[0])
+        with pytest.raises(AnsibleParserError) as err:
+            helpers.load_list_of_tasks(ds, play=self.mock_play, variable_manager=self.mock_variable_manager, loader=self.fake_loader)
+
+        assert "couldn't resolve module/action" in err.value.message
 
     def _assert_default_block(self, block):
         # the expected defaults
@@ -328,6 +333,7 @@ class TestLoadListOfRoles(unittest.TestCase, MixinForMocks):
             self.assertIsInstance(r, RoleInclude)
 
 
+@pytest.mark.usefixtures('inject_collection_root_package_stub')
 class TestLoadListOfBlocks(unittest.TestCase, MixinForMocks):
     def setUp(self):
         self._setup()
@@ -355,9 +361,7 @@ class TestLoadListOfBlocks(unittest.TestCase, MixinForMocks):
     def test_block_unknown_action(self):
         ds = [{'action': 'foo', 'collections': []}]
         mock_play = MagicMock(name='MockPlay')
-        res = helpers.load_list_of_blocks(ds, mock_play, parent_block=None, role=None, task_include=None, use_handlers=False, variable_manager=None,
-                                          loader=None)
+        with pytest.raises(AnsibleParserError) as err:
+            helpers.load_list_of_blocks(ds, mock_play, parent_block=None, role=None, task_include=None, use_handlers=False, variable_manager=None, loader=None)
 
-        self.assertIsInstance(res, list)
-        for block in res:
-            self.assertIsInstance(block, Block)
+        assert "couldn't resolve module/action" in err.value.message
