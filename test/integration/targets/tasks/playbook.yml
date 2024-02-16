@@ -20,5 +20,4 @@
     - assert:
         that:
         - bad_templated_raw_param is failed
-        - |
-          bad_templated_raw_param.msg | regex_search("variable args 'garbage ...with a template...' resolved to a .* instead of a dict$") is not none
+        - bad_templated_raw_param.msg is contains("'garbage with a template' is not a dictionary")

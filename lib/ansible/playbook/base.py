@@ -488,7 +488,7 @@ class FieldAttributeBase:
             if value is None:
                 value = dict()
             elif not isinstance(value, dict):
-                raise TypeError("%s is not a dictionary" % value)
+                raise TypeError(f"{value!r} is not a dictionary")
         elif attribute.isa == 'class':
             if not isinstance(value, attribute.class_type):
                 raise TypeError("%s is not a valid %s (got a %s instead)" % (name, attribute.class_type, type(value)))

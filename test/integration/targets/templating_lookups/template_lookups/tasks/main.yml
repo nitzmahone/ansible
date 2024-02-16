@@ -8,7 +8,7 @@
 - name: verify the UNICODE_VAR is defined
   assert:
     that:
-      - "unicode_var_value.stdout"
+      - "unicode_var_value.stdout is truthy"
 
 - name: use env lookup to get UNICODE_VAR value
   set_fact:
