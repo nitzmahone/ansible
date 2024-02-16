@@ -557,9 +557,9 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getattr(obj, attribute), attribute)
 
     def call(
-        self,  # noqa: B902
-        context: Context,
-        obj: t.Any,
+        self,
+        __context: Context,
+        __obj: t.Any,
         *args: t.Any,
         **kwargs: t.Any,
     ) -> t.Any:
@@ -567,11 +567,11 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         port = tc.templar.proxy_or_render_template
 
         # FUTURE: this doesn't scale well- as we add more globals that need special handling, we may want to move that down into the globals
-        if obj == tc.templar._lookup or obj == tc.templar._query_lookup:  # we can't use reference equality here; bound methods differ by instance
+        if __obj == tc.templar._lookup or __obj == tc.templar._query_lookup:  # we can't use reference equality here; bound methods differ by instance
             with _JinjaConstToTrustedTemplate():
-                res = super().call(context, obj, args[0], *port(args[1:]), **port(kwargs))
+                res = super().call(__context, __obj, args[0], *port(args[1:]), **port(kwargs))
         else:
-            res = super().call(context, obj, *port(args), **port(kwargs))
+            res = super().call(__context, __obj, *port(args), **port(kwargs))
 
         return port(res)
 

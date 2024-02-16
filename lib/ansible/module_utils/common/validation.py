@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import functools
 import json
 import os
 import re
@@ -389,8 +388,8 @@ def check_type_str(value, allow_conversion=True, param=None, prefix=''):
 
 
 # FIXME: bikeshed name
-check_type_str_no_conversion = functools.partial(check_type_str, allow_conversion=False)
-check_type_str_no_conversion.__name__ = "str_no_conversion"
+def check_type_str_no_conversion(value) -> str:
+    return check_type_str(value, allow_conversion=False)
 
 
 def check_type_list(value):

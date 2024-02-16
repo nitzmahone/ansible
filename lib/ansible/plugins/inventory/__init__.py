@@ -33,7 +33,7 @@ from ansible.plugins import AnsiblePlugin
 from ansible.plugins.cache import CachePluginAdjudicator as CacheObject
 from ansible.module_utils.common.text.converters import to_bytes, to_native
 from ansible.module_utils.six import string_types
-from ansible.template.templar import Templar, TemplateOptions
+from ansible.template.templar import Templar, TemplateOptions, TemplateMode
 from ansible.utils.display import Display
 from ansible.utils.vars import combine_vars, load_extra_vars
 from ansible.utils.datatag import AnsibleVariableVisitor
@@ -167,7 +167,7 @@ class _BaseInventoryPlugin(AnsiblePlugin):
     # it by default.
     _sanitize_group_name = staticmethod(to_safe_group_name)
 
-    def __init__(self):
+    def __init__(self) -> None:
 
         super().__init__()
 
@@ -504,14 +504,17 @@ class _AutoTrustInputTemplar(Templar):
 
         self._visitor = AnsibleVariableVisitor(trusted_as_template=True)
 
-    def template(self, variable: t.Any, *args, **kwargs) -> t.Any:
-        # FIXME: why does this pass *args and **kwargs instead of discrete arguments?
-        return super().template(self._visitor.visit(variable), *args, **kwargs)
+    def template(
+            self,
+            variable: t.Any,
+            *,
+            options: TemplateOptions | None = None,
+            mode: TemplateMode = TemplateMode.DEFAULT,
+    ) -> t.Any:
+        return super().template(self._visitor.visit(variable), options=options, mode=mode)
 
-    def evaluate_expression(self, expression: str, *args, **kwargs) -> t.Any:
-        # FIXME: why does this pass *args and **kwargs instead of discrete arguments?
-        return super().evaluate_expression(self._visitor.visit(expression), *args, **kwargs)
+    def evaluate_expression(self, expression: str, disable_lookups: bool = False, escape_backslashes=True) -> t.Any:
+        return super().evaluate_expression(self._visitor.visit(expression), disable_lookups=disable_lookups, escape_backslashes=escape_backslashes)
 
-    def evaluate_conditional(self, conditional: str, *args, **kwargs) -> bool:
-        # FIXME: why does this eat *args and **kwargs?
+    def evaluate_conditional(self, conditional: str | bool | None) -> bool:
         return super().evaluate_conditional(self._visitor.visit(conditional))
