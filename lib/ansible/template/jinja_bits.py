@@ -614,7 +614,7 @@ def _wrap_test(func):
     def wrapper(*args, **kwargs) -> bool:
         res = func(*args, **kwargs)
 
-        if type(res) is not bool:
+        if not isinstance(res, bool):
             # FIXME: should this be a deprecation warning that will eventually be a hard error, or?
             # FIXME: access templatecontext/runtime stuff to include useful info about the source of the problem and the name of the broken test
             display.warning(msg=f"test FIXME returned a non-boolean result of type {type(res)!r}")
