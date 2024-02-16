@@ -662,6 +662,7 @@ class Templar:
             raise AnsibleUndefinedVariable(f"error while evaluating conditional {conditional_repr}: {e}") from e
 
         if isinstance(result, bool):
+            _display.debug(f"Evaluated conditional {conditional!r} : {result}")
             return result
 
         bool_result = bool(result)

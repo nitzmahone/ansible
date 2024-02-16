@@ -54,41 +54,16 @@ class Conditional:
             setattr(self, name, [value])
 
     def evaluate_conditional(self, templar: Templar, all_vars: dict[str, t.Any]) -> bool:
-        '''
-        Loops through the conditionals set on this object, returning
-        False if any of them evaluate as such.
-        '''
+        """Loops through the conditionals set on this object, returning False if any of them evaluate as such."""
         return self.evaluate_conditional_with_result(templar, all_vars)[0]
 
     def evaluate_conditional_with_result(self, templar: Templar, all_vars: dict[str, t.Any]) -> tuple[bool, t.Optional[str]]:
-        """Loops through the conditionals set on this object, returning
-        False if any of them evaluate as such as well as the condition
-        that was false.
-        """
-        for conditional in self.when:
-            # FIXME: WHY?! maybe defaults from playbook conditionals?
-            if conditional is None or conditional == "":
-                res = True
-            elif isinstance(conditional, bool):
-                res = conditional
-            else:
-                try:
-                    res = self._check_conditional(conditional, templar, all_vars)
-                except (UndefinedError, AnsibleError) as e:
-                    raise AnsibleError(
-                        "The conditional check '%s' failed. The error was: %s" % (to_native(conditional), to_native(e)),
-                        obj=getattr(self, '_ds', None)
-                    )
-
-            display.debug("Evaluated conditional (%s): %s" % (conditional, res))
-            if not res:
-                return res, conditional
-
-        return True, None
-
-    def _check_conditional(self, conditional: str, templar: Templar, all_vars: dict[str, t.Any]) -> bool:
-        # ensure we have a "known state" templar config (eg, no overridden junk)
-        # FIXME: can we do this better?
+        """Loops through the conditionals set on this object, returning False if any of them evaluate as such, as well as the condition that was False."""
+        # FIXME: need a better API pattern for this (previously directly patching available_variables)
         conditional_templar = Templar(templar._loader, all_vars)
 
-        return conditional_templar.evaluate_conditional(conditional)
+        for conditional in self.when:
+            if not conditional_templar.evaluate_conditional(conditional):
+                return False, conditional
+
+        return True, None

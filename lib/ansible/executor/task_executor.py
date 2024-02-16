@@ -441,7 +441,6 @@ class TaskExecutor:
         try:
             conditional_result, false_condition = self._task.evaluate_conditional_with_result(templar, tempvars)
             if not conditional_result:
-                display.debug("when evaluation is False, skipping this task")
                 return dict(changed=False, skipped=True, skip_reason='Conditional result was False', false_condition=false_condition)
         except AnsibleError as e:
             # loop error takes precedence

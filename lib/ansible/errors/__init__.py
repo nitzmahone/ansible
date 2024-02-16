@@ -350,7 +350,8 @@ class AnsibleActionFail(AnsibleAction):
                                                 suppress_extended_error=suppress_extended_error, orig_exc=orig_exc, result=result)
 
         result_overrides = {'failed': True, 'msg': message}
-        if sys.exception():
+        # deprecated: description='use sys.exception()' python_version='3.11'
+        if sys.exc_info()[1]:
             result_overrides['exception'] = traceback.format_exc()
 
         self.result.update(result_overrides)
