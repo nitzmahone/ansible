@@ -289,7 +289,8 @@ class JinjaPluginIntercept(c.MutableMapping):
         except KeyError:
             self._seen_it.remove(key)
             plugin_type = self._pluginloader.type
-            raise AnsibleTemplatePluginNotFoundError(f'{plugin_type} plugin {key!r} not found') from None
+            message = f'{plugin_type} plugin {key!r} not found{": " + str(original_exc) if original_exc else ""}'
+            raise AnsibleTemplatePluginNotFoundError(message) from original_exc
 
         # FIXME: can/should we handle this in finalize instead, or at least allow plugins to opt into/out of this behavior?
         # if i do have func and it is a filter, it needs wrapping
@@ -299,6 +300,8 @@ class JinjaPluginIntercept(c.MutableMapping):
             func = _unroll_iterator(func)
 
             # FIXME: we should probably be running the result of filter plugins through proxy_or_render_template
+        else:
+            func = _wrap_test(func)
 
         return func
 
@@ -606,11 +609,28 @@ def _is_rolled(value):
     )
 
 
+def _wrap_test(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs) -> bool:
+        res = func(*args, **kwargs)
+
+        if type(res) is not bool:
+            # FIXME: should this be a deprecation warning that will eventually be a hard error, or?
+            # FIXME: access templatecontext/runtime stuff to include useful info about the source of the problem and the name of the broken test
+            display.warning(msg=f"test FIXME returned a non-boolean result of type {type(res)!r}")
+            res = bool(res)
+
+        return res
+
+    return wrapper
+
+
 def _unroll_iterator(func):
     """Wrapper function, that intercepts the result of a templating
     and auto unrolls a generator, so that users are not required to
     explicitly use ``|list`` to unroll.
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         # FIXME: blind PorRTing *args/**kwargs tries to wrap Jinja context/eval_ctx and other unknown objects; causes a type warning
         port = TemplateContext.current_or_raise().templar.proxy_or_render_template
@@ -619,7 +639,7 @@ def _unroll_iterator(func):
             ret = list(ret)
         return port(ret)
 
-    return functools.update_wrapper(wrapper, func)
+    return wrapper
 
 
 def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:

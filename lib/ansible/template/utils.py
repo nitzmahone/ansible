@@ -69,6 +69,7 @@ class AnsibleUndefined(StrictUndefined):
         return self
 
     def __repr__(self):
+        # FIXME: this (and probably also str) should raise an undefined error
         return 'AnsibleUndefined(hint={0!r}, obj={1!r}, name={2!r})'.format(
             self._undefined_hint,
             self._undefined_obj,

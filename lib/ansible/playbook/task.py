@@ -27,7 +27,7 @@ from ansible.module_utils.common.text.converters import to_native
 from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.six import string_types
 from ansible.parsing.mod_args import ModuleArgsParser
-from ansible.plugins.loader import action_loader, lookup_loader
+from ansible.plugins.loader import action_loader, module_loader, lookup_loader
 from ansible.playbook.attribute import NonInheritableFieldAttribute
 from ansible.playbook.base import Base
 from ansible.playbook.block import Block
@@ -39,6 +39,7 @@ from ansible.playbook.notifiable import Notifiable
 from ansible.playbook.role import Role
 from ansible.playbook.taggable import Taggable
 from ansible.template.templar import TemplateOptions, TemplateMode
+from ansible.template.jinja_bits import is_possibly_template, _TEMPLATE_OVERRIDE_DEFAULT
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
@@ -147,6 +148,20 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
 
         # FIXME: this is None for pseudo-actions like include_tasks, should it be?
         # FIXME: this is None for anything using old `action: assert` or `action: module: assert`, should it be?
+        if not self.resolved_action and self.action and is_possibly_template(self.action, _TEMPLATE_OVERRIDE_DEFAULT):
+            # FIXME: omit/undefined handling?
+            self.action = templar.template(self.action)
+
+            # FIXME: extract to a helper method, shared with Task.post_validate_args
+            context = action_loader.find_plugin_with_context(self.action, collection_list=self.collections)
+            if not context.resolved:
+                context = module_loader.find_plugin_with_context(self.action, collection_list=self.collections)
+
+            if context.resolved:
+                self.resolved_action = context.resolved_fqcn
+            else:
+                raise AnsibleError(f"FIXME couldn't late-load templated module/action {self.action}")
+
         if self.resolved_action:
             ctx = action_loader.get_with_context(self.resolved_action, collection_list=self.collections, class_only=True)
 

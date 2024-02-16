@@ -111,6 +111,7 @@ class TaskExecutor:
                             res['changed'] = True
                         if res['skipped'] and ('skipped' not in item or ('skipped' in item and not item['skipped'])):
                             res['skipped'] = False
+                        # FIXME: normalize `failed` to a bool, warn if the action/module used non-bool
                         if 'failed' in item and item['failed']:
                             item_ignore = item.pop('_ansible_ignore_errors')
                             if not res.get('failed'):
@@ -136,6 +137,7 @@ class TaskExecutor:
                                 res[array] = res[array] + item[array]
                                 del item[array]
 
+                    # FIXME: normalize `failed` to a bool, warn if the action/module used non-bool
                     if not res.get('failed', False):
                         res['msg'] = 'All items completed'
                     if res['skipped']:
@@ -332,6 +334,7 @@ class TaskExecutor:
                 res,
                 task_fields=task_fields,
             )
+            # FIXME: normalize `failed` to a bool, warn if the action/module used non-bool
             if tr.is_failed() or tr.is_unreachable():
                 self._final_q.send_callback('v2_runner_item_on_failed', tr)
             elif tr.is_skipped():

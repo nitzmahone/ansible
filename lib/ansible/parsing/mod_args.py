@@ -24,6 +24,7 @@ from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_text
 from ansible.parsing.splitter import parse_kv, split_args
 from ansible.plugins.loader import module_loader, action_loader
+from ansible.template.jinja_bits import is_possibly_template, _TEMPLATE_OVERRIDE_DEFAULT
 from ansible.template.templar import Templar
 from ansible.utils.fqcn import add_internal_fqcns
 from ansible.utils.sentinel import Sentinel
@@ -149,6 +150,7 @@ class ModuleArgsParser:
         final_args = dict()
         if additional_args:
             if isinstance(additional_args, str):
+                # FIXME: should this be is_possibly_template?
                 if Templar().is_template(additional_args):
                     final_args['_variable_params'] = additional_args
                 else:
@@ -282,7 +284,7 @@ class ModuleArgsParser:
         if 'action' in self._task_ds:
             # an old school 'action' statement
             thing = self._task_ds['action']
-            action, args = self._normalize_parameters(thing, action=action, additional_args=additional_args)
+            action, args = self._normalize_parameters(thing, additional_args=additional_args)
 
         # local_action
         if 'local_action' in self._task_ds:
@@ -291,7 +293,7 @@ class ModuleArgsParser:
                 raise AnsibleParserError("action and local_action are mutually exclusive", obj=self._task_ds)
             thing = self._task_ds.get('local_action', '')
             delegate_to = 'localhost'
-            action, args = self._normalize_parameters(thing, action=action, additional_args=additional_args)
+            action, args = self._normalize_parameters(thing, additional_args=additional_args)
 
         # module: <stuff> is the more new-style invocation
 
@@ -313,8 +315,11 @@ class ModuleArgsParser:
                 is_action_candidate = True
             elif skip_action_validation:
                 is_action_candidate = True
+            elif not skip_action_validation and is_possibly_template(item, _TEMPLATE_OVERRIDE_DEFAULT):
+                is_action_candidate = True
             else:
                 try:
+                    # FIXME: extract to a helper method, shared with Task.post_validate_args
                     context = action_loader.find_plugin_with_context(item, collection_list=self._collection_list)
                     if not context.resolved:
                         context = module_loader.find_plugin_with_context(item, collection_list=self._collection_list)
@@ -349,6 +354,7 @@ class ModuleArgsParser:
                                          obj=self._task_ds)
         elif args.get('_raw_params', '') != '' and action not in RAW_PARAM_MODULES:
             raw_params = args.pop('_raw_params')
+            # FIXME: should this be is_possibly_template?
             if Templar().is_template(raw_params):
                 args['_variable_params'] = raw_params
             else:
