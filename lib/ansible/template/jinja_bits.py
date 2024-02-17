@@ -658,10 +658,7 @@ def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
         # Convert an UndefinedError generated internally by Jinja2 back into an AnsibleUndefined instance.
         # This instance may be embedded in a data structure and will be subject to UndefinedBehavior handling during template finalization.
         # FIXME: figure out what we should be setting here for obj, key, etc.
-        yield AnsibleUndefined(
-            template_source=TemplateContext.current_or_raise().template_value,
-            hint=ex.message,
-        )
+        yield AnsibleUndefined(hint=ex.message)
 
 
 def _flatten_and_lazify_vars(mapping: c.Mapping) -> t.Iterable[c.Mapping]:

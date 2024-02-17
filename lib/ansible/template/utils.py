@@ -42,6 +42,7 @@ class AnsibleUndefined(StrictUndefined):
     """A custom Undefined class, which returns further Undefined objects on access, rather than throwing an exception."""
 
     __slots__ = ('_undefined_template_source',)
+    __repr__ = __getattr__ = __getitem__ = StrictUndefined._fail_with_undefined_error
 
     def __init__(
             self,
@@ -49,7 +50,6 @@ class AnsibleUndefined(StrictUndefined):
             obj: t.Any = missing,
             name: t.Optional[str] = None,
             *args,
-            template_source: str | None = None,
             **kwargs,
     ):
         if not hint and name and obj is not missing:
@@ -58,27 +58,10 @@ class AnsibleUndefined(StrictUndefined):
 
         kwargs.update(hint=hint, obj=obj, name=name)
         super().__init__(*args, **kwargs)
-        self._undefined_template_source = template_source
 
-    def __getattr__(self, name):
-        # Return original Undefined object to preserve the first failure context
-        return self
-
-    def __getitem__(self, key):
-        # Return original Undefined object to preserve the first failure context
-        return self
-
-    def __repr__(self):
-        # FIXME: this (and probably also str) should raise an undefined error
-        return 'AnsibleUndefined(hint={0!r}, obj={1!r}, name={2!r})'.format(
-            self._undefined_hint,
-            self._undefined_obj,
-            self._undefined_name
-        )
-
-    def __contains__(self, item):
-        # Return original Undefined object to preserve the first failure context
-        return self
+        # FIXME: figure out how to preserve the template context where the undefined originated when we're simply re-creating an AnsibleUndefined after
+        #        catching an UndefinedError raised from touching an AnsibleUndefined, specifically in jinja_bits._flatten_nodes
+        self._undefined_template_source = TemplateContext.current_or_raise().template_value
 
 
 class _OmitType:

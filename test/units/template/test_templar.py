@@ -501,3 +501,15 @@ def test_stop_on_container() -> None:
 @pytest.mark.parametrize("value", [True, False])
 def test_stripped_conditionals(value: bool) -> None:
     assert Templar().evaluate_conditional(TRUST.tag(f"""\n \r\n \t{{{{ {value} }}}} \n\n  \t \t\t  """)) == value
+
+
+@pytest.mark.parametrize("template, variables", (
+    ("{{ undefined_var.undefined_attribute }}", {}),
+    ("{{ some_dict.undefined_key }}", dict(some_dict={})),
+))
+def test_jinja_sourced_undefined(template: str, variables: dict[str, t.Any]) -> None:
+    """
+    Ensure when Jinja encounters AnsibleUndefined and raises UndefinedError,
+    that we turn it back into AnsibleUndefined so undefined_behavior can handle it during finalization.
+    """
+    assert Templar(variables=variables).template(TRUST.tag(template), options=TemplateOptions(undefined_behavior=BEST_EFFORT)) == template
