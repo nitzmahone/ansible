@@ -20,7 +20,6 @@ from __future__ import annotations
 import unittest
 
 from ansible.module_utils.datatag import TrustedAsTemplate
-from ansible.template.utils import AnsibleUndefined
 from ansible.template.jinja_bits import AnsibleEnvironment
 from ansible.template.templar import Templar
 

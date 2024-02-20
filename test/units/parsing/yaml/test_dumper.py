@@ -26,7 +26,7 @@ from ansible.parsing import vault
 from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.parsing.yaml import dumper, objects
 from ansible.parsing.yaml.loader import AnsibleLoader
-from ansible.template.utils import AnsibleUndefined
+from ansible.template.jinja_bits import AnsibleUndefined
 
 from units.mock.yaml_helper import YamlTestUtils
 from units.mock.vault_helper import TextVaultSecret

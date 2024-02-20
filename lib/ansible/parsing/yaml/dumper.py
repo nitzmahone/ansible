@@ -24,7 +24,7 @@ from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.datatag.access import AnsibleAccessContext
 from ansible.module_utils.six import text_type
 from ansible.module_utils.common.yaml import SafeDumper
-from ansible.template.utils import AnsibleUndefined
+from ansible.template.jinja_bits import AnsibleUndefined
 from ansible.vars.hostvars import HostVars, HostVarsVars
 
 

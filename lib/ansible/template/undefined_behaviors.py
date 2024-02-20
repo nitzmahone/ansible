@@ -15,8 +15,8 @@ from ansible.errors import AnsibleUndefinedVariable
 from ansible.module_utils.datatag import NotATemplate
 from ansible.utils.display import Display
 
-from .utils import Omit, AnsibleUndefined
-from .lazy_containers import _finalize_template_result
+from .utils import Omit
+from .jinja_bits import AnsibleUndefined, _finalize_template_result
 
 _display = Display()
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import types
 
-from jinja2.runtime import StrictUndefined, Undefined
+from jinja2.runtime import Undefined
 
 import ansible.module_utils.compat.typing as t
 
@@ -17,7 +17,7 @@ from ansible.module_utils.datatag import (
     _try_get_internal_tags_mapping,
 )
 
-from .utils import Omit, AnsibleUndefined, TemplateContext
+from .utils import Omit, TemplateContext
 from .vault import _AnsibleTaggedVaultBomb
 
 from ansible.errors import AnsibleVariableTypeError
@@ -43,9 +43,10 @@ class _AnsibleLazyTemplateMixin:
         # FIXME: is there a better way to include callables like these, so we're not playing whack-a-mole
         type(''.startswith),  # builtin_function_or_method
         type(Omit),
+        # FIXME: if we optimize and use type reference equality, then we should only need AnsibleUndefined in here (circular ref issue)
         Undefined,
-        StrictUndefined,
-        AnsibleUndefined,
+        # StrictUndefined,
+        # AnsibleUndefined,
     )
 
     _container_types: set[type] = set()  # populated by our __init_subclass__
@@ -286,47 +287,3 @@ class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
 
     def native_copy(self) -> set:
         return set(set.__iter__(self))
-
-
-# FIXME: add tests to ensure this doesn't drift from allowed types
-def _finalize_template_result(o: t.Any, raise_on_unsupported_type: bool) -> t.Any:
-    """
-    Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions.
-    """
-    o_type = type(o)
-
-    from ansible.vars.hostvars import HostVars, HostVarsVars  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
-
-    value_type: type[dict | list | tuple | set]
-
-    if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
-        return o
-    # FIXME: delazifying HostVars/HostVarsVars here is correct but expensive- look at ways to do deferred lazy outside of templating or ?
-    elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict, HostVars, HostVarsVars):
-        value_expression = ((
-            _finalize_template_result(k, raise_on_unsupported_type),
-            _finalize_template_result(v, raise_on_unsupported_type)
-        ) for k, v in o.items() if v is not Omit)
-        value_type = dict
-    elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
-        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
-        value_type = list
-    elif o_type in (tuple, _AnsibleTaggedTuple, _AnsibleLazyTemplateTuple):
-        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
-        value_type = tuple
-    elif o_type in (set, _AnsibleTaggedSet, _AnsibleLazyTemplateSet):
-        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
-        value_type = set
-    elif o_type is AnsibleUndefined:
-        # FIXME: this assumes handle_undefined follows our variable type rules
-        return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o)
-    elif raise_on_unsupported_type:  # unsupported type (raise)
-        if o_type is _AnsibleTaggedVaultBomb:
-            o.detonate()
-
-        raise AnsibleVariableTypeError(variable_type=o_type)
-    else:  # unsupported type (do not raise)
-        return o
-
-    # avoiding tag_copy to minimize call stack depth when dealing with recursive template calls on deeply nested lazy containers
-    return AnsibleTaggedObject.tag(value_expression, AnsibleTaggedObject.tags(o), value_type=value_type)

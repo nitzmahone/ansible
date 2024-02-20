@@ -57,10 +57,10 @@ from ansible.parsing.dataloader import DataLoader
 
 from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, \
-    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression
+    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext
-from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
+from .lazy_containers import _AnsibleLazyTemplateMixin
 from .undefined_behaviors import FAIL_ON_UNDEFINED, UndefinedBehavior
 
 _display = Display()

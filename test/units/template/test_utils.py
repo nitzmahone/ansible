@@ -5,7 +5,8 @@ import pytest
 from jinja2 import UndefinedError
 
 from ansible.template.templar import Templar, _DEFAULT_TEMPLATE_OPTIONS
-from ansible.template.utils import AnsibleUndefined, TemplateContext
+from ansible.template.utils import TemplateContext
+from ansible.template.jinja_bits import AnsibleUndefined
 
 
 @pytest.fixture

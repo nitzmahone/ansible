@@ -11,9 +11,9 @@ import tempfile
 from collections import ChainMap
 from contextlib import nullcontext
 
-from jinja2 import pass_context, defaults
+from jinja2 import pass_context, defaults, UndefinedError, TemplateRuntimeError
 from jinja2.environment import Environment, Template, TemplateModule, TemplateExpression
-from jinja2.runtime import Undefined
+from jinja2.runtime import Undefined, StrictUndefined
 from jinja2.compiler import Frame
 from jinja2.lexer import TOKEN_VARIABLE_BEGIN, TOKEN_VARIABLE_END, TOKEN_STRING, Lexer
 from jinja2.nativetypes import NativeCodeGenerator
@@ -23,17 +23,20 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing, LRUCache
 
 from ansible.utils.display import Display
-from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError
+from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleVariableTypeError
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
-from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePosition, AnsibleTaggedObject, AnsibleDatatagBase
+from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePosition, AnsibleTaggedObject, AnsibleDatatagBase, _AnsibleTaggedDict, \
+    _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES, _AnsibleTaggedList, _AnsibleTaggedTuple, _AnsibleTaggedSet
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 from ansible.module_utils.six import string_types
+from ansible.module_utils import datatag
 from ansible.plugins.loader import filter_loader, test_loader, Jinja2Loader
 from .datatag import _JinjaConstTemplate, _JinjaConstToTrustedTemplate
 
-from .utils import AnsibleUndefined, Omit, TemplateContext, AnsibleUndefinedError
-from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateDict, _AnsibleTaggedDict
+from .utils import Omit, TemplateContext
+from .lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateDict, _AnsibleLazyTemplateList, _AnsibleLazyTemplateTuple, _AnsibleLazyTemplateSet
+from .vault import _AnsibleTaggedVaultBomb
 
 RANGE_TYPE = type(range(0))
 
@@ -218,6 +221,80 @@ class AnsibleTemplate(Template):
         locals: c.Mapping[str, t.Any] | None = None,
     ) -> Context:
         return _new_context(self.environment, self.name, self.blocks, vars, shared, self.globals, locals)
+
+
+class AnsibleUndefinedError(UndefinedError):
+    """
+    An Ansible specific subclass of Jinja's UndefinedError, used to preserve and later restore the original AnsibleUndefined value that raised the error.
+    This error is only raised by AnsibleUndefined and should never escape the templating system.
+    """
+    def __init__(self, message: str, source: AnsibleUndefined):
+        super().__init__(message)
+
+        self.source = source
+
+
+class AnsibleUndefined(StrictUndefined):
+    """A custom Undefined class, which returns further Undefined objects on access, rather than throwing an exception."""
+
+    __slots__ = ('_undefined_template_source',)
+
+    def __init__(
+        self,
+        hint: t.Optional[str] = None,
+        obj: t.Any = missing,
+        name: t.Optional[str] = None,
+        exc: t.Type[TemplateRuntimeError] = UndefinedError,
+        *args,
+        **kwargs,
+    ) -> None:
+        if not hint and name and obj is not missing:
+            obj_type_name = (obj.native_type if isinstance(obj, AnsibleTaggedObject) else type(obj)).__name__
+            hint = f"object of type {obj_type_name!r} has no attribute {name!r}"
+
+        kwargs.update(
+            hint=hint,
+            obj=obj,
+            name=name,
+            exc=exc,
+        )
+
+        super().__init__(*args, **kwargs)
+
+        self._undefined_template_source = TemplateContext.current_or_raise().template_value
+
+    # FIXME: we should probably intercept the dunder methods calling this instead -- and then make sure this function complains loudly if it is called
+    def _fail_with_undefined_error(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
+        raise AnsibleUndefinedError(self._undefined_message, self)
+
+    def __getattr__(self, name):
+        if name[:2] == "__":
+            raise AttributeError(name)
+
+        return self
+
+    def __getitem__(self, key):
+        return self
+
+    # FIXME: do this right, have thorough tests to catch anything that slips through
+    __repr__ = _fail_with_undefined_error
+    __iter__ = __str__ = __len__ = _fail_with_undefined_error
+    __eq__ = __ne__ = __bool__ = __hash__ = _fail_with_undefined_error
+    __contains__ = _fail_with_undefined_error
+    __add__ = __radd__ = __sub__ = __rsub__ = _fail_with_undefined_error
+    __mul__ = __rmul__ = __div__ = __rdiv__ = _fail_with_undefined_error
+    __truediv__ = __rtruediv__ = _fail_with_undefined_error
+    __floordiv__ = __rfloordiv__ = _fail_with_undefined_error
+    __mod__ = __rmod__ = _fail_with_undefined_error
+    __pos__ = __neg__ = _fail_with_undefined_error
+    __call__ = _fail_with_undefined_error
+    __lt__ = __le__ = __gt__ = __ge__ = _fail_with_undefined_error
+    __int__ = __float__ = __complex__ = _fail_with_undefined_error
+    __pow__ = __rpow__ = _fail_with_undefined_error
+
+
+# FIXME: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
+datatag._untaggable_types |= {AnsibleUndefined}
 
 
 # FIXME: this is no longer used (previously part of J2Vars init to filter locals), should we still do this? Probably not...
@@ -737,3 +814,47 @@ def is_possibly_all_template(value: str, overrides: TemplateOverrides):
     Return True if the given string starts with a Jinja overrides header or if it starts and ends with Jinja template delimiters.
     """
     return value.startswith(JINJA2_OVERRIDE) or overrides.starts_and_ends_with_jinja_delimiters(value)
+
+
+# FIXME: add tests to ensure this doesn't drift from allowed types
+def _finalize_template_result(o: t.Any, raise_on_unsupported_type: bool) -> t.Any:
+    """
+    Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions.
+    """
+    o_type = type(o)
+
+    from ansible.vars.hostvars import HostVars, HostVarsVars  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
+
+    value_type: type[dict | list | tuple | set]
+
+    if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
+        return o
+    # FIXME: delazifying HostVars/HostVarsVars here is correct but expensive- look at ways to do deferred lazy outside of templating or ?
+    elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict, HostVars, HostVarsVars):
+        value_expression = ((
+            _finalize_template_result(k, raise_on_unsupported_type),
+            _finalize_template_result(v, raise_on_unsupported_type)
+        ) for k, v in o.items() if v is not Omit)
+        value_type = dict
+    elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
+        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_type = list
+    elif o_type in (tuple, _AnsibleTaggedTuple, _AnsibleLazyTemplateTuple):
+        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_type = tuple
+    elif o_type in (set, _AnsibleTaggedSet, _AnsibleLazyTemplateSet):
+        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_type = set
+    elif o_type is AnsibleUndefined:
+        # FIXME: this assumes handle_undefined follows our variable type rules
+        return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o)
+    elif raise_on_unsupported_type:  # unsupported type (raise)
+        if o_type is _AnsibleTaggedVaultBomb:
+            o.detonate()
+
+        raise AnsibleVariableTypeError(variable_type=o_type)
+    else:  # unsupported type (do not raise)
+        return o
+
+    # avoiding tag_copy to minimize call stack depth when dealing with recursive template calls on deeply nested lazy containers
+    return AnsibleTaggedObject.tag(value_expression, AnsibleTaggedObject.tags(o), value_type=value_type)
