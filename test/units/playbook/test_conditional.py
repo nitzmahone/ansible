@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import unittest
 
+import pytest
+
+from ansible.vars.hostvars import HostVarsVars
 from units.mock.loader import DictDataLoader
 from unittest.mock import MagicMock
 
@@ -10,6 +13,8 @@ from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible import errors
 
 from ansible.playbook import conditional
+
+TRUST = TrustedAsTemplate()
 
 
 class TestConditional(unittest.TestCase):
@@ -62,9 +67,9 @@ class TestConditional(unittest.TestCase):
         self.assertFalse(m.is_template.called)
 
     def test_undefined(self):
-        when = [u"{{ some_undefined_thing }}"]
-        self.assertRaisesRegex(errors.AnsibleError, "The conditional check '{{ some_undefined_thing }}' failed",
-                               self._eval_con, when, {})
+        with pytest.raises(errors.AnsibleUndefinedVariable,
+                           match="error while evaluating conditional '{{ some_undefined_thing }}': 'some_undefined_thing' is undefined"):
+            self._eval_con([u"{{ some_undefined_thing }}"], {})
 
     def test_defined(self):
         variables = {'some_defined_thing': True}
@@ -101,24 +106,20 @@ class TestConditional(unittest.TestCase):
         self.assertTrue(ret)
 
     def test_nested_hostvars_undefined_values(self):
-        variables = {'dict_value': 1,
-                     'hostvars': {'host1': {'key1': 'value1',
-                                            'key2': '{{ dict_value }}'},
-                                  'host2': '{{ dict_value }}',
-                                  'host3': '{{ undefined_dict_value }}',
-                                  # no host4
-                                  },
-                     'some_dict': {'some_dict_key1': '{{ hostvars["host3"] }}'}
-                     }
+        variables = dict(
+            hostvars=dict(
+                host3=HostVarsVars(dict(key1=TRUST.tag('{{ undefined_dict_value }}')), None, 'host3'),
+            ),
+            some_dict=dict(some_dict_key1=TRUST.tag('{{ hostvars["host3"] }}')),
+        )
 
-        when = [u"some_dict.some_dict_key1 == hostvars['host3']"]
-        # self._eval_con(when, variables)
-        self.assertRaisesRegex(errors.AnsibleError,
-                               r"The conditional check 'some_dict.some_dict_key1 == hostvars\['host3'\]' failed",
-                               # "The conditional check 'some_dict.some_dict_key1 == hostvars['host3']' failed",
-                               # "The conditional check 'some_dict.some_dict_key1 == hostvars['host3']' failed.",
-                               self._eval_con,
-                               when, variables)
+        with pytest.raises(errors.AnsibleUndefinedVariable,
+                           match="error while evaluating conditional 'some_dict.some_dict_key1 == hostvars.host3': 'undefined_dict_value' is undefined"):
+            self._eval_con(["some_dict.some_dict_key1 == hostvars.host3"], variables)
+
+    def test_undefined_comparision_in_expression(self) -> None:
+        with pytest.raises(errors.AnsibleUndefinedVariable, match='error while evaluating conditional \'bogus_var == "foo"\': \'bogus_var\' is undefined'):
+            self._eval_con([TRUST.tag('bogus_var == "foo"')])
 
     def test_dict_undefined_values_bare(self):
         variables = {'dict_value': 1,
@@ -127,11 +128,9 @@ class TestConditional(unittest.TestCase):
                                                                  'key3': '{{ undefined_dict_value }}'
                                                                  }}
 
-        when = [u"some_defined_dict_with_undefined_values"]
-        self.assertRaisesRegex(errors.AnsibleError,
-                               "The conditional check 'some_defined_dict_with_undefined_values' failed.",
-                               self._eval_con,
-                               when, variables)
+        with pytest.raises(errors.AnsibleUndefinedVariable,
+                           match="error while evaluating conditional 'some_defined_dict_with_undefined_values': 'undefined_dict_value' is undefined"):
+            self._eval_con([u"some_defined_dict_with_undefined_values"], variables)
 
     def test_is_defined(self):
         variables = {'some_defined_thing': True}

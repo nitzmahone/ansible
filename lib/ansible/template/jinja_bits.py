@@ -12,7 +12,7 @@ from collections import ChainMap
 from contextlib import nullcontext
 
 from jinja2 import pass_context, defaults
-from jinja2.environment import Environment, Template, TemplateModule
+from jinja2.environment import Environment, Template, TemplateModule, TemplateExpression
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
 from jinja2.lexer import TOKEN_VARIABLE_BEGIN, TOKEN_VARIABLE_END, TOKEN_STRING, Lexer
@@ -181,6 +181,21 @@ class AnsibleContext(Context):
         return context
 
 
+class AnsibleTemplateExpression:
+    """
+    Wrapper around Jinja's TemplateExpression for converting AnsibleUndefinedError back into AnsibleUndefined.
+    This is needed to make expression error handling consistent with templates, since Jinja does not support a custom type for Environment.compile_expression.
+    """
+    def __init__(self, template_expression: TemplateExpression) -> None:
+        self._template_expression = template_expression
+
+    def __call__(self, *args, **kwargs) -> t.Any:
+        try:
+            return self._template_expression(*args, **kwargs)
+        except AnsibleUndefinedError as ex:
+            return ex.source
+
+
 class AnsibleTemplate(Template):
     """
     A helper class, which prevents Jinja2 from running lazy containers through dict().
@@ -192,6 +207,9 @@ class AnsibleTemplate(Template):
     def __del__(self):
         if self._source_tempfile:
             os.unlink(self._source_tempfile.name)
+
+    def __call__(self, *args, **kwargs) -> t.Any:
+        return self.render(*args, **kwargs)
 
     def new_context(
         self,

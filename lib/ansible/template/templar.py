@@ -57,7 +57,7 @@ from ansible.parsing.dataloader import DataLoader
 
 from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, \
-    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template
+    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext
 from .lazy_containers import _AnsibleLazyTemplateMixin, _finalize_template_result
@@ -370,14 +370,13 @@ class Templar:
                     template_result = variable
                 else:
                     if mode is TemplateMode.EXPRESSION:
-                        compiled_expression = self._compile_expression(variable, options)
-                        template_result = compiled_expression(self.available_variables)
+                        compiled_template = self._compile_expression(variable, options)
                     elif stop_on_template:
                         raise TemplateEncountered()
                     else:
                         compiled_template = self._compile_template(variable, options)
-                        template_result = compiled_template.render(self.available_variables)
 
+                    template_result = compiled_template(self.available_variables)
                     template_result = self._post_render_mutation(variable, template_result, options)
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
@@ -421,7 +420,7 @@ class Templar:
 
         return compiled_template
 
-    def _compile_expression(self, expression: str, options: TemplateOptions) -> TemplateExpression:
+    def _compile_expression(self, expression: str, options: TemplateOptions) -> AnsibleTemplateExpression:
         """
         Compile a Jinja expression, applying optional compile-time behavior via an environment overlay (if needed). The overlay is
         necessary to avoid mutating settings on the Templar's shared environment, which could be visible to other code running concurrently.
@@ -431,7 +430,7 @@ class Templar:
         # FIXME: disable_lookups not supported here?
 
         with _TemplateCompileContext(escape_backslashes=options.escape_backslashes):
-            return self.environment.compile_expression(expression, False)
+            return AnsibleTemplateExpression(self.environment.compile_expression(expression, False))
 
     def _post_render_mutation(self, template: str, result: t.Any, options: TemplateOptions) -> t.Any:
         if options.preserve_trailing_newlines and isinstance(result, str):

@@ -40,6 +40,10 @@ class TemplateContext(AmbientContextBase):
 
 
 class AnsibleUndefinedError(UndefinedError):
+    """
+    An Ansible specific subclass of Jinja's UndefinedError, used to preserve and later restore the original AnsibleUndefined value that raised the error.
+    This error is only raised by AnsibleUndefined and should never escape the templating system.
+    """
     def __init__(self, message: str, source: AnsibleUndefined):
         super().__init__(message)
 
