@@ -25,7 +25,7 @@ from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.plugins.action import ActionBase
 from ansible.template.templar import TemplateOptions
 from ansible.template.utils import Omit
-from ansible.template.undefined_behaviors import BestEffortWithWarnings, FAIL_ON_UNDEFINED
+from ansible.template.undefined_behaviors import BestEffort, FAIL_ON_UNDEFINED
 
 
 class ActionModule(ActionBase):
@@ -37,7 +37,7 @@ class ActionModule(ActionBase):
 
     def run(self, tmp=None, task_vars=None):
         # FIXME: we need more consistent error handling, either all failures should be ignored or none of them
-        best_effort = BestEffortWithWarnings()
+        best_effort = BestEffort()
 
         argument_spec = {
             'msg': {'type': 'raw', 'default': 'Hello world!'},

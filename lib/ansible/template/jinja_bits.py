@@ -13,7 +13,6 @@ from contextlib import nullcontext
 
 from jinja2 import pass_context, defaults
 from jinja2.environment import Environment, Template, TemplateModule
-from jinja2.exceptions import UndefinedError
 from jinja2.runtime import Undefined
 from jinja2.compiler import Frame
 from jinja2.lexer import TOKEN_VARIABLE_BEGIN, TOKEN_VARIABLE_END, TOKEN_STRING, Lexer
@@ -33,7 +32,7 @@ from ansible.module_utils.six import string_types
 from ansible.plugins.loader import filter_loader, test_loader, Jinja2Loader
 from .datatag import _JinjaConstTemplate, _JinjaConstToTrustedTemplate
 
-from .utils import AnsibleUndefined, Omit, TemplateContext
+from .utils import AnsibleUndefined, Omit, TemplateContext, AnsibleUndefinedError
 from .lazy_containers import _finalize_template_result, _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateDict, _AnsibleTaggedDict
 
 RANGE_TYPE = type(range(0))
@@ -447,18 +446,6 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
 
-    # def call_compare(self, left, *args) -> bool:
-    #     left = TemplateContext.current_or_raise().templar.proxy_or_render_template(left)
-    #
-
-    # def call_binop(
-    #     self, context: Context, operator: str, left: t.Any, right: t.Any
-    # ) -> t.Any:
-    #     left = TemplateContext.current_or_raise().templar.proxy_or_render_template(left)
-    #     right = TemplateContext.current_or_raise().templar.proxy_or_render_template(right)
-    #
-    #     return super().call_binop(context, operator, left, right)
-
     @property
     def lexer(self):
         """Return/cache an AnsibleLexer with settings from the current AnsibleEnvironment"""
@@ -522,10 +509,10 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             # FIXME: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
             return node_list[0]
 
-        # FIXME: need to smuggle undefined_behavior in from the current templating operation (eg, debug and templated task names w/ BestEffort)
         # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive finalize before we repr (otherwise we can end up
         # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
         node_list = _finalize_template_result(node_list, raise_on_unsupported_type=False)
+        node_list = TemplateContext.current_or_raise().options.undefined_behavior.post_finalize(node_list)
 
         return ''.join([to_text(v) for v in node_list])
 
@@ -648,17 +635,22 @@ def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
     The recursion is required to expand template imports (TemplateModule).
     Any UndefinedError exception encountered will be converted to an AnsibleUndefined instance.
     """
-    try:
-        for node in nodes:
+    iterator = iter(nodes)
+
+    while True:
+        try:
+            node = next(iterator)
+        except StopIteration:
+            break
+        except AnsibleUndefinedError as ex:
+            # Convert an AnsibleUndefinedError generated internally by Jinja2 back into an AnsibleUndefined instance.
+            # This instance may be embedded in a data structure and will be subject to UndefinedBehavior handling during template finalization.
+            yield ex.source
+        else:
             if type(node) is TemplateModule:  # pylint: disable=unidiomatic-typecheck
                 yield from _flatten_nodes(node._body_stream)
-
-            yield node
-    except UndefinedError as ex:
-        # Convert an UndefinedError generated internally by Jinja2 back into an AnsibleUndefined instance.
-        # This instance may be embedded in a data structure and will be subject to UndefinedBehavior handling during template finalization.
-        # FIXME: figure out what we should be setting here for obj, key, etc.
-        yield AnsibleUndefined(hint=ex.message)
+            else:
+                yield node
 
 
 def _flatten_and_lazify_vars(mapping: c.Mapping) -> t.Iterable[c.Mapping]:

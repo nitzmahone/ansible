@@ -99,9 +99,3 @@ class TestCountNewlines(unittest.TestCase):
 
     def test_mostly_newlines(self):
         self.assertEqual(Templar._count_newlines_from_end(u'The quick brown fox jumped over the lazy dog' + u'\n' * 1000), 1000)
-
-
-def test_ansible_undefined_getattr_self() -> None:
-    value = AnsibleUndefined()
-
-    assert getattr(value, 'foo') is value

@@ -20,5 +20,4 @@
     - assert:
         that:
           - res.failed
-          # FIXME: update this once we know what the error message will be
-          - res.msg is contains("undefined BLAH FIXME")
+          - res.msg is contains("'nested_undefined_variable' is undefined")

@@ -30,7 +30,7 @@ from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObj
 from ansible.plugins.loader import init_plugin_loader
 from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError, TemplateMode
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template
-from ansible.template.undefined_behaviors import BEST_EFFORT
+from ansible.template.undefined_behaviors import BestEffort, BestEffortOmitUndefined
 from ansible.utils.display import Display
 from units.mock.loader import DictDataLoader
 
@@ -167,7 +167,7 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
 
         # FIXME: this currently expects the best effort result to match the hint, which is a reconstructed version of the original template with additional
         #        spaces, which may not be what we want (or what we end up with after refactoring)
-        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_var}}"), options=TemplateOptions(undefined_behavior=BEST_EFFORT)), "{{ bad_var }}")
+        assert "'bad_var' is undefined" in templar.template(TrustedAsTemplate().tag("{{bad_var}}"), options=TemplateOptions(undefined_behavior=BestEffort()))
 
         # test setting available_variables
         templar.available_variables = dict(foo="bam")
@@ -219,7 +219,7 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
 
     def test_lookup_jinja_undefined(self):
         self.assertRaisesRegex(AnsibleUndefinedVariable,
-                               "undefined BLAH FIXME",  # FIXME: update with correct message once we know what it should be
+                               "'an_undefined_jinja_var' is undefined",
                                self.templar.template,
                                TrustedAsTemplate().tag('{{ lookup("list", an_undefined_jinja_var) }}'))
 
@@ -251,7 +251,7 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
 
     def test_lookup_jinja_list_wantlist_undefined(self):
         self.assertRaisesRegex(AnsibleUndefinedVariable,
-                               "undefined BLAH FIXME",  # FIXME: update with correct message once we know what it should be
+                               "'some_undefined_var' is undefined",
                                self.templar.template,
                                TrustedAsTemplate().tag('{{ lookup("list", some_undefined_var, wantlist=True) }}'))
 
@@ -503,13 +503,23 @@ def test_stripped_conditionals(value: bool) -> None:
     assert Templar().evaluate_conditional(TRUST.tag(f"""\n \r\n \t{{{{ {value} }}}} \n\n  \t \t\t  """)) == value
 
 
-@pytest.mark.parametrize("template, variables", (
-    ("{{ undefined_var.undefined_attribute }}", {}),
-    ("{{ some_dict.undefined_key }}", dict(some_dict={})),
+@pytest.mark.parametrize("template, variables, error", (
+    ("{{ undefined_var.undefined_attribute }}", {}, "'undefined_var' is undefined >>"),
+    ("{{ some_dict['undefined_key'] }}", dict(some_dict={}), "object of type 'dict' has no attribute 'undefined_key' >>"),
+    ("{{ some_dict.undefined_key }}", dict(some_dict={}), "object of type 'dict' has no attribute 'undefined_key' >>"),
+    ("{{ m1 }} {{ m2 }} here", {}, "<< error #1 - 'm1' is undefined >> << error #2 - 'm2' is undefined >> here"),
 ))
-def test_jinja_sourced_undefined(template: str, variables: dict[str, t.Any]) -> None:
+def test_jinja_sourced_undefined(template: str, variables: dict[str, t.Any], error: str) -> None:
     """
     Ensure when Jinja encounters AnsibleUndefined and raises UndefinedError,
     that we turn it back into AnsibleUndefined so undefined_behavior can handle it during finalization.
     """
-    assert Templar(variables=variables).template(TRUST.tag(template), options=TemplateOptions(undefined_behavior=BEST_EFFORT)) == template
+    assert error in Templar(variables=variables).template(TRUST.tag(template), options=TemplateOptions(undefined_behavior=BestEffort()))
+
+
+def test_omit_concat() -> None:
+    assert Templar().template(TRUST.tag("{{ omit }}hi{{ omit }} mom")) == 'hi mom'
+
+
+def test_omit_undefined_concat() -> None:
+    assert Templar().template(TRUST.tag("{{ a }}hi{{ b }} mom"), options=TemplateOptions(undefined_behavior=BestEffortOmitUndefined())) == 'hi mom'

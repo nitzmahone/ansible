@@ -30,7 +30,7 @@ DOCUMENTATION = '''
 '''
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleAssertionError, AnsibleParserError
+from ansible.errors import AnsibleError, AnsibleAssertionError, AnsibleParserError, AnsibleTemplateError
 from ansible.executor.play_iterator import IteratingStates
 from ansible.module_utils.common.text.converters import to_text
 from ansible.playbook.handler import Handler
@@ -39,7 +39,7 @@ from ansible.playbook.task import Task
 from ansible.plugins.loader import action_loader
 from ansible.plugins.strategy import StrategyBase
 from ansible.template.templar import Templar, TemplateOptions, as_non_templatable_text
-from ansible.template.undefined_behaviors import BEST_EFFORT
+from ansible.template.undefined_behaviors import BestEffort
 from ansible.utils.display import Display
 
 display = Display()
@@ -167,6 +167,8 @@ class StrategyModule(StrategyBase):
                     run_once = False
                     work_to_do = True
 
+                    host_name = host.get_name()
+
                     # check to see if this task should be skipped, due to it being a member of a
                     # role which has already run (and whether that role allows duplicate execution)
                     if not isinstance(task, Handler) and task._role:
@@ -218,17 +220,16 @@ class StrategyModule(StrategyBase):
                             any_errors_fatal = True
 
                         if not callback_sent:
-                            display.debug("sending task start callback, copying the task so we can template it temporarily")
+                            # FIXME: why is this being templated per-host? it's inconsistent with free (templated once)
                             saved_name = task.name
-                            display.debug("done copying, going to template now")
+
                             try:
-                                # FIXME: should a failure here be a warning?
-                                task.name = as_non_templatable_text(templar.template(task.name, options=TemplateOptions(undefined_behavior=BEST_EFFORT)))
-                                display.debug("done templating")
-                            except Exception:
-                                # just ignore any errors during task name templating,
-                                # we don't care if it just shows the raw name
-                                display.debug("templating failed for some reason")
+                                with BestEffort.warning_context() as best_effort:
+                                    task.name = as_non_templatable_text(templar.template(task.name, options=TemplateOptions(undefined_behavior=best_effort)))
+                            except AnsibleTemplateError as ex:
+                                display.warning(f'Templating task name {task.name!r} failed: {ex}')
+                                display.debug(f'Templating task name {task.name!r} failed: {ex}', host=host_name)
+
                             display.debug("here goes the callback...")
                             if isinstance(task, Handler):
                                 self._tqm.send_callback('v2_playbook_on_handler_task_start', task)
@@ -238,7 +239,7 @@ class StrategyModule(StrategyBase):
                             callback_sent = True
                             display.debug("sending task start callback")
 
-                        self._blocked_hosts[host.get_name()] = True
+                        self._blocked_hosts[host_name] = True
                         self._queue_task(host, task, task_vars, play_context)
                         del task_vars
 

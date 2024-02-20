@@ -44,8 +44,7 @@ def listify_lookup_plugin_terms(terms, templar, loader=None, fail_on_undefined=T
         terms = [terms]
 
     if isinstance(undefined_behavior, BestEffortOmitUndefined):
-        for warning in undefined_behavior.warnings():
-            # FIXME: add context to warning for template?
-            display.warning(warning)
+        # FIXME: add context to warning for template?
+        undefined_behavior.emit_warnings()
 
     return terms

@@ -10,8 +10,6 @@
 
     - assert:
         that:
-          # FIXME: update this once we know what the new error message will be
           - result is failed
-          - '"undefined BLAH FIXME" in result.msg'
           #- '"foo[0]" in result.msg'
-          #- '"object has no element 0" in result.msg'
+          - '"object has no element 0" in result.msg'

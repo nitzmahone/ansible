@@ -73,4 +73,4 @@
 
 - assert:
     that:
-      - result.msg | regex_search("^mixed composite valid template .. bogus_var .. .. another_bogus_var .. another valid template$") is not none
+      - result.msg | regex_search("^mixed composite valid template .* 'bogus_var' is undefined .* 'another_bogus_var' is undefined .* another valid template$") is not none

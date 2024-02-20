@@ -70,6 +70,6 @@ class LookupModule(LookupBase):
             var = term.split()[0]
             val = os.environ.get(var, d)
             if isinstance(val, AnsibleUndefined):
-                val = AnsibleUndefined(f'The envionrment variable {var!r} is not set.')
+                val = AnsibleUndefined(f'The environment variable {var!r} is not set.')
             ret.append(val)
         return ret

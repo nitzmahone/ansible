@@ -8,6 +8,4 @@
     - assert:
         that:
           - res.failed
-          # FIXME: update this once we know what the error message will be
-          - res.msg is contains("undefined BLAH FIXME")
-          # - "\"'undefined_variable' is undefined\" in res.msg"
+          - res.msg is contains("'undefined_variable' is undefined")
