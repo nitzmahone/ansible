@@ -34,7 +34,7 @@ from ansible.module_utils import datatag
 from ansible.plugins.loader import filter_loader, test_loader, Jinja2Loader
 from .datatag import _JinjaConstTemplate, _JinjaConstToTrustedTemplate
 
-from .utils import Omit, TemplateContext
+from .utils import Omit, TemplateContext, _repr_from
 from .lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateDict, _AnsibleLazyTemplateList, _AnsibleLazyTemplateTuple, _AnsibleLazyTemplateSet
 from .vault import _AnsibleTaggedVaultBomb
 
@@ -120,8 +120,7 @@ class TemplateOverrides:
             eol = template.find('\n')
 
             if eol == -1:
-                from .templar import Templar
-                raise ValueError(f"Missing newline after Jinja2 override: {Templar._repr_from(template)}")
+                raise ValueError(f"Missing newline after Jinja2 override: {_repr_from(template)}")
 
             line = template[len(JINJA2_OVERRIDE):eol]
             template = template[eol + 1:]

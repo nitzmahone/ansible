@@ -4,6 +4,7 @@ import typing as t
 
 from ansible.module_utils import datatag
 from ansible.module_utils.datatag.access import AmbientContextBase
+from ansible.module_utils.datatag import AnsibleSourcePosition
 
 if t.TYPE_CHECKING:
     from .templar import Templar, TemplateOptions
@@ -57,3 +58,18 @@ Omit = object.__new__(_OmitType)
 
 # FIXME: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
 datatag._untaggable_types |= {type(Omit)}
+
+
+def _repr_from(value: t.Any) -> str:
+    """Return the repr() of the given value, appending attribution of the source position, if available."""
+    # FIXME: FDI028 - initial prototype, is this what we want?
+    #        should it be part of our public interface?
+    #        should this be part of AnsibleSourcePosition or otherwise in the datatag module_utils?
+
+    # FIXME: need to elide container values and large strings
+    src_pos = AnsibleSourcePosition.get_tag(value)
+
+    if src_pos:
+        return f'{value!r} from {str(src_pos)!r}'
+
+    return f'{value!r}'

@@ -29,7 +29,6 @@ from collections import ChainMap
 
 from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
-from jinja2.environment import TemplateExpression
 from jinja2 import __version__ as jinja2_version
 
 from ansible import constants as C
@@ -59,7 +58,7 @@ from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, \
     _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
-from .utils import Omit, TemplateContext
+from .utils import Omit, TemplateContext, _repr_from
 from .lazy_containers import _AnsibleLazyTemplateMixin
 from .undefined_behaviors import FAIL_ON_UNDEFINED, UndefinedBehavior
 
@@ -177,21 +176,6 @@ class Templar:
             self._environment = env
 
         return self._environment
-
-    @staticmethod
-    def _repr_from(value: t.Any) -> str:
-        """Return the repr() of the given value, appending attribution of the source position, if available."""
-        # FIXME: FDI028 - initial prototype, is this what we want?
-        #        should it be part of our public interface?
-        #        should this be part of AnsibleSourcePosition or otherwise in the datatag module_utils?
-
-        # FIXME: need to elide container values and large strings
-        src_pos = AnsibleSourcePosition.get_tag(value)
-
-        if src_pos:
-            return f'{value!r} from {str(src_pos)!r}'
-
-        return f'{value!r}'
 
     def _create_overlay(self, template: str, overrides: TemplateOverrides) -> tuple[str, AnsibleEnvironment]:
         try:
@@ -469,7 +453,7 @@ class Templar:
             # FIXME: if we're in a worker, propagate deprecated access warnings back to the controller for deduplication
             # FIXME: the current template may not have a source position, we may need to consult a parent template
             _display.deprecated(
-                msg=f'{deprecation.msg} while templating {self._repr_from(deprecation_template)}',
+                msg=f'{deprecation.msg} while templating {_repr_from(deprecation_template)}',
                 version=deprecation.removal_version,
                 date=deprecation.removal_date,
             )
@@ -636,7 +620,7 @@ class Templar:
 
         if is_str and not is_expression:
             _display.deprecated(
-                msg=f'Conditional {self._repr_from(conditional)} should not be surrounded by templating delimiters such as {{{{ }}}} or {{% %}}.',
+                msg=f'Conditional {_repr_from(conditional)} should not be surrounded by templating delimiters such as {{{{ }}}} or {{% %}}.',
                 version='2.21',
             )
 
@@ -653,7 +637,7 @@ class Templar:
             # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
             #  at least the warning allows us a place to consistently present useful forensic information about the problem
 
-            conditional_repr = self._repr_from(conditional)
+            conditional_repr = _repr_from(conditional)
 
             _display.warning(f'Conditional {conditional_repr} evaluation failed: {e}')
 
@@ -666,7 +650,7 @@ class Templar:
         bool_result = bool(result)
         # FIXME: `type(result)` should probably be the base type of the data structure
         message = (
-            f'Conditional {self._repr_from(conditional)} had result {result!r} of type {type(result)}, which evaluates to {bool_result}. '
+            f'Conditional {_repr_from(conditional)} had result {result!r} of type {type(result)}, which evaluates to {bool_result}. '
             f'Conditionals must have a boolean result.'
         )
 
@@ -690,13 +674,13 @@ class Templar:
         if not TrustedAsTemplate.is_tagged_on(data):
             if Templar._raise_on_trust_check_fail or mode is TemplateMode.EXPRESSION:
                 thing = "expression" if mode is TemplateMode.EXPRESSION else "template"
-                raise TemplateTrustCheckFailedError(f'Failing on untrusted {thing} {self._repr_from(data)}. '
+                raise TemplateTrustCheckFailedError(f'Failing on untrusted {thing} {_repr_from(data)}. '
                                                     f'Expressions and templates must be defined by trusted sources such as playbooks, roles, etc., '
                                                     'and not untrusted sources such as module results.')
 
             # FIXME: make traceback optional
             tb = "\n".join(format_stack())
-            _display.warning(f'skipped untrusted template {self._repr_from(data)}; execution stack:\n{tb}')
+            _display.warning(f'skipped untrusted template {_repr_from(data)}; execution stack:\n{tb}')
 
             return False
 

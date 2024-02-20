@@ -15,7 +15,7 @@ from ansible.errors import AnsibleUndefinedVariable
 from ansible.module_utils.datatag import NotATemplate
 from ansible.utils.display import Display
 
-from .utils import Omit
+from .utils import Omit, _repr_from
 from .jinja_bits import AnsibleUndefined, _finalize_template_result
 
 _display = Display()
@@ -70,14 +70,12 @@ class BestEffort(UndefinedBehavior):
         return bool(self._undefined_templates)
 
     def warnings(self) -> c.Generator[str, None, None]:
-        from .templar import Templar  # FIXME: solve this recursive import some other way
-
         grouped_templates = itertools.groupby(self._undefined_templates, key=lambda item: item.value._undefined_template_source)
 
         for template, items in grouped_templates:
             items = list(items)
 
-            msg = f'Encountered {len(items)} error(s) templating {Templar._repr_from(template)}:'
+            msg = f'Encountered {len(items)} error(s) templating {_repr_from(template)}:'
 
             for item in items:
                 msg += f'\n{item.number}) {item.value._undefined_message}'  # FIXME: avoid using private property

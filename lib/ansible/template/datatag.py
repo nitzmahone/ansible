@@ -5,7 +5,7 @@ from ansible.module_utils.datatag import Deprecated, NotATemplate, AnsibleSource
 from ansible.module_utils.datatag.access import _NotifiableAccessContextBase, _MutatingAccessContextBase, POORLY_NAMED_SENTINEL
 from ansible.utils.display import Display
 
-from .utils import TemplateContext
+from .utils import TemplateContext, _repr_from
 
 
 display = Display()
@@ -21,8 +21,7 @@ class _JinjaConstToTrustedTemplate(_MutatingAccessContextBase):
     _tag_type_interest = frozenset([_JinjaConstTemplate])
 
     def _notify(self, o: t.Any) -> t.Any:
-        from .templar import Templar
-        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {Templar._repr_from(o)}", version="2.21")
+        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {_repr_from(o)}", version="2.21")
         return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
 
 
@@ -31,8 +30,7 @@ class _RenderJinjaConstAsTemplate(_MutatingAccessContextBase):
     _tag_type_interest = frozenset([_JinjaConstTemplate])
 
     def _notify(self, o: t.Any) -> t.Any:
-        from .templar import Templar
-        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {Templar._repr_from(o)}", version="2.21")
+        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {_repr_from(o)}", version="2.21")
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o)))
 
 
