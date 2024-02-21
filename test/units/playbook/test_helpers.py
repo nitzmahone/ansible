@@ -140,10 +140,11 @@ class TestLoadListOfTasks(unittest.TestCase, MixinForMocks):
         ds = [{
             'block': [{'action': action_name}]
         }]
-        with pytest.raises(AnsibleParserError) as err:
-            helpers.load_list_of_tasks(ds, play=self.mock_play, variable_manager=self.mock_variable_manager, loader=self.fake_loader)
-
-        assert "couldn't resolve module/action" in err.value.message
+        res = helpers.load_list_of_tasks(ds, play=self.mock_play,
+                                         variable_manager=self.mock_variable_manager, loader=self.fake_loader)
+        self._assert_is_task_list_or_blocks(res)
+        self.assertIsInstance(res[0], Block)
+        self._assert_default_block(res[0])
 
     def _assert_default_block(self, block):
         # the expected defaults
@@ -321,15 +322,15 @@ class TestLoadListOfRoles(unittest.TestCase, MixinForMocks):
             self.assertIsInstance(r, RoleInclude)
 
     def test_block_unknown_action(self):
-        action_name = 'foo_test_block_unknown_action'
         ds = [{
-            'block': [{'action': action_name}]
+            'block': [{'action': 'foo_test_block_unknown_action'}]
         }]
-        res = helpers.load_list_of_tasks(ds, play=self.mock_play,
-                                         variable_manager=self.mock_variable_manager, loader=self.fake_loader)
-        self._assert_is_task_list_or_blocks(res)
-        self.assertIsInstance(res[0], Block)
-        self._assert_default_block(res[0])
+        ds = [{'name': 'bogus_role'}]
+        res = helpers.load_list_of_roles(ds, self.mock_play,
+                                         variable_manager=self.mock_variable_manager, loader=self.fake_role_loader)
+        self.assertIsInstance(res, list)
+        for r in res:
+            self.assertIsInstance(r, RoleInclude)
 
 
 @pytest.mark.usefixtures('inject_collection_root_package_stub')
