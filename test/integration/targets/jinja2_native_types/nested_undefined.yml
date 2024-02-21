@@ -8,8 +8,9 @@
         ignore_errors: yes
 
       - assert:
-          that: |
-            "an undefined variable" in result.msg
+          that:
+            - result.msg is contains "The task includes an option with an undefined variable"
+            - result.msg is contains "'nested_and_undefined' is undefined"
 
       - name: Test nested undefined var fails, multiple nodes
         raw: "{{ [{ 'key': nested_and_undefined}] }} second_node"
@@ -17,5 +18,6 @@
         ignore_errors: yes
 
       - assert:
-          that: |
-            "an undefined variable" in result.msg
+          that:
+            - result.msg is contains "The task includes an option with an undefined variable"
+            - result.msg is contains "'nested_and_undefined' is undefined"

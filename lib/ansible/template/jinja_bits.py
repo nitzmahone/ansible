@@ -610,7 +610,11 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive finalize before we repr (otherwise we can end up
         # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
-        node_list = _finalize_template_result(node_list, raise_on_unsupported_type=False)
+        try:
+            node_list = _finalize_template_result(node_list, raise_on_unsupported_type=False)
+        except AnsibleUndefinedError as ex:
+            return ex.source  # return the first AnsibleUndefined encountered (FailOnUndefined behavior)
+
         node_list = TemplateContext.current_or_raise().options.undefined_behavior.post_finalize(node_list)
 
         return ''.join([to_text(v) for v in node_list])
