@@ -240,6 +240,25 @@ class AnsibleDataclassTagBase(AnsibleDatatagBase):
         fields = ((field, getattr(self, field.name)) for field in dataclasses.fields(self))
         return {field.name: value for field, value in fields if value is not None or field.default is not None}
 
+    def __post_init__(self):
+        # FIXME: move part of this into __init_subclass__ and codegen the rest as __post_init__
+        field_types = t.get_type_hints(type(self), globalns=globals())
+
+        for field in dataclasses.fields(self):
+            value_type = type(getattr(self, field.name))
+            field_type = field_types[field.name]
+
+            try:
+                if value_type in field_type.__args__:  # this assumes our only generic usage is for union/optional
+                    continue
+            except AttributeError:
+                pass
+
+            if value_type is field_type:
+                continue
+
+            raise TypeError(f'{field.name!r} must be {field_type!r} instead of {value_type!r}')
+
 
 @dataclasses.dataclass(**_tag_dataclass_kwargs)
 class AnsibleSourcePosition(AnsibleDataclassTagBase):
@@ -262,12 +281,6 @@ class Deprecated(AnsibleDataclassTagBase):
     msg: str
     removal_date: t.Optional[datetime.date] = None
     removal_version: t.Optional[str] = None
-
-    def __post_init__(self):
-        # FIXME: we should probably have more strict type checks here for the other fields
-
-        if type(self.removal_date) not in (type(None), datetime.date):
-            raise TypeError(f'removal_date must be {datetime.date} instead of {type(self.removal_date)}')
 
     @classmethod
     def _from_dict(cls, d: t.Dict[str, t.Any]) -> Deprecated:

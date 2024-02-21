@@ -494,3 +494,18 @@ def test_tag_builtins():
         assert AnsibleSourcePosition.is_tagged_on(multi_tagged_val)
         assert TrustedAsTemplate.get_tag(multi_tagged_val) is TrustedAsTemplate()  # singleton tag type, should be reference-equal
         assert AnsibleSourcePosition.get_tag(multi_tagged_val) is somedata_tag
+
+
+@pytest.mark.parametrize("tag_type, kwargs", (
+    (AnsibleSourcePosition, dict(src=NotATemplate().tag(''))),
+    (AnsibleSourcePosition, dict(line=NotATemplate().tag(1))),
+    (AnsibleSourcePosition, dict(col=NotATemplate().tag(1))),
+    (Deprecated, dict(msg=NotATemplate().tag(''))),
+    (Deprecated, dict(removal_date=NotATemplate().tag(''))),
+    (Deprecated, dict(removal_version=NotATemplate().tag(''))),
+    (VaultedValue, dict(ciphertext=NotATemplate().tag(''))),
+), ids=lambda x: x.__name__ if isinstance(x, type) else str(x))
+def test_dataclass_tag_base_field_validation(tag_type: t.Callable, kwargs: dict[str, t.Any]) -> None:
+    # FIXME: check error message too
+    with pytest.raises(TypeError):
+        tag_type(**kwargs)
