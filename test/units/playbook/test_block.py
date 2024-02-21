@@ -20,7 +20,6 @@ from __future__ import annotations
 import pytest
 import unittest
 
-from ansible.errors import AnsibleParserError
 from ansible.playbook.block import Block
 from ansible.playbook.task import Task
 

@@ -61,7 +61,7 @@ def represent_unicode(self, data):
 
 
 def represent_undefined(self, data: Undefined) -> t.NoReturn:
-    return data._fail_with_undefined_error()
+    data._fail_with_undefined_error()
 
 
 AnsibleDumper.add_representer(

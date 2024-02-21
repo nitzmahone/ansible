@@ -351,7 +351,7 @@ class Templar:
                 elif not self._trust_check(variable, mode):
                     template_result = variable
                 else:
-                    compiled_template: t.Callable[[dict[str, t.Any]], t.Any]
+                    compiled_template: t.Callable[[dict[str, t.Any] | ChainMap[str, t.Any]], t.Any]
 
                     if mode is TemplateMode.EXPRESSION:
                         compiled_template = self._compile_expression(variable, options)
