@@ -24,7 +24,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ansible.errors import AnsibleParserError
 from units.mock.loader import DictDataLoader
 
 from ansible import errors
