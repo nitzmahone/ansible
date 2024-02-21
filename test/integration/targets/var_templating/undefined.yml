@@ -18,4 +18,4 @@
     - assert:
         that:
           - var_undefined_overridden.override_value == "overridden by -e"
-          - var_undefined.undefined_template == '{' + '{ not_defined }}'  # break up handlebars to avoid templating
+          - var_undefined.undefined_template == "<< error 1 - 'not_defined' is undefined >>"
