@@ -97,6 +97,9 @@ class ActionModule(ActionBase):
                         failed=True,
                     )
 
+                # FIXME: how should debug handle the case of var being a template?
+                #        if the template results in an undefined value, the best effort handling makes the result even more confusing
+                #        it seems like at a minimum, a warning about not using templates for `var` would be appropriate
                 # handle the corner case where the input was untrusted- if so, return the raw input, not the
                 # generated template
                 if results == template_wrapped_arg:
