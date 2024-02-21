@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import typing as t
+
 import yaml
 
 from jinja2 import Undefined
@@ -58,11 +60,8 @@ def represent_unicode(self, data):
     return yaml.representer.SafeRepresenter.represent_str(self, text_type(data))
 
 
-def represent_undefined(self, data):
-    # Here bool will ensure _fail_with_undefined_error happens
-    # if the value is Undefined.
-    # This happens because Jinja sets __bool__ on StrictUndefined
-    return bool(data)
+def represent_undefined(self, data: Undefined) -> t.NoReturn:
+    return data._fail_with_undefined_error()
 
 
 AnsibleDumper.add_representer(

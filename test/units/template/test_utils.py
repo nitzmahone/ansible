@@ -32,7 +32,7 @@ def test_undefined_getattr(template_context) -> None:
 
 def test_undefined_getattr_dunder(template_context) -> None:
     with pytest.raises(AttributeError):
-        _ = AnsibleUndefined().__dunder_that_is_not_defined__
+        _unused = AnsibleUndefined().__dunder_that_is_not_defined__
 
 
 def test_undefined_getitem(template_context) -> None:

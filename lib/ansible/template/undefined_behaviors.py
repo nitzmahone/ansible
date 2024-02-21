@@ -69,11 +69,11 @@ class BestEffort(UndefinedBehavior):
         grouped_templates = itertools.groupby(self._undefined_templates, key=lambda item: item.value._undefined_template_source)
 
         for template, items in grouped_templates:
-            items = list(items)
+            item_list = list(items)
 
-            msg = f'Encountered {len(items)} error(s) templating {_repr_from(template)}:'
+            msg = f'Encountered {len(item_list)} error(s) templating {_repr_from(template)}:'
 
-            for item in items:
+            for item in item_list:
                 msg += f'\n{item.number} - {item.value._undefined_message}'  # FIXME: avoid using private property
 
             yield NotATemplate().tag(msg)
@@ -84,7 +84,7 @@ class BestEffort(UndefinedBehavior):
 
     @classmethod
     @contextlib.contextmanager
-    def warning_context(cls) -> t.Self:
+    def warning_context(cls) -> t.Generator[t.Self, None, None]:
         best_effort = cls()
 
         try:

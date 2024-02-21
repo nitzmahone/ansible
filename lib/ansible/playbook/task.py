@@ -146,7 +146,8 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
 
         # FIXME: this is None for pseudo-actions like include_tasks, should it be?
         # FIXME: this is None for anything using old `action: assert` or `action: module: assert`, should it be?
-        # FIXME: this may still be insufficient to ensure that resolved_action on `action:` and `action: module` cases (which have undocumented deferral behavior)
+        # FIXME: this may still be insufficient to ensure that resolved_action on `action:` and `action: module` cases
+        #        (which have undocumented deferral behavior)
         if not self.resolved_action and self.action and is_possibly_template(self.action, _TEMPLATE_OVERRIDE_DEFAULT):
             # FIXME: omit/undefined handling?
             self.action = templar.template(self.action)

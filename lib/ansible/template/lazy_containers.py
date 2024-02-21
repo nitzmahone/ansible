@@ -18,9 +18,7 @@ from ansible.module_utils.datatag import (
 )
 
 from .utils import Omit, TemplateContext
-from .vault import _AnsibleTaggedVaultBomb
 
-from ansible.errors import AnsibleVariableTypeError
 from ansible.utils.display import Display
 
 _ANSIBLE_LAZY_TEMPLATE_SLOTS = tuple(('_templar',))
