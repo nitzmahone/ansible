@@ -23,6 +23,7 @@ from random import Random, SystemRandom, shuffle
 
 from jinja2.filters import pass_environment
 from jinja2.filters import sync_do_groupby
+from jinja2.runtime import Undefined
 
 from ansible.errors import AnsibleError, AnsibleFilterError, AnsibleFilterTypeError
 from ansible.module_utils.datatag import Deprecated
@@ -32,7 +33,6 @@ from ansible.module_utils.common.collections import is_sequence
 from ansible.module_utils.common.yaml import yaml_load, yaml_load_all
 from ansible.module_utils.common.json import AnsibleJSONEncoder
 from ansible.parsing.yaml.dumper import AnsibleDumper
-from ansible.template.jinja_bits import AnsibleUndefined
 from ansible.utils.display import Display
 from ansible.utils.encrypt import do_encrypt, PASSLIB_AVAILABLE
 from ansible.utils.hashing import md5s, checksum_s
@@ -551,7 +551,7 @@ def dict_to_list_of_dict_key_value_elements(mydict, key_name='key', value_name='
     ''' takes a dictionary and transforms it into a list of dictionaries,
         with each having a 'key' and 'value' keys that correspond to the keys and values of the original '''
 
-    if isinstance(mydict, AnsibleUndefined):
+    if isinstance(mydict, Undefined):
         str(mydict)  # trigger the undefined exception behavior
 
     if not isinstance(mydict, Mapping):

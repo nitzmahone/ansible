@@ -6,17 +6,14 @@ import contextlib
 import dataclasses
 import itertools
 
-from jinja2.runtime import Undefined
-
 import ansible.module_utils.compat.typing as t
-
-from ansible.errors import AnsibleUndefinedVariable
 
 from ansible.module_utils.datatag import NotATemplate
 from ansible.utils.display import Display
 
-from .utils import Omit, _repr_from
+from .utils import Omit, _repr_from, TemplateContext
 from .jinja_bits import AnsibleUndefined, _finalize_template_result
+from ..errors import AnsibleUndefinedVariable
 
 _display = Display()
 
@@ -36,13 +33,12 @@ class UndefinedBehavior(metaclass=abc.ABCMeta):
 # FUTURE: do we want an option to let these accumulate so we can report > 1 failure at a time?
 class FailOnUndefined(UndefinedBehavior):
     def handle_undefined(self, value: AnsibleUndefined) -> t.Any:
-        if isinstance(value, Undefined):
-            msg = value._undefined_message
-        else:
-            msg = '<no hint>'
+        # FIXME: can we avoid using internal attributes here?
 
-        # FIXME: improve this
-        raise AnsibleUndefinedVariable(msg, obj=value)
+        if TemplateContext.current_or_raise().is_top_level:
+            raise AnsibleUndefinedVariable(value._undefined_message)  # exiting the templating system, use the external exception type
+
+        value._fail_with_undefined_error()  # not exiting templating yet, use an internal exception which can be converted back to AnsibleUndefined
 
 
 FAIL_ON_UNDEFINED: t.Final = FailOnUndefined()  # no sense in making many instances...
@@ -63,7 +59,7 @@ class BestEffort(UndefinedBehavior):
 
         self._undefined_templates.append(UndefinedTracker(number=number, value=value))
 
-        return f"<< error #{number} - {value._undefined_message} >>"
+        return f"<< error {number} - {value._undefined_message} >>"
 
     @property
     def has_warnings(self) -> bool:
@@ -78,7 +74,7 @@ class BestEffort(UndefinedBehavior):
             msg = f'Encountered {len(items)} error(s) templating {_repr_from(template)}:'
 
             for item in items:
-                msg += f'\n{item.number}) {item.value._undefined_message}'  # FIXME: avoid using private property
+                msg += f'\n{item.number} - {item.value._undefined_message}'  # FIXME: avoid using private property
 
             yield NotATemplate().tag(msg)
 

@@ -12,6 +12,8 @@ minor_changes:
   - templating - Template evaluation is lazier than in previous versions.
     Template expressions which resolve only portions of a data structure no longer result in the entire structure being templated.
   - handlers - Templated handler names with syntax errors, or that resolve to ``omit`` are now skipped like handlers with undefined variables in their name.
+  - env lookup - The error message generated for a missing environment variable when ``default`` is an undefined value (e.g. ``undef('something')``) will contain the hint from that undefined value,
+    except when the undefined value is the default of ``undef()`` with no arguments. Previously, any existing undefined hint would be ignored.
 
 breaking_changes:
   - conditionals - Conditional expressions that result in non-boolean values are now an error by default.
@@ -42,6 +44,7 @@ security_fixes:
     Examples of untrusted sources include module results and facts.
     Plugins which have not been updated to preserve trust while manipulating strings may inadvertently cause them to lose their trusted status.
   - templating - Changes to conditional expression handling removed numerous instances of insecure multi-pass templating (which could result in execution of untrusted template expressions).
+  - templating - Access to ``_`` prefixed attributes and methods is no longer permitted, increasing template environment isolation.
 
 known_issues:
   - variables - The values ``None``, ``True`` and ``False`` cannot be tagged because they are singletons. Attempts to apply tags to these values will be silently ignored.
@@ -52,6 +55,9 @@ known_issues:
 bugfixes:
   - regex_search filter - Corrected return value documentation to reflect None (not empty string) for no match.
   - first_found lookup - Corrected return value documentation to reflect None (not empty string) for no files found.
+  - vars lookup - The ``default`` substitution only applies when trying to look up a variable which is not defined.
+    If the variable is defined, but templates to an undefined value, the ``default`` substitution will not apply.
+    Use the ``default`` filter to coerce those values instead.
 
 deprecated_features:
   - facts - In a future Ansible release, gathered facts will no longer be accessible as top-level host variables; they must be accessed via `ansible_facts`.

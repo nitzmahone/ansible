@@ -24,8 +24,6 @@ import sys
 from collections import defaultdict
 from collections.abc import Mapping, MutableMapping, Sequence
 
-from jinja2.exceptions import UndefinedError
-
 from ansible import constants as C
 from ansible.errors import (AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleFileNotFound,
                             AnsibleAssertionError, AnsibleTemplateError, AnsibleValueOmittedError)
@@ -363,10 +361,11 @@ class VariableManager:
                             # vars file here because we're working on a delegated host or require host vars, see NOTE above
                             if include_delegate_to and host:
                                 raise AnsibleFileNotFound("vars file %s was not found" % vars_file_item)
-                    except (UndefinedError, AnsibleUndefinedVariable):
+                    except AnsibleUndefinedVariable as ex:
                         if host is not None and self._fact_cache.get(host.name, dict()).get('module_setup') and task is not None:
+                            # FIXME: figure out how handle this properly without losing the details from the original exception
                             raise AnsibleUndefinedVariable("an undefined variable was found when attempting to template the vars_files item '%s'"
-                                                           % vars_file_item, obj=vars_file_item)
+                                                           % vars_file_item, obj=vars_file_item) from ex
                         else:
                             # we do not have a full context here, and the missing variable could be because of that
                             # so just show a warning and continue

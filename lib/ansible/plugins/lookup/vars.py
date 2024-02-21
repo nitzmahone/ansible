@@ -66,9 +66,10 @@ _value:
   elements: raw
 """
 
-from ansible.errors import AnsibleError, AnsibleUndefinedVariable
+from ansible.errors import AnsibleError
 from ansible.module_utils.six import string_types
 from ansible.plugins.lookup import LookupBase
+from ansible.template.jinja_bits import _undef
 
 
 class LookupModule(LookupBase):
@@ -87,19 +88,16 @@ class LookupModule(LookupBase):
                 raise AnsibleError('Invalid setting identifier, "%s" is not a string, its a %s' % (term, type(term)))
 
             try:
+                value = myvars[term]
+            except KeyError:
                 try:
-                    value = myvars[term]
+                    value = myvars['hostvars'][myvars['inventory_hostname']][term]
                 except KeyError:
-                    try:
-                        value = myvars['hostvars'][myvars['inventory_hostname']][term]
-                    except KeyError:
-                        raise AnsibleUndefinedVariable('No variable found with this name: %s' % term)
+                    if default is None:
+                        value = _undef(f'No variable found with this name: {term}')
+                    else:
+                        value = default
 
-                ret.append(self._templar.template(value))
-            except AnsibleUndefinedVariable:
-                if default is not None:
-                    ret.append(default)
-                else:
-                    raise
+            ret.append(self._templar.template(value))
 
         return ret

@@ -53,8 +53,8 @@ RETURN = """
 
 import os
 
-from ansible.template.jinja_bits import AnsibleUndefined
 from ansible.plugins.lookup import LookupBase
+from ansible.template.jinja_bits import _undef, _DEFAULT_UNDEF
 
 
 class LookupModule(LookupBase):
@@ -67,7 +67,7 @@ class LookupModule(LookupBase):
         for term in terms:
             var = term.split()[0]
             val = os.environ.get(var, d)
-            if isinstance(val, AnsibleUndefined):
-                val = AnsibleUndefined(f'The environment variable {var!r} is not set.')
+            if val is _DEFAULT_UNDEF:
+                val = _undef(f'The environment variable {var!r} is not set.')
             ret.append(val)
         return ret

@@ -19,6 +19,10 @@ class TemplateContext(AmbientContextBase):
         self._parent_ctx = TemplateContext.current()
 
     @property
+    def is_top_level(self) -> bool:
+        return not self._parent_ctx
+
+    @property
     def template_value(self) -> t.Any:
         return self._template_value
 

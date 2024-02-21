@@ -333,14 +333,12 @@ class Templar:
         if mode == TemplateMode.STOP_ON_TEMPLATE:
             stop_on_template = True
 
-        is_top_level_template = not template_ctx
-
         # track access to items that are tagged Deprecated during templating, handle accordingly
         with (
             UndecryptableAccessMutator(),  # trigger injection of VaultBomb
             DeprecatedAccessAuditContext() as deprecated,
             # stack the current active var value we're templating
-            TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template),
+            TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template) as template_ctx,
         ):
             try:
                 if not isinstance(variable, str):
@@ -365,7 +363,7 @@ class Templar:
 
                 # If we're the outermost template operation, we need to recursively finalize the template result.
                 # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
-                if is_top_level_template:
+                if template_ctx.is_top_level:
                     if template_result is Omit:
                         if options.value_for_omit is Omit:
                             raise AnsibleValueOmittedError()
@@ -527,15 +525,16 @@ class Templar:
         # safely catch run failures per #5059
         try:
             ran = instance.run(args, variables=self.available_variables, **kwargs)
+        # FIXME: most of this exception handling should occur at the edge of templating
         except AnsibleUndefinedVariable:
             # this is just to prevent the broad `except Exception` from firing below
             raise
-        # FIXME: most of this exception handling should occur at the edge of templating
-        except UndefinedError as e:
-            raise AnsibleUndefinedVariable(e)
-        except AnsibleOptionsError as e:
+        except UndefinedError:
+            # this is just to prevent the broad `except Exception` from firing below
+            raise
+        except AnsibleOptionsError:
             # invalid options given to lookup, just reraise
-            raise e
+            raise
         except AnsibleLookupError as e:
             # lookup handled error but still decided to bail
             msg = 'Lookup failed but the error is being ignored: %s' % to_native(e)
@@ -633,15 +632,15 @@ class Templar:
                     result = self.evaluate_expression(conditional, escape_backslashes=False)
             else:
                 result = self.template(conditional)
-        except AnsibleUndefinedVariable as e:
+        except AnsibleUndefinedVariable as ex:
             # FIXME: this feels wrong, but we've got so many places that are inconsistently handling/swallowing this error that
             #  at least the warning allows us a place to consistently present useful forensic information about the problem
 
             conditional_repr = _repr_from(conditional)
 
-            _display.warning(f'Conditional {conditional_repr} evaluation failed: {e}')
+            _display.warning(f'Conditional {conditional_repr} evaluation failed: {ex}')
 
-            raise AnsibleUndefinedVariable(f"error while evaluating conditional {conditional_repr}: {e}") from e
+            raise AnsibleUndefinedVariable(f"error while evaluating conditional {conditional_repr}: {ex}") from ex
 
         if isinstance(result, bool):
             _display.debug(f"Evaluated conditional {conditional!r} : {result}")

@@ -19,6 +19,7 @@ from __future__ import annotations
 import io
 import pytest
 
+from jinja2 import Undefined
 from jinja2.exceptions import UndefinedError
 
 import unittest
@@ -26,7 +27,6 @@ from ansible.parsing import vault
 from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.parsing.yaml import dumper, objects
 from ansible.parsing.yaml.loader import AnsibleLoader
-from ansible.template.jinja_bits import AnsibleUndefined
 
 from units.mock.yaml_helper import YamlTestUtils
 from units.mock.vault_helper import TextVaultSecret
@@ -91,10 +91,5 @@ class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
         self.assertEqual(u_text, data_from_yaml)
 
     def test_undefined(self):
-        undefined_object = AnsibleUndefined()
-        try:
-            yaml_out = self._dump_string(undefined_object, dumper=self.dumper)
-        except UndefinedError:
-            yaml_out = None
-
-        self.assertIsNone(yaml_out)
+        with pytest.raises(UndefinedError):
+            self._dump_string(Undefined(), dumper=self.dumper)

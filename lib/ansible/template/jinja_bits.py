@@ -222,6 +222,7 @@ class AnsibleTemplate(Template):
         return _new_context(self.environment, self.name, self.blocks, vars, shared, self.globals, locals)
 
 
+# FIXME: give this a name that reflects its usage as an internal-only flow control exception
 class AnsibleUndefinedError(UndefinedError):
     """
     An Ansible specific subclass of Jinja's UndefinedError, used to preserve and later restore the original AnsibleUndefined value that raised the error.
@@ -245,6 +246,7 @@ class AnsibleUndefined(StrictUndefined):
         name: t.Optional[str] = None,
         exc: t.Type[TemplateRuntimeError] = UndefinedError,
         *args,
+        _no_template_source=False,
         **kwargs,
     ) -> None:
         if not hint and name and obj is not missing:
@@ -260,7 +262,10 @@ class AnsibleUndefined(StrictUndefined):
 
         super().__init__(*args, **kwargs)
 
-        self._undefined_template_source = TemplateContext.current_or_raise().template_value
+        if _no_template_source:
+            self._undefined_template_source = None
+        else:
+            self._undefined_template_source = TemplateContext.current_or_raise().template_value
 
     # FIXME: we should probably intercept the dunder methods calling this instead -- and then make sure this function complains loudly if it is called
     def _fail_with_undefined_error(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
@@ -525,7 +530,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         self.globals.update(
             range=range,  # the sandboxed environment limits range in ways that may cause us problems; use the real Python one
             now=self._now,
-            undef=self._undef,
+            undef=_undef,
             omit=Omit,
         )
 
@@ -671,12 +676,17 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         return now
 
-    def _undef(self, hint=None):
-        """Jinja2 global function (undef) for creating custom undefined defaults with custom hints."""
-        if hint is None or isinstance(hint, Undefined) or hint == '':
-            hint = "Mandatory variable has not been overridden"
 
-        return AnsibleUndefined(hint)
+_DEFAULT_UNDEF = AnsibleUndefined("Mandatory variable has not been overridden", _no_template_source=True)
+
+
+# FIXME: give this a proper name
+def _undef(hint=None):
+    """Jinja2 global function (undef) for creating custom undefined defaults with custom hints."""
+    if hint is None or isinstance(hint, Undefined) or hint == '':
+        return _DEFAULT_UNDEF
+
+    return AnsibleUndefined(hint)
 
 
 def _is_rolled(value):

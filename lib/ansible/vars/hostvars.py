@@ -19,12 +19,14 @@ from __future__ import annotations
 
 import typing as t
 
+from jinja2.runtime import Undefined
+
 from collections.abc import Mapping
 
 from ansible.inventory.manager import InventoryManager
 from ansible.parsing.dataloader import DataLoader
 from ansible.template.templar import Templar
-from ansible.template.jinja_bits import AnsibleUndefined
+from ansible.template.jinja_bits import _undef
 from ansible.vars.manager import VariableManager
 
 __all__ = ['HostVars', 'HostVarsVars']
@@ -41,12 +43,12 @@ class HostVars(Mapping):
 
         variable_manager._hostvars = self
 
-    def __getitem__(self, key: str) -> HostVarsVars | AnsibleUndefined:
+    def __getitem__(self, key: str) -> HostVarsVars | Undefined:
         # does not use inventory.hosts, so it can create localhost on demand
         host = self._inventory.get_host(key)
 
         if host is None:
-            return AnsibleUndefined(name=f"hostvars['{key}']")
+            return _undef(f"hostvars['{key}']")
 
         # FIXME: this should be able to fetch play/task from a context so that vars defined at those layers are available within hostvarsvars
         data = self._variable_manager.get_vars(host=host, include_hostvars=False)

@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import typing as t
 
-from jinja2.exceptions import UndefinedError
-
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError, AnsibleValueOmittedError
 from ansible.module_utils.common.text.converters import to_native
@@ -392,7 +390,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
             except AnsibleValueOmittedError:
                 # skip this value
                 return
-            except (AnsibleUndefinedVariable, UndefinedError) as e:
+            except AnsibleUndefinedVariable as e:
                 error = to_native(e)
                 if self.action in C._ACTION_FACT_GATHERING and 'ansible_facts.env' in error or 'ansible_env' in error:
                     # ignore as fact gathering is required for 'env' facts

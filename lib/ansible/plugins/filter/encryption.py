@@ -36,7 +36,7 @@ def do_vault(data, secret, salt=None, vault_id='filter_default', wrap_object=Fal
     vl = VaultLib()
     try:
         vault = vl.encrypt(to_bytes(data), vs, vault_id, salt)
-    except UndefinedError:
+    except UndefinedError:  # FIXME: incorrect exception type?
         raise
     except Exception as e:
         raise AnsibleFilterError("Unable to encrypt: %s" % to_native(e), orig_exc=e)
@@ -75,7 +75,7 @@ def do_unvault(vault, secret, vault_id='filter_default', vaultid=None):
     if is_encrypted(vault):
         try:
             data = vl.decrypt(vault)
-        except UndefinedError:
+        except UndefinedError:  # FIXME: incorrect exception type?
             raise
         except Exception as e:
             raise AnsibleFilterError("Unable to decrypt: %s" % to_native(e), orig_exc=e)
