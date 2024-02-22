@@ -308,14 +308,24 @@ def _process_locals(_l):
 
 
 class AnsibleCodeGenerator(NativeCodeGenerator):
-    # prevent Jinja's code generation from stringifying single nodes before generating its repr
-    # (this complements the behavioral change in our concat)
-    # FIXME: contribute this back upstream as a fix to Jinja's native support?
+    """
+    Custom code generation behavior to support deprecated Ansible features and fill in gaps in Jinja native.
+    This can be removed once the deprecated Ansible features are removed and the native fixes are upstreamed in Jinja.
+    """
+
     def _output_const_repr(self, group: t.Iterable[t.Any]) -> str:
+        """
+        Prevent Jinja's code generation from stringifying single nodes before generating its repr.
+        This complements the behavioral change in AnsibleEnvironment.concat which returns single nodes without stringifying them.
+        """
+        # TODO: contribute this upstream as a fix to Jinja's native support
         group_list = list(group)
 
         if len(group_list) == 1:
             return repr(group_list[0])
+
+        # NB: This is slightly more efficient than Jinja's _output_const_repr, which generates a throw-away list instance to pass to join.
+        #     Before removing this, ensure that upstream Jinja has this change.
         return repr("".join(map(str, group_list)))
 
     def visit_Const(self, node: Const, frame: Frame) -> None:
