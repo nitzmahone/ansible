@@ -408,6 +408,14 @@ class JinjaPluginIntercept(c.MutableMapping):
     def __delitem__(self, key):
         raise NotImplementedError()
 
+    def __contains__(self, item: t.Any) -> bool:
+        try:
+            self.__getitem__(item)
+        except AnsibleTemplatePluginNotFoundError:
+            return False
+
+        return True
+
     def __iter__(self):
         # not strictly accurate since we're not counting dynamically-loaded values
         return iter(self._delegatee)

@@ -523,3 +523,24 @@ def test_omit_concat() -> None:
 
 def test_omit_undefined_concat() -> None:
     assert Templar().template(TRUST.tag("{{ a }}hi{{ b }} mom"), options=TemplateOptions(undefined_behavior=BestEffortOmitUndefined())) == 'hi mom'
+
+
+@pytest.mark.parametrize("conditional", (
+    # Jinja plugins
+    "'join' is filter",
+    "'join' is not test",
+    "'eq' is test",
+    "'eq' is not filter",
+
+    # Ansible plugins
+    "'comment' is filter",
+    "'comment' is not test",
+    "'version' is test",
+    "'version' is not filter",
+
+    # plugin not found
+    "'nope' is not filter",
+    "'nope' is not test",
+))
+def test_plugin_found_not_found(conditional: str) -> None:
+    assert Templar().evaluate_conditional(TRUST.tag(conditional))
