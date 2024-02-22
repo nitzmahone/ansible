@@ -27,7 +27,7 @@ from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, Ans
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
 from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePosition, AnsibleTaggedObject, AnsibleDatatagBase, _AnsibleTaggedDict, \
-    _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES, _AnsibleTaggedList, _AnsibleTaggedTuple, _AnsibleTaggedSet
+    _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES, _AnsibleTaggedList, _AnsibleTaggedTuple, _AnsibleTaggedSet, _inject_post_init_validation
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 from ansible.module_utils.six import string_types
 from ansible.module_utils import datatag
@@ -61,18 +61,9 @@ class TemplateOverrides:
     keep_trailing_newline: bool = defaults.KEEP_TRAILING_NEWLINE
 
     def __post_init__(self) -> None:
-        types = t.get_type_hints(TemplateOverrides, globalns=globals())
+        pass  # overridden by _inject_post_init_validation
 
-        for field in dataclasses.fields(self):
-            value = getattr(self, field.name)
-            expected_type = types[field.name]
-
-            if t.get_origin(expected_type) is t.Literal:
-                if value not in t.get_args(expected_type):
-                    raise ValueError(f'Template override {field.name!r} is {value!r} instead of one of {t.get_args(expected_type)!r}.')
-            elif not isinstance(value, expected_type):
-                raise TypeError(f'Template override {field.name!r} is {type(value)!r} instead of {expected_type!r}.')
-
+    def _post_validate(self) -> None:
         if not (self.block_start_string != self.variable_start_string != self.comment_start_string != self.block_start_string):
             raise ValueError('Block, variable and comment start strings must be different.')
 
@@ -144,6 +135,8 @@ class TemplateOverrides:
 
         return template, overrides
 
+
+_inject_post_init_validation(TemplateOverrides, allow_subclasses=True)
 
 _TEMPLATE_OVERRIDE_DEFAULT: t.Final[TemplateOverrides] = TemplateOverrides()
 _TEMPLATE_OVERRIDE_FIELD_NAMES: t.Final[tuple[str, ...]] = tuple(sorted(field.name for field in dataclasses.fields(TemplateOverrides)))

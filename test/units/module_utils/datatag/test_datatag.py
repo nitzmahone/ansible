@@ -498,14 +498,29 @@ def test_tag_builtins():
 
 @pytest.mark.parametrize("tag_type, kwargs", (
     (AnsibleSourcePosition, dict(src=NotATemplate().tag(''))),
-    (AnsibleSourcePosition, dict(line=NotATemplate().tag(1))),
-    (AnsibleSourcePosition, dict(col=NotATemplate().tag(1))),
+    (AnsibleSourcePosition, dict(line=NotATemplate().tag(1), src='')),
+    (AnsibleSourcePosition, dict(col=NotATemplate().tag(1), src='')),
     (Deprecated, dict(msg=NotATemplate().tag(''))),
-    (Deprecated, dict(removal_date=NotATemplate().tag(''))),
-    (Deprecated, dict(removal_version=NotATemplate().tag(''))),
+    (Deprecated, dict(removal_date=NotATemplate().tag(''), msg='')),
+    (Deprecated, dict(removal_version=NotATemplate().tag(''), msg='')),
     (VaultedValue, dict(ciphertext=NotATemplate().tag(''))),
 ), ids=lambda x: x.__name__ if isinstance(x, type) else str(x))
-def test_dataclass_tag_base_field_validation(tag_type: t.Callable, kwargs: dict[str, t.Any]) -> None:
-    # FIXME: check error message too
-    with pytest.raises(TypeError):
+def test_dataclass_tag_base_field_validation_fail(tag_type: t.Callable, kwargs: dict[str, t.Any]) -> None:
+    field_name = list(kwargs.keys())[0]
+    actual_type = type(kwargs[field_name])
+
+    with pytest.raises(TypeError, match=f"{field_name!r} must be <class '.*'> instead of {actual_type}"):
         tag_type(**kwargs)
+
+
+@pytest.mark.parametrize("tag_type, kwargs", (
+    (AnsibleSourcePosition, dict(src='')),
+    (AnsibleSourcePosition, dict(src='', line=1)),
+    (AnsibleSourcePosition, dict(src='', col=1)),
+    (Deprecated, dict(msg='')),
+    (Deprecated, dict(msg='', removal_date=datetime.date.today())),
+    (Deprecated, dict(msg='', removal_version='')),
+    (VaultedValue, dict(ciphertext='')),
+), ids=lambda x: x.__name__ if isinstance(x, type) else str(x))
+def test_dataclass_tag_base_field_validation_pass(tag_type: t.Callable, kwargs: dict[str, t.Any]) -> None:
+    tag_type(**kwargs)

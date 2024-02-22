@@ -24,7 +24,7 @@ class AmbientContextBase:
     _contextvar: t.Optional[ContextVar] = None
     _contextvar_token = None  # overwritten with an instance attribute in the __enter__ method
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs) -> None:
         cls._contextvar = ContextVar(cls.__name__)
 
     @classmethod
@@ -53,7 +53,7 @@ class AmbientContextBase:
 class _NotifiableAccessContextBase(metaclass=abc.ABCMeta):
     _tag_type_interest: t.FrozenSet[t.Type[AnsibleDatatagBase]] = frozenset()
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs) -> None:
         if not cls._tag_type_interest and not inspect.isabstract(cls):
             raise NotImplementedError(f'concrete class {cls!r} must declare _tag_type_interest')
 

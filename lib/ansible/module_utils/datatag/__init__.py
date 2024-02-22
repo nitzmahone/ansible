@@ -44,7 +44,7 @@ class AnsibleSerializable(metaclass=abc.ABCMeta):
     _known_type_map: t.Dict[str, t.Type['AnsibleSerializable']] = {}
     _TYPE_KEY: str = '__ansible_type'
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs) -> None:
         # this is needed to call __init__subclass__ on mixins for derived types
         super().__init_subclass__(**kwargs)
 
@@ -97,7 +97,7 @@ class AnsibleDatatagBase(AnsibleSerializable, metaclass=abc.ABCMeta):
     _known_tag_type_map: t.Dict[str, t.Type['AnsibleDatatagBase']] = {}
     _known_tag_types: t.Set[t.Type['AnsibleDatatagBase']] = set()
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs) -> None:
         # NOTE: This method is called twice when the datatag type is a dataclass.
         super().__init_subclass__(**kwargs)
 
@@ -186,8 +186,68 @@ Also used as a sentinel to cheaply determine that a type is not tagged by using 
 """
 
 
+def _inject_post_init_validation(cls: type, allow_subclasses=False) -> None:
+    """Inject a __post_init__ field validation method on the given dataclass. An existing __post_init__ attribute must already exist."""
+    # FIXME: where should this function live?
+    # FIXME: calling super().__post_init__() if parent type(s) have it should be supported
+    # FIXME: when requiring cls to have a __post_init__, enforcing it as a no-op would be nice, but is tricky on slotted dataclasses due to double-creation
+    post_validate_name = '_post_validate'
+    method_name = '__post_init__'
+    exec_globals: dict[str, t.Any] = {}
+    lines: list[str] = [f'def {method_name}(self):']
+    field_type_hints = t.get_type_hints(cls)
+
+    if '__init__' in cls.__dict__ and not hasattr(cls, method_name):
+        raise ValueError(f"{cls} must have a {method_name!r} method to override when invoked after the '__init__' method is created")
+
+    for field_name in cls.__annotations__:
+        field_type = field_type_hints[field_name]
+
+        try:
+            allowed_types = field_type.__args__  # assumes the only supported generic types are union/optional
+        except AttributeError:
+            allowed_types = (field_type,)
+
+        if sys.version_info >= (3, 8):
+            if t.get_origin(field_type) is t.Literal:
+                values = t.get_args(field_type)
+
+                lines.append(f"""    if self.{field_name} not in {values}:""")
+                lines.append(f"""        raise ValueError(rf"{field_name!r} must be one of {values} instead of {{self.{field_name}!r}}")""")
+
+                allowed_types = (str,)
+
+        type_names: list[str] = []
+        repr_names: list[str] = []
+
+        for allowed_type in allowed_types:
+            allowed_name = f'{allowed_type.__module__}_{allowed_type.__name__}'
+
+            exec_globals[allowed_name] = allowed_type
+
+            type_names.append(allowed_name)
+            repr_names.append(repr(allowed_type))
+
+        if allow_subclasses:
+            lines.append(f"""    if not isinstance(self.{field_name}, ({', '.join(type_names)})):""")
+        elif len(type_names) == 1:
+            lines.append(f"""    if type(self.{field_name}) is not {type_names[0]}:""")
+        else:
+            lines.append(f"""    if type(self.{field_name}) not in ({', '.join(type_names)}):""")
+
+        lines.append(f"""        raise TypeError(f"{field_name!r} must be {' or '.join(repr_names)} instead of {{type(self.{field_name})}}")""")
+
+    if hasattr(cls, post_validate_name):
+        lines.append(f"    self.{post_validate_name}()")
+
+    source = '\n'.join(lines)
+
+    exec(source, exec_globals)
+    setattr(cls, method_name, exec_globals[method_name])
+
+
 # FIXME: This should probably reside elsewhere.
-def is_non_scalar_collection_type(value: type) -> bool:
+def is_non_scalar_collection_type(value: type) -> t.TypeGuard[type[t.Collection]]:
     """Returns True if the value is a non-scalar collection type, otherwise returns False."""
     # FIXME: this includes _AnsibleTaggedVaultBomb and thus _VaultBomb
     return issubclass(value, Collection) and not issubclass(value, str) and not issubclass(value, bytes)
@@ -234,30 +294,16 @@ class AnsibleSingletonTagBase(AnsibleDatatagBase):
 
 
 @dataclasses.dataclass(**_tag_dataclass_kwargs)
-class AnsibleDataclassTagBase(AnsibleDatatagBase):
+class AnsibleDataclassTagBase(AnsibleDatatagBase, metaclass=abc.ABCMeta):
     def _as_dict(self) -> t.Dict[str, t.Any]:
         # omit None values when None is the field default
         fields = ((field, getattr(self, field.name)) for field in dataclasses.fields(self))
         return {field.name: value for field, value in fields if value is not None or field.default is not None}
 
-    def __post_init__(self):
-        # FIXME: move part of this into __init_subclass__ and codegen the rest as __post_init__
-        field_types = t.get_type_hints(type(self), globalns=globals())
+    def __init_subclass__(cls, **kwargs) -> None:
+        super(AnsibleDataclassTagBase, cls).__init_subclass__(**kwargs)  # cannot use super() without arguments when using slots
 
-        for field in dataclasses.fields(self):
-            value_type = type(getattr(self, field.name))
-            field_type = field_types[field.name]
-
-            try:
-                if value_type in field_type.__args__:  # this assumes our only generic usage is for union/optional
-                    continue
-            except AttributeError:
-                pass
-
-            if value_type is field_type:
-                continue
-
-            raise TypeError(f'{field.name!r} must be {field_type!r} instead of {value_type!r}')
+        _inject_post_init_validation(cls)  # code gen a real __post_init__ method
 
 
 @dataclasses.dataclass(**_tag_dataclass_kwargs)
@@ -341,7 +387,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
     It is overwritten with an instance attribute during instance creation.
     """
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
 
         try:
@@ -358,12 +404,12 @@ class AnsibleTaggedObject(AnsibleSerializable):
             cls.item_source = cls.native_type.__iter__  # type: ignore[attr-defined]
 
         if cls.item_source:
-            cls._instance_factory = cls._instance_factory_collection
+            cls._instance_factory = cls._instance_factory_collection  # type: ignore[method-assign]
 
         AnsibleTaggedObject._tagged_type_map[cls.__mro__[1]] = cls
 
         if is_non_scalar_collection_type(cls):
-            AnsibleTaggedObject._tagged_collection_types.add(t.cast(t.Collection, cls))
+            AnsibleTaggedObject._tagged_collection_types.add(cls)
             AnsibleTaggedObject._collection_types.update({cls, cls.__mro__[1]})
 
     def native_copy(self) -> t.Any:
