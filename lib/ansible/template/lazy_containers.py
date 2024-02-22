@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import types
 
-from jinja2.runtime import Undefined
+from jinja2 import Environment
+from jinja2.nodes import EvalContext
+from jinja2.runtime import Undefined, Context
 
 import ansible.module_utils.compat.typing as t
 
@@ -41,10 +43,12 @@ class _AnsibleLazyTemplateMixin:
         # FIXME: is there a better way to include callables like these, so we're not playing whack-a-mole
         type(''.startswith),  # builtin_function_or_method
         type(Omit),
-        # FIXME: if we optimize and use type reference equality, then we should only need AnsibleUndefined in here (circular ref issue)
+        # FIXME: if we optimize to use type reference equality later, update this list to include relevant derived types
         Undefined,
-        # StrictUndefined,
-        # AnsibleUndefined,
+        # Jinja passes these into filters/tests via @pass_environment et al; silently ignore them
+        Environment,
+        Context,
+        EvalContext,
     )
 
     _container_types: set[type] = set()  # populated by our __init_subclass__

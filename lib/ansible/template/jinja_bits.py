@@ -158,6 +158,8 @@ class AnsibleContext(Context):
     def __init__(self, *args, **kwargs):
         super(AnsibleContext, self).__init__(*args, **kwargs)
 
+    __repr__ = object.__repr__  # prevent Jinja from dumping vars in case this gets repr'd
+
     def resolve_or_missing(self, key):
         val = super(AnsibleContext, self).resolve_or_missing(key)
         return AnsibleAccessContext.current().access(val)
@@ -395,11 +397,11 @@ class JinjaPluginIntercept(c.MutableMapping):
         if self._pluginloader.type == 'filter':
             # deprecated: description="deprecate STRING_TYPE_FILTERS config entry (formerly used here) once 2.18 is EOL" core_version="2.19"
             # conditionally unroll iterators/generators to avoid having to use `|list` after every filter
-            func = _unroll_iterator(func)
+            func = self._wrap_filter(func)
 
             # FIXME: we should probably be running the result of filter plugins through proxy_or_render_template
         else:
-            func = _wrap_test(func)
+            func = self._wrap_test(func)
 
         return func
 
@@ -416,6 +418,40 @@ class JinjaPluginIntercept(c.MutableMapping):
     def __len__(self):
         # not strictly accurate since we're not counting dynamically-loaded values
         return len(self._delegatee)
+
+    @staticmethod
+    def _wrap_test(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> bool:
+            res = func(*args, **kwargs)
+
+            if not isinstance(res, bool):
+                # FIXME: should this be a deprecation warning that will eventually be a hard error, or?
+                # FIXME: access templatecontext/runtime stuff to include useful info about the source of the problem and the name of the broken test
+                display.warning(msg=f"test FIXME returned a non-boolean result of type {type(res)!r}")
+                res = bool(res)
+
+            return res
+
+        return wrapper
+
+    @staticmethod
+    def _wrap_filter(func):
+        """Intercept point for all filters to ensure that args are properly templated/lazified and that results are not a generator."""
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            port = TemplateContext.current_or_raise().templar.proxy_or_render_template
+            # FUTURE: plugin API support for generators will require that proxy_or_render_template knows how to wrap a generator
+            ret = func(*port(args), **port(kwargs))
+
+            # FUTURE: plugins should be able to declare that they understand/produce generators to bypass this
+            if _is_rolled(ret):
+                ret = list(ret)
+
+            return port(ret)
+
+        return wrapper
 
 
 # NB: we're not actually using this pass_context, but it prevents our finalizer from
@@ -702,39 +738,6 @@ def _is_rolled(value):
         isinstance(value, c.MappingView) or
         isinstance(value, RANGE_TYPE)
     )
-
-
-def _wrap_test(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs) -> bool:
-        res = func(*args, **kwargs)
-
-        if not isinstance(res, bool):
-            # FIXME: should this be a deprecation warning that will eventually be a hard error, or?
-            # FIXME: access templatecontext/runtime stuff to include useful info about the source of the problem and the name of the broken test
-            display.warning(msg=f"test FIXME returned a non-boolean result of type {type(res)!r}")
-            res = bool(res)
-
-        return res
-
-    return wrapper
-
-
-def _unroll_iterator(func):
-    """Wrapper function, that intercepts the result of a templating
-    and auto unrolls a generator, so that users are not required to
-    explicitly use ``|list`` to unroll.
-    """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        # FIXME: blind PorRTing *args/**kwargs tries to wrap Jinja context/eval_ctx and other unknown objects; causes a type warning
-        port = TemplateContext.current_or_raise().templar.proxy_or_render_template
-        ret = func(*port(args), **port(kwargs))
-        if _is_rolled(ret):
-            ret = list(ret)
-        return port(ret)
-
-    return wrapper
 
 
 def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
