@@ -318,17 +318,21 @@ class AnsibleCodeGenerator(NativeCodeGenerator):
             return repr(group_list[0])
         return repr("".join(map(str, group_list)))
 
-    # this override causes embedded inline template strings to proxied or rendered at runtime
-    # so that some inline templates can be processed with multiple passes, eg, {{ lookup("file", "{{output_dir}}/bla") }}
     def visit_Const(self, node: Const, frame: Frame) -> None:
+        """
+        Override Jinja's visit_Const to inject a runtime call to AnsibleEnvironment._access_const for constant strings that are possibly templates, which
+        may require special handling at runtime. See that method for details. An example that hits this path:
+        {{ lookup("file", "{{ output_dir }}/bla") }}
+        """
         value = node.as_const(frame.eval_ctx)
 
         if type(value) is str and is_possibly_template(value, _TEMPLATE_OVERRIDE_DEFAULT):  # pylint: disable=unidiomatic-typecheck
-            # FIXME: propagate other tags from parent template (for forensic/debug)?
-            # FIXME: if lookup nerfing is restored, this could end up assigning trust to an embedded constant we don't want to trust.
-            #        Keep this note until we're sure it's not coming back.
+            # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
             self.write(f'environment._access_const({value!r})')
         else:
+            # NB: This is actually more efficient than Jinja's visit_Const, which contains obsolete (as of Py2.7/3.1) float conversion instance checks. Before
+            #     removing this override entirely, ensure that upstream Jinja has removed the obsolete code.
+            #     See https://docs.python.org/release/2.7/whatsnew/2.7.html#python-3-1-features for more details.
             self.write(repr(value))
 
 
@@ -650,8 +654,14 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     @staticmethod
     def _access_const(const_template: t.LiteralString) -> t.Any:
+        """
+        Called during template rendering on template-looking string constants embedded in the template. Propagates source position from the
+        containing template, and performs a managed access on it. This allows custom behavior on constants for backward-compatibility (eg,
+        application of trust or inline template rendering).
+        """
+        # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
         tags: list[AnsibleDatatagBase] = [_JinjaConstTemplate()]
-        # FIXME: do we want to propagate source tags here, since this hook may go away?
+
         if (tv := TemplateContext.current().template_value) and (source_pos := AnsibleSourcePosition.get_tag(tv)):
             tags.append(source_pos)
 

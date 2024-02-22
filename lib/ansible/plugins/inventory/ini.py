@@ -95,7 +95,8 @@ class InventoryModule(BaseFileInventoryPlugin):
     NAME = 'ini'
     _COMMENT_MARKERS = frozenset((u';', u'#'))
     b_COMMENT_MARKERS = frozenset((b';', b'#'))
-    trusted_by_default = False
+
+    # template trust is applied internally to strings
 
     def __init__(self):
 

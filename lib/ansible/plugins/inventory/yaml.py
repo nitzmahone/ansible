@@ -81,7 +81,7 @@ class InventoryModule(BaseFileInventoryPlugin):
 
     NAME = 'yaml'
 
-    trusted_by_default = False  # implicit trust behavior is already added by the YAML parser invoked by the loader
+    # implicit trust behavior is already added by the YAML parser invoked by the loader
 
     def __init__(self):
 

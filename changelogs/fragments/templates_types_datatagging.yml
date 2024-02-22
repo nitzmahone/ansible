@@ -36,6 +36,7 @@ breaking_changes:
     Lookup plugins are responsible for tagging strings containing templates to allow evaluation as a template.
   - assert - The ``quiet`` argument must be a commonly-accepted boolean value.
     Previously, unrecognized values were silently treated as False.
+  - plugins - Any plugin that sources or creates templates must properly tag them as trusted. # FIXME: porting guide entry for "how?" Don't forget to mention inventory plugin ``trusted_by_default`` config.
 
 security_fixes:
   - templating - Ansible's template engine no longer processes Jinja templates in strings unless they are marked as coming from a trusted source.
@@ -70,3 +71,4 @@ deprecated_features:
   - template lookup - The jinja2_native option is no longer used in the Ansible Core code base.
     Jinja2 native mode is now the default and only option.
   - conditionals - Conditionals using Jinja templating delimiters (e.g., ``{{``, ``{%``) should be rewritten as expressions without delimiters.
+  - templating - The ``disable_lookups`` option has no effect, since plugins must be updated to apply trust before any templating can be performed.

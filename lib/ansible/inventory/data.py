@@ -296,7 +296,7 @@ class _InventoryDataWrapper(ObjectProxy):
         # fallback source position to ensure that vars are tagged with at least the file they came from
         self._default_source_position_tag = AnsibleSourcePosition(src=source_path)
         self._inspector = AnsibleVariableVisitor(
-            trusted_as_template=self._target_plugin.trusted_by_default is not False,
+            trusted_as_template=self._target_plugin.trusted_by_default,
             source_position=self._default_source_position_tag,
         )
 

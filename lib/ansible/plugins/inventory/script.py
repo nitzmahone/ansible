@@ -170,6 +170,8 @@ class InventoryModule(BaseInventoryPlugin):
 
     NAME = 'script'
 
+    # FIXME: currently no way to apply trust- see _meta handling in parse() below
+
     def __init__(self):
 
         super(InventoryModule, self).__init__()

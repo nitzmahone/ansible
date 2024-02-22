@@ -83,7 +83,6 @@ class TemplateOptions:
     preserve_trailing_newlines: bool = t.cast(bool, ...)
     escape_backslashes: bool = t.cast(bool, ...)
     overrides: TemplateOverrides = t.cast(TemplateOverrides, ...)  # FIXME: these aren't really overrides anymore, rename the dataclass and this field
-    disable_lookups: bool = t.cast(bool, ...)
     undefined_behavior: UndefinedBehavior = t.cast(UndefinedBehavior, ...)
     value_for_omit: t.Any = ...
 
@@ -117,7 +116,6 @@ _DEFAULT_TEMPLATE_OPTIONS: t.Final = TemplateOptions(
     preserve_trailing_newlines=True,
     escape_backslashes=True,
     overrides=_TEMPLATE_OVERRIDE_DEFAULT,
-    disable_lookups=False,
     undefined_behavior=FAIL_ON_UNDEFINED,
     value_for_omit=Omit,
 )
@@ -399,9 +397,6 @@ class Templar:
         with _TemplateCompileContext(escape_backslashes=options.escape_backslashes):
             compiled_template = t.cast(AnsibleTemplate, env.from_string(stripped_template))
 
-        if options.disable_lookups:
-            compiled_template.globals['query'] = compiled_template.globals['q'] = compiled_template.globals['lookup'] = self._fail_lookup
-
         return compiled_template
 
     def _compile_expression(self, expression: str, options: TemplateOptions) -> AnsibleTemplateExpression:
@@ -411,8 +406,6 @@ class Templar:
         In the specific case of escape_backslashes, the setting only applies to a top-level template at compile-time, not runtime, to
         ensure that any nested template calls (e.g., include and import) do not inherit the (lack of) escaping behavior.
         """
-        # FIXME: disable_lookups not supported here?
-
         with _TemplateCompileContext(escape_backslashes=options.escape_backslashes):
             return AnsibleTemplateExpression(self.environment.compile_expression(expression, False))
 
@@ -502,9 +495,6 @@ class Templar:
         else:
             return False
 
-    def _fail_lookup(self, name, *args, **kwargs):
-        raise AnsibleError("The lookup `%s` was found, however lookups were disabled from templating" % name)
-
     def _query_lookup(self, name, /, *args, **kwargs):
         """wrapper for lookup, force wantlist true"""
         kwargs['wantlist'] = True
@@ -587,13 +577,13 @@ class Templar:
                                        % name)
         return ran
 
-    def evaluate_expression(self, expression: str, disable_lookups: bool = False, escape_backslashes=True) -> t.Any:
+    def evaluate_expression(self, expression: str, escape_backslashes=True) -> t.Any:
         if not isinstance(expression, str):
             raise TypeError(f"evaluate_expression requires {str!r}, got {type(expression)!r}")
 
         return self.template(
             expression,
-            options=TemplateOptions(disable_lookups=disable_lookups, escape_backslashes=escape_backslashes),
+            options=TemplateOptions(escape_backslashes=escape_backslashes),
             mode=TemplateMode.EXPRESSION,
         )
 

@@ -179,6 +179,9 @@ class _BaseInventoryPlugin(AnsiblePlugin):
         self.inventory: InventoryData | None = None
         self._vars: dict[str, t.Any] | None = None
 
+    trusted_by_default: bool = False
+    """Inventory plugins that only source templates from trusted sources can set this True to have trust automatically applied to all templates."""
+
     @functools.cached_property
     def templar(self) -> Templar:
         if self.trusted_by_default:
@@ -187,21 +190,6 @@ class _BaseInventoryPlugin(AnsiblePlugin):
         # FIXME: implement an optional "strict" mode that always uses the AnsibleVariableVisitor to check for unsupported types
 
         return Templar(loader=self.loader)
-
-    @functools.cached_property
-    def trusted_by_default(self) -> bool | None:
-        """
-        Whether to trust templates by default.
-
-        If set to False, only trusted templates will be processed.
-        If set to None (the default), a deprecation warning will be issued.
-        Any other value is treated as True.
-
-        Most subclasses should override this with an attribute, which will disable the deprecation warning.
-        """
-        display.deprecated(f'Inventory plugin {self} did not set the `trusted_by_default` attribute. Assuming all input is trusted.', version='2.21')
-
-        return None
 
     def parse(self, inventory: InventoryData, loader: DataLoader, path: str, cache: bool = True) -> None:
         ''' Populates inventory from the given data. Raises an error on any parse failure
@@ -369,8 +357,11 @@ class Cacheable(object):
 
 
 class Constructable(_BaseInventoryPlugin):
-    def _compose(self, template, variables, disable_lookups=True):
+    def _compose(self, template, variables, disable_lookups=...):
         ''' helper method for plugins to compose variables for Ansible based on jinja2 expression and inventory vars'''
+        if disable_lookups is not ...:
+            self.display.deprecated("The disable_lookups arg has no effect.", removal_version="2.21")
+
         try:
             use_extra = self.get_option('use_extra_vars')
         except Exception:
@@ -381,7 +372,7 @@ class Constructable(_BaseInventoryPlugin):
         else:
             self.templar.available_variables = variables
 
-        return self.templar.evaluate_expression(template, disable_lookups=disable_lookups)
+        return self.templar.evaluate_expression(template)
 
     def _set_composite_vars(self, compose, variables, host, strict=False):
         ''' loops over compose entries to create vars for hosts '''
@@ -513,8 +504,8 @@ class _AutoTrustInputTemplar(Templar):
     ) -> t.Any:
         return super().template(self._visitor.visit(variable), options=options, mode=mode)
 
-    def evaluate_expression(self, expression: str, disable_lookups: bool = False, escape_backslashes=True) -> t.Any:
-        return super().evaluate_expression(self._visitor.visit(expression), disable_lookups=disable_lookups, escape_backslashes=escape_backslashes)
+    def evaluate_expression(self, expression: str, escape_backslashes=True) -> t.Any:
+        return super().evaluate_expression(self._visitor.visit(expression), escape_backslashes=escape_backslashes)
 
     def evaluate_conditional(self, conditional: str | bool | None) -> bool:
         return super().evaluate_conditional(self._visitor.visit(conditional))

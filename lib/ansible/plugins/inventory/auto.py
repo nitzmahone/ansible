@@ -30,7 +30,7 @@ class InventoryModule(BaseInventoryPlugin):
 
     NAME = 'auto'
 
-    trusted_by_default = None  # no-op, since the consumers of this value will always consult the real plugin substituted during our parse()
+    # no need to set trusted_by_default, since the consumers of this value will always consult the real plugin substituted during our parse()
 
     def verify_file(self, path):
         if not path.endswith('.yml') and not path.endswith('.yaml'):

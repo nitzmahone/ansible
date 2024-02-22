@@ -35,7 +35,7 @@ class InventoryModule(BaseInventoryPlugin):
 
     NAME = 'host_list'
 
-    trusted_by_default = False  # host_list does not set vars, so needs no special trust assistance from the inventory API
+    # host_list does not set vars, so needs no special trust assistance from the inventory API
 
     def verify_file(self, host_list):
 
