@@ -544,3 +544,28 @@ def test_omit_undefined_concat() -> None:
 ))
 def test_plugin_found_not_found(conditional: str) -> None:
     assert Templar().evaluate_conditional(TRUST.tag(conditional))
+
+
+@pytest.mark.parametrize("value, expected", (
+    ("{{ range(2) }}", [0, 1]),
+    ("{{ [range(2)] }}", [[0, 1]]),
+    ("{{ {'a': {'r': range(2)}} }}", dict(a=dict(r=[0, 1]))),
+    (dict(r=range(2)), dict(r=[0, 1])),
+    (dict(r=TRUST.tag("{{ [range(2)] }}")), dict(r=[[0, 1]])),
+    ("{{ {'a': 1}.items() }}", [('a', 1)]),
+    ("{{ {'a': 1}.keys() }}", ['a']),
+    ("{{ {'a': 1}.values() }}", [1]),
+    ("{{ yielder(2) }}", [0, 1]),
+    ("{% set y = yielder(2) %}{{ y | list }} | {{ y | list }}", "[0, 1] | []"),
+), ids=str)
+def test_finalize_generator(value: t.Any, expected: t.Any) -> None:
+    def yielder(count: int) -> t.Generator[int, None, None]:
+        for i in range(count):
+            yield i
+
+    templar = Templar(variables=dict(
+        yielder=yielder,
+    ))
+
+    # FIXME: we still need to deal with the "Encountered unsupported" warnings these generate
+    assert templar.template(TRUST.tag(value)) == expected

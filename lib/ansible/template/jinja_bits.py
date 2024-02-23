@@ -4,6 +4,7 @@ import ast
 import collections.abc as c
 import dataclasses
 import datetime
+import enum
 import functools
 import os
 import tempfile
@@ -469,24 +470,15 @@ class JinjaPluginIntercept(c.MutableMapping):
         return wrapper
 
 
-# NB: we're not actually using this pass_context, but it prevents our finalizer from
-#  being called on constants at template compile time, which also allows our custom
-#  visit_Const override to be used to mark embedded template constants trusted.
 @pass_context
-def _ansible_finalize(ctx, thing):
+def _ansible_finalize(_ctx: AnsibleContext, value: t.Any) -> t.Any:
     """
-    This function is called by Jinja with the result of each
-    variable template block (eg {{ }}) encountered in a template. It
-    converts iterator results into lists.
+    This function is called by Jinja with the result of each variable template block (e.g., {{ }}) encountered in a template.
+    We're not using the passed in AnsibleContext or modifying the value.
+    The pass_context decorator prevents finalize from being called on constants at template compile time.
+    The important part for us is that this blocks constant folding, which ensures our custom visit_Const is used.
     """
-
-    if _is_rolled(thing):
-        # FIXME: make sure this handles lazy lists properly
-        thing = list(thing)
-
-#    thing = TemplateContext.current_or_raise().templar.proxy_or_render_template(thing)
-
-    return thing
+    return value
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -662,7 +654,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive finalize before we repr (otherwise we can end up
         # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
         try:
-            node_list = _finalize_template_result(node_list, raise_on_unsupported_type=False)
+            node_list = _finalize_template_result(node_list, mode=FinalizeMode.CONCAT)
         except AnsibleUndefinedError as ex:
             return ex.source  # return the first AnsibleUndefined encountered (FailOnUndefined behavior)
 
@@ -751,14 +743,8 @@ def _undef(hint=None):
 
 
 def _is_rolled(value):
-    """Helper method to determine if something is an unrolled generator,
-    iterator, or similar object
-    """
-    return (
-        isinstance(value, c.Iterator) or
-        isinstance(value, c.MappingView) or
-        isinstance(value, RANGE_TYPE)
-    )
+    """Helper method to determine if something is an Iterator (e.g. yield), MappingView (e.g., dict.items) or range."""
+    return isinstance(value, (c.Iterator, c.MappingView, RANGE_TYPE))
 
 
 def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
@@ -853,8 +839,14 @@ def is_possibly_all_template(value: str, overrides: TemplateOverrides):
     return value.startswith(JINJA2_OVERRIDE) or overrides.starts_and_ends_with_jinja_delimiters(value)
 
 
+class FinalizeMode(enum.Enum):
+    TOP_LEVEL = enum.auto()
+    CONCAT = enum.auto()
+    POST_FINALIZE = enum.auto()
+
+
 # FIXME: add tests to ensure this doesn't drift from allowed types
-def _finalize_template_result(o: t.Any, raise_on_unsupported_type: bool) -> t.Any:
+def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
     """
     Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions.
     """
@@ -869,23 +861,26 @@ def _finalize_template_result(o: t.Any, raise_on_unsupported_type: bool) -> t.An
     # FIXME: delazifying HostVars/HostVarsVars here is correct but expensive- look at ways to do deferred lazy outside of templating or ?
     elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict, HostVars, HostVarsVars):
         value_expression = ((
-            _finalize_template_result(k, raise_on_unsupported_type),
-            _finalize_template_result(v, raise_on_unsupported_type)
+            _finalize_template_result(k, mode),
+            _finalize_template_result(v, mode)
         ) for k, v in o.items() if v is not Omit)
         value_type = dict
     elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
-        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
         value_type = list
     elif o_type in (tuple, _AnsibleTaggedTuple, _AnsibleLazyTemplateTuple):
-        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
         value_type = tuple
     elif o_type in (set, _AnsibleTaggedSet, _AnsibleLazyTemplateSet):
-        value_expression = (_finalize_template_result(v, raise_on_unsupported_type) for v in o if v is not Omit)
+        value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
         value_type = set
     elif o_type is AnsibleUndefined:
         # FIXME: this assumes handle_undefined follows our variable type rules
         return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o)
-    elif raise_on_unsupported_type:  # unsupported type (raise)
+    elif mode == FinalizeMode.TOP_LEVEL and _is_rolled(o):
+        value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
+        value_type = list
+    elif mode == FinalizeMode.TOP_LEVEL:  # unsupported type (raise)
         if o_type is _AnsibleTaggedVaultBomb:
             o.detonate()
 

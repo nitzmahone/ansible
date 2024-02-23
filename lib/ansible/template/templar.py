@@ -56,7 +56,7 @@ from ansible.parsing.dataloader import DataLoader
 
 from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, \
-    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result
+    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result, FinalizeMode
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext, _repr_from
 from .lazy_containers import _AnsibleLazyTemplateMixin
@@ -377,7 +377,7 @@ class Templar:
 
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire():
-                        template_result = _finalize_template_result(template_result, raise_on_unsupported_type=True)
+                        template_result = _finalize_template_result(template_result, mode=FinalizeMode.TOP_LEVEL)
                         template_result = options.undefined_behavior.post_finalize(template_result)
             except TemplateEncountered:
                 raise

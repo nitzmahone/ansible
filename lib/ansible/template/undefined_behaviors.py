@@ -12,7 +12,7 @@ from ansible.module_utils.datatag import NotATemplate
 from ansible.utils.display import Display
 
 from .utils import Omit, _repr_from, TemplateContext
-from .jinja_bits import AnsibleUndefined, _finalize_template_result
+from .jinja_bits import AnsibleUndefined, _finalize_template_result, FinalizeMode
 from ..errors import AnsibleUndefinedVariable
 
 _display = Display()
@@ -105,4 +105,4 @@ class BestEffortOmitUndefined(BestEffort):
 
         # there were warnings, which means we emitted omits that need omitting into the template result
         # do another finalize pass to clean it up
-        return _finalize_template_result(template_result, raise_on_unsupported_type=False)
+        return _finalize_template_result(template_result, mode=FinalizeMode.POST_FINALIZE)
