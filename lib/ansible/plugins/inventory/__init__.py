@@ -360,7 +360,7 @@ class Constructable(_BaseInventoryPlugin):
     def _compose(self, template, variables, disable_lookups=...):
         ''' helper method for plugins to compose variables for Ansible based on jinja2 expression and inventory vars'''
         if disable_lookups is not ...:
-            self.display.deprecated("The disable_lookups arg has no effect.", removal_version="2.21")
+            self.display.deprecated("The disable_lookups arg has no effect.", version="2.21")
 
         try:
             use_extra = self.get_option('use_extra_vars')
