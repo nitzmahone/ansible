@@ -4,7 +4,7 @@ import abc
 import inspect
 
 from ..compat import typing as t
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 
 from . import (
     AnsibleDatatagBase,
@@ -12,6 +12,8 @@ from . import (
 )
 
 POORLY_NAMED_SENTINEL = object()
+
+_T = t.TypeVar("_T")
 
 
 class AmbientContextBase:
@@ -21,21 +23,21 @@ class AmbientContextBase:
     # FIXME: this class should enforce strict nesting of contexts; overlapping context lifetimes leads to incredibly difficult to
     #  debug situations with undefined behavior, so it should fail fast.
 
-    _contextvar: t.Optional[ContextVar] = None
-    _contextvar_token = None  # overwritten with an instance attribute in the __enter__ method
+    _contextvar: t.ClassVar[ContextVar]
+    _contextvar_token: t.ClassVar[t.Optional[Token]] = None  # overwritten with an instance attribute in the __enter__ method
 
     def __init_subclass__(cls, **kwargs) -> None:
         cls._contextvar = ContextVar(cls.__name__)
 
     @classmethod
-    def current(cls):
+    def current(cls) -> t.Optional[t.Self]:
         try:
             return cls._contextvar.get()
         except LookupError:
             return None
 
     @classmethod
-    def current_or_raise(cls):
+    def current_or_raise(cls) -> t.Self:
         try:
             return cls._contextvar.get()
         except LookupError:
