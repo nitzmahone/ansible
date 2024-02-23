@@ -877,10 +877,10 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
     elif o_type is AnsibleUndefined:
         # FIXME: this assumes handle_undefined follows our variable type rules
         return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o)
-    elif mode == FinalizeMode.TOP_LEVEL and _is_rolled(o):
+    elif mode is FinalizeMode.TOP_LEVEL and _is_rolled(o):
         value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
         value_type = list
-    elif mode == FinalizeMode.TOP_LEVEL:  # unsupported type (raise)
+    elif mode is FinalizeMode.TOP_LEVEL:  # unsupported type (raise)
         if o_type is _AnsibleTaggedVaultBomb:
             o.detonate()
 
