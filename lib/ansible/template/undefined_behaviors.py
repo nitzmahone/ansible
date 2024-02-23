@@ -44,7 +44,7 @@ class FailOnUndefined(UndefinedBehavior):
 FAIL_ON_UNDEFINED: t.Final = FailOnUndefined()  # no sense in making many instances...
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
 class UndefinedTracker:
     number: int
     value: AnsibleUndefined
