@@ -42,7 +42,7 @@ def do_vault(data, secret, salt=None, vault_id='filter_default', wrap_object=Fal
         raise AnsibleFilterError("Unable to encrypt: %s" % to_native(e), orig_exc=e)
 
     if wrap_object:
-        vault = VaultedValue(ciphertext=vault).tag(secret)
+        vault = VaultedValue(ciphertext=str(vault)).tag(secret)
     else:
         vault = to_native(vault)
 
