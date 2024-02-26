@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import os
+
 from yaml.constructor import SafeConstructor, ConstructorError
 from yaml.nodes import MappingNode
 
@@ -24,14 +26,19 @@ from ansible import constants as C
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.datatag import (AnsibleSourcePosition, AnsibleTaggedObject, UndecryptableVaultedValue,
                                           TrustedAsTemplate, NotATemplate, VaultedValue)
-from ansible.parsing.vault import VaultLib
+from ansible.parsing.vault import VaultLib, VaultSecret
 from ansible.utils.display import Display
 
 display = Display()
 
 
 class AnsibleConstructor(SafeConstructor):
-    def __init__(self, file_name=None, vault_secrets=None, trusted_as_template=False):
+    def __init__(
+        self,
+        file_name: str | os.PathLike | None = None,
+        vault_secrets: list[tuple[str, VaultSecret]] | None = None,
+        trusted_as_template: bool = False,
+    ) -> None:
         # ensure we don't have a PathLike or tagged string that will upset AnsibleSourcePosition
         self._ansible_file_name = None if file_name is None else str(file_name)
         super(AnsibleConstructor, self).__init__()
