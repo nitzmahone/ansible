@@ -17,6 +17,8 @@ _T = t.TypeVar("_T")
 
 
 class AmbientContextBase:
+    __slots__ = ('_contextvar_token',)
+
     # FIXME: this base class is not datatag specific- find a new module_utils home for it
     # this base class implements a context manager that makes the CM instance accessible to any other code executing beneath
     # it in the same contextvars context (eg, thread, asyncio context) via a .current property
@@ -24,7 +26,7 @@ class AmbientContextBase:
     #  debug situations with undefined behavior, so it should fail fast.
 
     _contextvar: t.ClassVar[ContextVar]
-    _contextvar_token: t.ClassVar[t.Optional[Token]] = None  # overwritten with an instance attribute in the __enter__ method
+    _contextvar_token: t.Optional[Token]
 
     def __init_subclass__(cls, **kwargs) -> None:
         cls._contextvar = ContextVar(cls.__name__)

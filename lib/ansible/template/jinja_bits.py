@@ -481,7 +481,7 @@ def _ansible_finalize(_ctx: AnsibleContext, value: t.Any) -> t.Any:
     return value
 
 
-@dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
+@dataclasses.dataclass(kw_only=True, slots=True)
 class _TemplateCompileContext(AmbientContextBase):
     escape_backslashes: bool
 
