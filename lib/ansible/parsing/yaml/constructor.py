@@ -32,7 +32,8 @@ display = Display()
 
 class AnsibleConstructor(SafeConstructor):
     def __init__(self, file_name=None, vault_secrets=None, trusted_as_template=False):
-        self._ansible_file_name = str(file_name)  # ensure we don't have a PathLike or tagged string that will upset AnsibleSourcePosition
+        # ensure we don't have a PathLike or tagged string that will upset AnsibleSourcePosition
+        self._ansible_file_name = None if file_name is None else str(file_name)
         super(AnsibleConstructor, self).__init__()
         self._vaults = {}
         self.vault_secrets = vault_secrets or []
