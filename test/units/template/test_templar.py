@@ -556,7 +556,7 @@ def test_plugin_found_not_found(conditional: str) -> None:
     ("{{ {'a': 1}.keys() }}", ['a']),
     ("{{ {'a': 1}.values() }}", [1]),
     ("{{ yielder(2) }}", [0, 1]),
-    ("{% set y = yielder(2) %}{{ y | list }} | {{ y | list }}", "[0, 1] | []"),
+    ("{% set y = yielder(2) %}{{ y | list }} | {{ y | list }}", "[0, 1] | [0, 1]"),
 ), ids=str)
 def test_finalize_generator(value: t.Any, expected: t.Any) -> None:
     def yielder(count: int) -> t.Generator[int, None, None]:

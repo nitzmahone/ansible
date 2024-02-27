@@ -81,6 +81,7 @@ class _AnsibleRangeListAdapter(c.Sequence):
 
         raise AttributeError(item)
 
+
 @t.final
 class _AnsibleLazyListAdapter(c.Sequence):
     """
@@ -92,9 +93,9 @@ class _AnsibleLazyListAdapter(c.Sequence):
     # FIXME: taggability?
     # FIXME: templatability?
 
-    def __init__(self, source: t.Iterator | t.MappingView) -> None:
-        self._source = source
-        self._cached_elements_backing = []
+    def __init__(self, source: c.Iterable | c.MappingView) -> None:
+        self._source: c.Iterable = source  # type: ignore[assignment]  # mypy doesn't consider MappingView to be Iterable
+        self._cached_elements_backing: list[t.Any] = []
         self._backing_lock = Lock()
         self._source_consumed = False
 
@@ -116,7 +117,7 @@ class _AnsibleLazyListAdapter(c.Sequence):
     def __len__(self) -> int:
         try:
             # ask the source first, in case it knows its length
-            return len(self._source)
+            return len(self._source)  # type: ignore[arg-type]
         except TypeError:
             # fall back to the populated cache
             return len(self._cached_elements)
@@ -201,13 +202,12 @@ class _AnsibleLazyTemplateMixin:
                     dispatcher = _AnsibleLazyTemplateMixin._dispatch_types[container_type]
                     break
             else:
-                if type(item) is range:
+                if type(item) is range:  # pylint: disable=unidiomatic-typecheck
                     return _AnsibleRangeListAdapter(item)
 
                 # FIXME: use a better/cheaper identification mechanism
                 if isinstance(item, (c.Iterator, c.MappingView)):
                     return _AnsibleLazyListAdapter(item)
-
 
                 # FIXME: what do we want here? such as HostVars, HostVarsVars
                 # FIXME: we now have strict checking of variable types leaving templating, is this warning redundant?

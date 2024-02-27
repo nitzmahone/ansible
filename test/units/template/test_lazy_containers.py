@@ -25,7 +25,7 @@ CONTAINER_VALUES = (
 
 @pytest.mark.parametrize("value", CONTAINER_VALUES, ids=[type(value).__name__ for value in CONTAINER_VALUES])
 def test_container_equality(value: t.Any) -> None:
-    templar = Templar(loader=None, variables=dict())
+    templar = Templar()
 
     rendered = templar.template(value)
 
@@ -45,7 +45,7 @@ def test_container_equality(value: t.Any) -> None:
 
 @pytest.mark.parametrize("value", CONTAINER_VALUES, ids=[type(value).__name__ for value in CONTAINER_VALUES])
 def test_container_format(value: t.Any) -> None:
-    templar = Templar(loader=None, variables=dict())
+    templar = Templar()
 
     rendered = templar.template(value)
 
@@ -62,7 +62,7 @@ def test_container_format(value: t.Any) -> None:
     tuple,
 ))
 def test_container_contains(container_type: type) -> None:
-    templar = Templar(loader=None, variables=dict())
+    templar = Templar()
 
     # including default('goodbye') as canary for flattening to a string
     value = container_type([VALUE_TO_TEMPLATE])
@@ -83,7 +83,7 @@ def test_container_contains(container_type: type) -> None:
     tuple,
 ))
 def test_container_comparison(container_type: type) -> None:
-    templar = Templar(loader=None, variables=dict())
+    templar = Templar()
 
     # including default('goodbye') as canary for flattening to a string
     value = container_type([VALUE_TO_TEMPLATE])
@@ -108,7 +108,7 @@ def test_container_comparison(container_type: type) -> None:
 
 
 def test_list_sort() -> None:
-    templar = Templar(loader=None, variables=dict())
+    templar = Templar()
 
     with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         lazy: list = _AnsibleLazyTemplateMixin.try_create([])
@@ -118,7 +118,7 @@ def test_list_sort() -> None:
 
 
 def test_list_index() -> None:
-    templar = Templar(loader=None, variables=dict())
+    templar = Templar()
 
     rendered = templar.template(VALUE_TO_TEMPLATE)
 
@@ -129,7 +129,7 @@ def test_list_index() -> None:
 
 
 def test_list_remove() -> None:
-    templar = Templar(loader=None, variables=dict())
+    templar = Templar()
 
     rendered = templar.template(VALUE_TO_TEMPLATE)
 
@@ -144,7 +144,7 @@ def test_list_remove() -> None:
 
 
 def test_dict_items_and_values() -> None:
-    templar = Templar(loader=None, variables=dict())
+    templar = Templar()
 
     value = dict(key=VALUE_TO_TEMPLATE)
     rendered = templar.template(value)
@@ -182,7 +182,7 @@ def test_lazy_generator() -> None:
     assert gen.count(2) == 1
 
 
-def test_generator_length_passthru(mocker) -> None:
+def test_generator_length_passthru() -> None:
     value = dict(a=1, b=2)
     raw_gen_iterator = value.items()
     gen = _AnsibleLazyListAdapter(raw_gen_iterator)
@@ -194,11 +194,12 @@ def test_generator_length_passthru(mocker) -> None:
 
 
 def test_lazy_generator_laziness() -> None:
-    def go_bang(arg):
+    def go_bang(_arg):
         raise Exception("BANG")
 
     def generator_goes_bang(arg):
-        if False:
+        # noinspection PyUnreachableCode
+        if False:  # pylint: disable=using-constant-test
             yield None
 
         go_bang(arg)
