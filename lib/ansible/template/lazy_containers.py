@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import types
 
+from collections import abc as c
+from threading import Lock
+
 from jinja2 import Environment
 from jinja2.nodes import EvalContext
 from jinja2.runtime import Undefined, Context
@@ -28,6 +31,106 @@ _ANSIBLE_LAZY_TEMPLATE_SLOTS = tuple(('_templar',))
 display = Display()
 
 
+@t.final
+class _AnsibleRangeListAdapter(c.Sequence):
+    """
+    Wraps Python range objects for lazy conversion and access as list-ish objects.
+    Ansible historically converted some common usages of range to lists.
+    This wrapper is applied consistently at all Jinja plugin argument boundaries,
+    """
+    # FIXME: taggability?
+    # FIXME: templatability?
+
+    def __init__(self, value: range) -> None:
+        self._value = value
+
+    def __iter__(self) -> t.Any:
+        # FIXME: cap range size in iteration cases w/ config override?
+        return iter(self._value)
+
+    def __getitem__(self, item) -> t.Any:
+        return self._value[item]
+
+    def __contains__(self, item) -> bool:
+        return item in self._value
+
+    def __len__(self) -> int:
+        return len(self._value)
+
+    def __eq__(self, other: t.Any) -> bool:
+        if isinstance(other, list):
+            return list(self._value) == other
+
+        return self._value == other
+
+    def __repr__(self) -> str:
+        return repr(self._value)
+
+    def __bool__(self) -> bool:
+        return bool(self._value)
+
+    def __hash__(self) -> int:
+        return hash(self._value)
+
+    def __reversed__(self) -> t.Iterator:
+        return reversed(self._value)
+
+    def __getattr__(self, item) -> t.Any:
+        if item in {'count', 'index', 'start', 'step', 'stop'}:
+            return getattr(self._value, item)
+
+        raise AttributeError(item)
+
+@t.final
+class _AnsibleLazyListAdapter(c.Sequence):
+    """
+    Wraps iterators and MappingViews for lazy conversion and access as list-ish objects.
+    Ansible historically converted some common usages of these types to lists.
+    This wrapper is applied consistently at all Jinja plugin argument boundaries,
+    """
+
+    # FIXME: taggability?
+    # FIXME: templatability?
+
+    def __init__(self, source: t.Iterator | t.MappingView) -> None:
+        self._source = source
+        self._cached_elements_backing = []
+        self._backing_lock = Lock()
+        self._source_consumed = False
+
+    @property
+    def _cached_elements(self) -> list:
+        if not self._source_consumed:
+            with self._backing_lock:
+                self._cached_elements_backing.extend(self._source)
+                self._source_consumed = True
+
+        return self._cached_elements_backing
+
+    def __getitem__(self, item) -> t.Any:
+        return self._cached_elements[item]
+
+    def __contains__(self, item) -> bool:
+        return item in self._cached_elements
+
+    def __len__(self) -> int:
+        try:
+            # ask the source first, in case it knows its length
+            return len(self._source)
+        except TypeError:
+            # fall back to the populated cache
+            return len(self._cached_elements)
+
+    def __eq__(self, other):
+        return self._cached_elements == other
+
+    def index(self, value: t.Any, *args, **kwargs) -> int:
+        return self._cached_elements.index(value, *args, **kwargs)
+
+    def count(self, value: t.Any) -> int:
+        return self._cached_elements.count(value)
+
+
 class _AnsibleLazyTemplateMixin:
     __slots__ = _NO_INSTANCE_STORAGE
 
@@ -40,6 +143,7 @@ class _AnsibleLazyTemplateMixin:
     # FIXME: optimize this list by separating base types (using isinstance) from exact types using a set lookup
     _ignore_types = (
         types.MethodType,
+        type,  # FIXME: this is a broad ignore for looking up `range` via `resolve_or_missing`; is there a better way?
         # FIXME: is there a better way to include callables like these, so we're not playing whack-a-mole
         type(''.startswith),  # builtin_function_or_method
         type(Omit),
@@ -49,6 +153,8 @@ class _AnsibleLazyTemplateMixin:
         Environment,
         Context,
         EvalContext,
+        _AnsibleLazyListAdapter,
+        _AnsibleRangeListAdapter,
     )
 
     _container_types: set[type] = set()  # populated by our __init_subclass__
@@ -95,6 +201,14 @@ class _AnsibleLazyTemplateMixin:
                     dispatcher = _AnsibleLazyTemplateMixin._dispatch_types[container_type]
                     break
             else:
+                if type(item) is range:
+                    return _AnsibleRangeListAdapter(item)
+
+                # FIXME: use a better/cheaper identification mechanism
+                if isinstance(item, (c.Iterator, c.MappingView)):
+                    return _AnsibleLazyListAdapter(item)
+
+
                 # FIXME: what do we want here? such as HostVars, HostVarsVars
                 # FIXME: we now have strict checking of variable types leaving templating, is this warning redundant?
                 # FIXME: undefined types need to be here too? (prevent warnings from with_first_found loops with undefined values)

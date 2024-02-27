@@ -27,8 +27,18 @@ from ansible.utils.display import Display
 from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleVariableTypeError
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
-from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePosition, AnsibleTaggedObject, AnsibleDatatagBase, _AnsibleTaggedDict, \
-    _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES, _AnsibleTaggedList, _AnsibleTaggedTuple, _AnsibleTaggedSet, _inject_post_init_validation
+from ansible.module_utils.datatag import (
+    TrustedAsTemplate,
+    AnsibleSourcePosition,
+    AnsibleTaggedObject,
+    AnsibleDatatagBase,
+    _AnsibleTaggedDict,
+    _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES,
+    _AnsibleTaggedList,
+    _AnsibleTaggedTuple,
+    _AnsibleTaggedSet,
+    _inject_post_init_validation,
+)
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 from ansible.module_utils.six import string_types
 from ansible.module_utils import datatag
@@ -36,10 +46,15 @@ from ansible.plugins.loader import filter_loader, test_loader, Jinja2Loader
 from .datatag import _JinjaConstTemplate, _JinjaConstToTrustedTemplate
 
 from .utils import Omit, TemplateContext, _repr_from
-from .lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateDict, _AnsibleLazyTemplateList, _AnsibleLazyTemplateTuple, _AnsibleLazyTemplateSet
+from .lazy_containers import (
+    _AnsibleLazyTemplateMixin,
+    _AnsibleLazyTemplateDict,
+    _AnsibleLazyTemplateList,
+    _AnsibleLazyTemplateTuple,
+    _AnsibleLazyTemplateSet,
+    _AnsibleLazyListAdapter, _AnsibleRangeListAdapter,
+)
 from .vault import _AnsibleTaggedVaultBomb
-
-RANGE_TYPE = type(range(0))
 
 JINJA2_OVERRIDE = '#jinja2:'
 
@@ -453,17 +468,12 @@ class JinjaPluginIntercept(c.MutableMapping):
 
     @staticmethod
     def _wrap_filter(func):
-        """Intercept point for all filters to ensure that args are properly templated/lazified and that results are not a generator."""
+        """Intercept point for all filters to ensure that args are properly templated/lazified."""
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             port = TemplateContext.current_or_raise().templar.proxy_or_render_template
-            # FUTURE: plugin API support for generators will require that proxy_or_render_template knows how to wrap a generator
             ret = func(*port(args), **port(kwargs))
-
-            # FUTURE: plugins should be able to declare that they understand/produce generators to bypass this
-            if _is_rolled(ret):
-                ret = list(ret)
 
             return port(ret)
 
@@ -742,11 +752,6 @@ def _undef(hint=None):
     return AnsibleUndefined(hint)
 
 
-def _is_rolled(value):
-    """Helper method to determine if something is an Iterator (e.g. yield), MappingView (e.g., dict.items) or range."""
-    return isinstance(value, (c.Iterator, c.MappingView, RANGE_TYPE))
-
-
 def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
     """
     Yield nodes from a potentially recursive iterable of nodes.
@@ -877,7 +882,7 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
     elif o_type is AnsibleUndefined:
         # FIXME: this assumes handle_undefined follows our variable type rules
         return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o)
-    elif mode is FinalizeMode.TOP_LEVEL and _is_rolled(o):
+    elif mode in (FinalizeMode.TOP_LEVEL, FinalizeMode.CONCAT) and o_type in (_AnsibleLazyListAdapter, _AnsibleRangeListAdapter):
         value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
         value_type = list
     elif mode is FinalizeMode.TOP_LEVEL:  # unsupported type (raise)
