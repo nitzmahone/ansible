@@ -9,7 +9,7 @@ import collections.abc as c
 import datetime
 import dataclasses
 
-from ansible.module_utils.datatag import AnsibleSerializable
+from ansible.module_utils.datatag import AnsibleSerializable, AnsibleTaggedObject
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 
 
@@ -66,6 +66,9 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         # FIXME: optimize this; maybe direct-dispatch from a type mapping instead of using isinstance?
         if self._preserve_datatags and isinstance(o, AnsibleSerializable):
             o = o.serialize()
+        elif isinstance(o, AnsibleTaggedObject):
+            o = o.native_copy()
+
         # FIXME: remove?
         # elif getattr(o, '__ENCRYPTED__', False):
         #     # vault object

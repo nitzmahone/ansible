@@ -275,5 +275,10 @@ def test_list_adapter_source_propagation(value: t.Any) -> None:
 
 
 @pytest.mark.parametrize("value", t.cast(tuple, CONTAINER_VALUES) + LIST_ADAPTER_TEMPLATES, ids=str)
-def test_serialize(value: t.Any) -> None:
+def test_lazy_containers_to_yaml(value: t.Any) -> None:
     Templar(variables=dict(value=value)).template(TRUST.tag("{{ value | to_yaml }}"))
+
+
+@pytest.mark.parametrize("value", t.cast(tuple, CONTAINER_VALUES) + LIST_ADAPTER_TEMPLATES, ids=str)
+def test_lazy_containers_to_json(value: t.Any) -> None:
+    Templar(variables=dict(value=value)).template(TRUST.tag("{{ value | to_json }}"))
