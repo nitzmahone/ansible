@@ -420,11 +420,11 @@ class JinjaPluginIntercept(c.MutableMapping):
         if self._pluginloader.type == 'filter':
             # deprecated: description="deprecate STRING_TYPE_FILTERS config entry (formerly used here) once 2.18 is EOL" core_version="2.19"
             # conditionally unroll iterators/generators to avoid having to use `|list` after every filter
-            func = self._wrap_filter(func)
+            func = self._wrap_filter(func, key)
 
             # FIXME: we should probably be running the result of filter plugins through proxy_or_render_template
         else:
-            func = self._wrap_test(func)
+            func = self._wrap_test(func, key)
 
         return func
 
@@ -451,30 +451,35 @@ class JinjaPluginIntercept(c.MutableMapping):
         return len(self._delegatee)
 
     @staticmethod
-    def _wrap_test(func):
+    def _wrap_test(func: t.Callable, plugin_name: str) -> t.Callable:
+        """Intercept point for all test plugins to ensure that args are properly templated/lazified."""
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> bool:
-            # FIXME: why are not wrapping inputs, we do for __call__ and wrap_filter, see FIXMEs on those questioning the wrapping before doing anything here
-            res = func(*args, **kwargs)
+            # FIXME: see question in __call__ about needing to wrap input args
+            tc = TemplateContext.current_or_raise()
+            templar = tc.templar
+            test_res = func(*templar.proxy_or_render_template(args), **templar.proxy_or_render_kwargs(kwargs))
 
-            if not isinstance(res, bool):
-                # FIXME: should this be a deprecation warning that will eventually be a hard error, or?
-                # FIXME: access templatecontext/runtime stuff to include useful info about the source of the problem and the name of the broken test
-                display.warning(msg=f"test FIXME returned a non-boolean result of type {type(res)!r}")
-                res = bool(res)
+            if not isinstance(test_res, bool):
+                template = tc.template_value
+                display.deprecated(
+                    msg=f"The test plugin {plugin_name!r} used in template {_repr_from(template)} returned a non-boolean result of type {type(test_res)!r}. "
+                        f"Test plugins must have a boolean result.",
+                    version="2.21",
+                )
+                test_res = bool(test_res)
 
-            return res
+            return test_res
 
         return wrapper
 
     @staticmethod
-    def _wrap_filter(func):
-        """Intercept point for all filters to ensure that args are properly templated/lazified."""
-
+    def _wrap_filter(func: t.Callable, _plugin_name: str) -> t.Callable:
+        """Intercept point for all filter plugins to ensure that args are properly templated/lazified."""
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            templar = TemplateContext.current_or_raise().templar
             # FIXME: see question in __call__ about needing to wrap input args
+            templar = TemplateContext.current_or_raise().templar
             filter_res = func(*templar.proxy_or_render_template(args), **templar.proxy_or_render_kwargs(kwargs))
 
             return templar.proxy_or_render_template(filter_res)
