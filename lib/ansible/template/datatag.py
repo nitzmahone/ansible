@@ -21,7 +21,6 @@ class _RenderJinjaConstAsTemplate(_MutatingAccessContextBase):
     _tag_type_interest = frozenset([_JinjaConstTemplate])
 
     def _notify(self, o: t.Any) -> t.Any:
-        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {_repr_from(o)}", version="2.21")
         return TemplateContext.current_or_raise().templar.proxy_or_render_template(TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o)))
 
 

@@ -682,6 +682,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         application of trust or inline template rendering).
         """
         # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
+        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {_repr_from(const_template)}", version="2.21")
+
         tags: list[AnsibleDatatagBase] = [_JinjaConstTemplate()]
 
         if (tv := TemplateContext.current().template_value) and (source_pos := AnsibleSourcePosition.get_tag(tv)):
@@ -756,7 +758,6 @@ def _trust_jinja_constants(o: t.Any) -> t.Any:
     o_type = type(o)
 
     if _JinjaConstTemplate.is_tagged_on(o):
-        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {_repr_from(o)}", version="2.21")
         return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
 
     if o_type is dict:
