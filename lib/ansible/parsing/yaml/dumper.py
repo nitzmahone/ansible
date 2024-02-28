@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import typing as t
 
 from jinja2 import Undefined
