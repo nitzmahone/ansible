@@ -508,6 +508,7 @@ def test_stripped_conditionals(value: bool) -> None:
     ("{{ some_dict['undefined_key'] }}", dict(some_dict={}), "object of type 'dict' has no attribute 'undefined_key' >>"),
     ("{{ some_dict.undefined_key }}", dict(some_dict={}), "object of type 'dict' has no attribute 'undefined_key' >>"),
     ("{{ m1 }} {{ m2 }} here", {}, "<< error 1 - 'm1' is undefined >> << error 2 - 'm2' is undefined >> here"),
+    ("before {{ m1 + m2 }} after", {}, "before << error 1 - 'm1' is undefined >><< error 2 - template potentially truncated >>"),
 ))
 def test_jinja_sourced_undefined(template: str, variables: dict[str, t.Any], error: str) -> None:
     """

@@ -803,6 +803,10 @@ def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
             # Convert an AnsibleUndefinedError generated internally by Jinja2 back into an AnsibleUndefined instance.
             # This instance may be embedded in a data structure and will be subject to UndefinedBehavior handling during template finalization.
             yield ex.source
+            # Normal error handling will convert the first AnsibleUndefined encountered into an exception, ignoring any further AnsibleUndefined values.
+            # When using BestEffort having a second AnsibleUndefined allows us to warn the user about potential omission of subsequent template nodes.
+            # FUTURE: We should be able to accurately determine if truncation occurred by having the code generator smuggle out the number of expected nodes.
+            yield AnsibleUndefined('template potentially truncated')
         else:
             if type(node) is TemplateModule:  # pylint: disable=unidiomatic-typecheck
                 yield from _flatten_nodes(node._body_stream)
