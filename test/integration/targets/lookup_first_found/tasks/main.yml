@@ -1,3 +1,16 @@
+- name: undefined values should be ignored
+  debug:
+    msg: "found: {{ item }}"
+  with_first_found:
+    - "{{ missing_var }}foo1"
+    - bar1
+  register: result
+
+- name: verify the correct file was found
+  assert:
+    that:
+      result.results[0].item.endswith('/bar1')
+
 - name: test with_first_found
   set_fact: "first_found={{ item }}"
   with_first_found:
