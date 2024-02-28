@@ -919,7 +919,7 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
         value_type = set
     elif o_type is AnsibleUndefined:
         # FIXME: this assumes handle_undefined follows our variable type rules
-        return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o)
+        return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o, mode)
     elif mode in (FinalizeMode.TOP_LEVEL, FinalizeMode.CONCAT) and o_type in (_AnsibleLazyListAdapter, _AnsibleRangeListAdapter):
         value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
         value_type = list
