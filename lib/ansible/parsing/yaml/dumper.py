@@ -17,33 +17,30 @@
 
 from __future__ import annotations
 
+import dataclasses
 import typing as t
-
-import yaml
 
 from jinja2 import Undefined
 
 # FIXME: consider using AnsibleSerializable to register known types automatically?
 from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.module_utils.datatag.access import AnsibleAccessContext
-from ansible.module_utils.six import text_type
 from ansible.module_utils.common.yaml import SafeDumper
 from ansible.vars.hostvars import HostVars, HostVarsVars
 
 
 class AnsibleDumper(SafeDumper):
-    '''
-    A simple stub class that allows us to add representers
-    for our overridden object types.
-    '''
+    """A simple stub class that allows us to add representers for our custom types."""
 
 
 def represent_hostvars(self, data):
+    # FIXME: probably not correct
     return self.represent_dict(dict(data))
 
 
 # Note: only want to represent the encrypted data
 def represent_vault_encrypted_unicode(self, data):
+    # FIXME: not currently used
     return self.represent_scalar(u'!vault', data._ciphertext.decode(), style='|')
 
 
@@ -54,10 +51,6 @@ def represent_ansible_tagged_object(self, data):
         return self.represent_data(data.native_copy())
 
     return self.represent_data(data)
-
-
-def represent_unicode(self, data):
-    return yaml.representer.SafeRepresenter.represent_str(self, text_type(data))
 
 
 def represent_undefined(self, data: Undefined) -> t.NoReturn:

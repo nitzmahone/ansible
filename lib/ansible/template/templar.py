@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import collections.abc as c
 import dataclasses
 import enum
 import os
@@ -370,10 +371,13 @@ class Templar:
 
                         return options.value_for_omit  # value_for_omit was not manipulated, trust that it contains only allowed types
 
-                    if mode is TemplateMode.STOP_ON_CONTAINER and (result_type := type(template_result)) in AnsibleTaggedObject._collection_types:
+                    if mode is TemplateMode.STOP_ON_CONTAINER and type(template_result) in AnsibleTaggedObject._collection_types:
                         # Use of STOP_ON_CONTAINER implies the caller will perform necessary checks on values,
                         # most likely by passing them back into the templating system.
-                        return template_result.native_copy() if result_type in AnsibleTaggedObject._tagged_collection_types else template_result
+                        try:
+                            return template_result.untemplated_tagged_copy()
+                        except AttributeError:
+                            return template_result  # FIXME: how can we get here?
 
                     # data is our only positional arg, everything else is kwargs-only
                     with DetonateVaultBombsTripwire():
@@ -681,3 +685,6 @@ class Templar:
         # FIXME: always blindly access item here?
         # FIXME: should we do something with key here, or remove it?
         return self.template(AnsibleAccessContext.current().access(item))
+
+    def proxy_or_render_kwargs(self, kwargs: c.Mapping[str, t.Any]) -> dict[str, t.Any]:
+        return {kwarg: self.proxy_or_render_template(value) for kwarg, value in kwargs.items()}

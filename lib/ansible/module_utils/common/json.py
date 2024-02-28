@@ -5,12 +5,12 @@
 from __future__ import annotations
 
 import json
-
+import collections.abc as c
 import datetime
+import dataclasses
 
-from ansible.module_utils.six.moves.collections_abc import Mapping
 from ansible.module_utils.datatag import AnsibleSerializable
-from ansible.module_utils.datatag.access import AnsibleAccessContext
+from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 
 
 def json_dump(structure):
@@ -23,6 +23,13 @@ class _WrappedValue:
 
     def __init__(self, wrapped):
         self.wrapped = wrapped
+
+
+# FIXME: use a compat kwargs that gives us kw_only and slots when supported, otherwise nothing
+@dataclasses.dataclass
+class AnsibleJSONEncoderContext(AmbientContextBase):
+    resolve_templates: bool = True
+    # FIXME: implement this
 
 
 class AnsibleJSONEncoder(json.JSONEncoder):
@@ -67,7 +74,7 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         #     else:
         #         value = {'__ansible_vault': to_text(o._ciphertext, errors='surrogate_or_strict', nonstring='strict')}
         # start a new if parade to ensure we handle eg, nested lists of custom types from as_dict
-        if isinstance(o, Mapping):
+        if isinstance(o, c.Mapping):
             value = {str(k): _WrappedValue(v) if isinstance(v, self._wrap_types) else v for k, v in o.items()}
         elif isinstance(o, self._wrap_container_types):  # FIXME: others, maybe sequence? can't use Iterable...
             value = [_WrappedValue(v) if isinstance(v, self._wrap_types) else v for v in o]

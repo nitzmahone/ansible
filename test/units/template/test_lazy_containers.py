@@ -7,14 +7,14 @@ import typing as t
 import pytest
 
 from ansible.errors import AnsibleUndefinedVariable, AnsibleTemplateError
-from ansible.module_utils.datatag import TrustedAsTemplate
+from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePosition
 from ansible.template.utils import TemplateContext
 from ansible.template.templar import Templar, TemplateOptions
 from ansible.template.lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyListAdapter
 
 TRUST = TrustedAsTemplate()
 
-VALUE_TO_TEMPLATE = TrustedAsTemplate().tag("{{ 'hello' | default('goodbye') }}")
+VALUE_TO_TEMPLATE = TRUST.tag("{{ 'hello' | default('goodbye') }}")
 
 CONTAINER_VALUES = (
     dict(hello=VALUE_TO_TEMPLATE),
@@ -248,9 +248,32 @@ def test_wrapped_range():
     assert big_range == wrapped_big_range
 
 
-def test_list_adapter_equality():
-    templar = Templar(variables=dict(adict=dict(a=1, b=2)))
+LIST_ADAPTER_VALUES_AND_EXPECTED = (
+    ("range(1, 3)", [1, 2]),
+    ("{'a': 1, 'b': 2}.items()", [('a', 1), ('b', 2)]),
+    ("['hi'] | map('upper')", ["HI"]),
+)
 
-    assert templar.template(TRUST.tag("{{ range(1, 4) == [1, 2, 3]}}"))
-    assert templar.template(TRUST.tag("{{ adict.items() == [('a', 1), ('b', 2)]}}"))
-    assert templar.template(TRUST.tag("{{ [1, 1, 2, 3, 3, 2, 1] | unique == [1, 2, 3] }}"))
+LIST_ADAPTER_VALUES = tuple(item[0] for item in LIST_ADAPTER_VALUES_AND_EXPECTED)
+LIST_ADAPTER_TEMPLATES = tuple(TRUST.tag(f'{{{{ {value} }}}}') for value in LIST_ADAPTER_VALUES)
+
+
+@pytest.mark.parametrize("value, expected", LIST_ADAPTER_VALUES_AND_EXPECTED)
+def test_list_adapter_equality(value: str, expected: list) -> None:
+    src_pos = AnsibleSourcePosition(src='test')  # here to make sure it doesn't trigger an exception, it won't be in the result
+
+    assert Templar().evaluate_expression(TRUST.tag(f"({value} | type_debug) is contains 'ListAdapter'"))
+    assert Templar().evaluate_expression(TRUST.tag(src_pos.tag(f"{value} == {expected}")))
+
+
+@pytest.mark.parametrize("value", LIST_ADAPTER_VALUES)
+def test_list_adapter_source_propagation(value: t.Any) -> None:
+    src_pos = AnsibleSourcePosition(src='test')
+    tag = AnsibleSourcePosition.get_tag(Templar().template(TRUST.tag(src_pos.tag(f"{{{{ {value} }}}}"))))
+
+    assert tag is src_pos
+
+
+@pytest.mark.parametrize("value", t.cast(tuple, CONTAINER_VALUES) + LIST_ADAPTER_TEMPLATES, ids=str)
+def test_serialize(value: t.Any) -> None:
+    Templar(variables=dict(value=value)).template(TRUST.tag("{{ value | to_yaml }}"))

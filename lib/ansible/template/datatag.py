@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ansible.module_utils.compat import typing as t
-from ansible.module_utils.datatag import Deprecated, NotATemplate, AnsibleSourcePosition, AnsibleSingletonTagBase, TrustedAsTemplate
+from ansible.module_utils.datatag import Deprecated, NotATemplate, AnsibleSourcePosition, AnsibleSingletonTagBase, TrustedAsTemplate, _NO_INSTANCE_STORAGE
 from ansible.module_utils.datatag.access import _NotifiableAccessContextBase, _MutatingAccessContextBase, POORLY_NAMED_SENTINEL
 from ansible.utils.display import Display
 
@@ -13,7 +13,7 @@ display = Display()
 
 class _JinjaConstTemplate(AnsibleSingletonTagBase):
     # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
-    pass
+    __slots__ = _NO_INSTANCE_STORAGE  # FIXME: this isn't covered by ansible-test unit tests (PyCharm finds it by accident)
 
 
 class _JinjaConstToTrustedTemplate(_MutatingAccessContextBase):

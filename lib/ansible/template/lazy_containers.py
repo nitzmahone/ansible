@@ -32,14 +32,18 @@ display = Display()
 
 
 @t.final
-class _AnsibleRangeListAdapter(c.Sequence):
+class _AnsibleRangeListAdapter(c.Sequence, AnsibleTaggedObject):
     """
     Wraps Python range objects for lazy conversion and access as list-ish objects.
     Ansible historically converted some common usages of range to lists.
     This wrapper is applied consistently at all Jinja plugin argument boundaries,
     """
-    # FIXME: taggability?
     # FIXME: templatability?
+
+    native_type = list
+
+    _empty_tags_as_native = False  # never revert to the native type when no tags remain
+    _subclasses_native_type = False  # augments range, acts like a list, subclasses Sequence
 
     def __init__(self, value: range) -> None:
         self._value = value
@@ -83,15 +87,18 @@ class _AnsibleRangeListAdapter(c.Sequence):
 
 
 @t.final
-class _AnsibleLazyListAdapter(c.Sequence):
+class _AnsibleLazyListAdapter(c.Sequence, AnsibleTaggedObject):
     """
     Wraps iterators and MappingViews for lazy conversion and access as list-ish objects.
     Ansible historically converted some common usages of these types to lists.
     This wrapper is applied consistently at all Jinja plugin argument boundaries,
     """
-
-    # FIXME: taggability?
     # FIXME: templatability?
+
+    native_type = list
+
+    _empty_tags_as_native = False  # never revert to the native type when no tags remain
+    _subclasses_native_type = False  # augments range, acts like a list, subclasses Sequence
 
     def __init__(self, source: c.Iterable | c.MappingView) -> None:
         self._source: c.Iterable = source  # type: ignore[assignment]  # mypy doesn't consider MappingView to be Iterable
@@ -222,6 +229,9 @@ class _AnsibleLazyTemplateMixin:
 
         return value
 
+    def untemplated_tagged_copy(self) -> t.Collection:
+        raise NotImplementedError()
+
 
 @t.final
 class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
@@ -259,7 +269,10 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
             yield value
 
     def native_copy(self) -> dict:
-        return dict(dict.items(self))
+        return dict(self.items())
+
+    def untemplated_tagged_copy(self) -> dict:
+        return AnsibleTaggedObject.tag_copy(self, dict.items(self), value_type=dict)
 
     def __eq__(self, other):
         # FIXME: optimize this
@@ -296,7 +309,10 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
         return list.__repr__(list(self.__iter__()))
 
     def native_copy(self) -> list:
-        return list(list.__iter__(self))
+        return list(iter(self))
+
+    def untemplated_tagged_copy(self) -> list:
+        return AnsibleTaggedObject.tag_copy(self, list.__iter__(self), value_type=list)
 
     def __eq__(self, other):
         # FIXME: optimize this
@@ -358,7 +374,10 @@ class _AnsibleLazyTemplateTuple(_AnsibleTaggedTuple, _AnsibleLazyTemplateMixin):
         return tuple.__repr__(tuple(self.__iter__()))
 
     def native_copy(self) -> tuple:
-        return tuple(tuple.__iter__(self))
+        return tuple(iter(self))
+
+    def untemplated_tagged_copy(self) -> tuple:
+        return AnsibleTaggedObject.tag_copy(self, tuple.__iter__(self), value_type=tuple)
 
     def __eq__(self, other):
         # FIXME: optimize this
@@ -402,4 +421,7 @@ class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
         return set.__repr__(set(self.__iter__()))
 
     def native_copy(self) -> set:
-        return set(set.__iter__(self))
+        return set(iter(self))
+
+    def untemplated_tagged_copy(self) -> set:
+        return AnsibleTaggedObject.tag_copy(self, set.__iter__(self), value_type=set)

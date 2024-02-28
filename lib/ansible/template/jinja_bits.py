@@ -454,6 +454,7 @@ class JinjaPluginIntercept(c.MutableMapping):
     def _wrap_test(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> bool:
+            # FIXME: why are not wrapping inputs, we do for __call__ and wrap_filter, see FIXMEs on those questioning the wrapping before doing anything here
             res = func(*args, **kwargs)
 
             if not isinstance(res, bool):
@@ -472,10 +473,11 @@ class JinjaPluginIntercept(c.MutableMapping):
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            port = TemplateContext.current_or_raise().templar.proxy_or_render_template
-            ret = func(*port(args), **port(kwargs))
+            templar = TemplateContext.current_or_raise().templar
+            # FIXME: see question in __call__ about needing to wrap input args
+            filter_res = func(*templar.proxy_or_render_template(args), **templar.proxy_or_render_kwargs(kwargs))
 
-            return port(ret)
+            return templar.proxy_or_render_template(filter_res)
 
         return wrapper
 
@@ -715,17 +717,21 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         *args: t.Any,
         **kwargs: t.Any,
     ) -> t.Any:
-        tc = TemplateContext.current_or_raise()
-        port = tc.templar.proxy_or_render_template
+        templar = TemplateContext.current_or_raise().templar
 
         # FUTURE: this doesn't scale well- as we add more globals that need special handling, we may want to move that down into the globals
-        if __obj == tc.templar._lookup or __obj == tc.templar._query_lookup:  # we can't use reference equality here; bound methods differ by instance
+        if __obj == templar._lookup or __obj == templar._query_lookup:  # we can't use reference equality here; bound methods differ by instance
             with _JinjaConstToTrustedTemplate():
-                res = super().call(__context, __obj, args[0], *port(args[1:]), **port(kwargs))
+                # FIXME: devel only called listify_lookup_plugin_terms on args, not kwargs
+                # FIXME: this isn't "sticky", so a constant passed through won't be trusted later when rendered
+                call_res = super().call(__context, __obj, args[0], *templar.proxy_or_render_template(args[1:]), **templar.proxy_or_render_kwargs(kwargs))
         else:
-            res = super().call(__context, __obj, *port(args), **port(kwargs))
+            # FIXME: is there any case where proxy_or_render_template is actually needed for non-lookup inputs?
+            #        variables from storage should already be lazy, constants aren't supported outside lookups, so what's left?
+            #        one thing this does give us is access, is that why it's here? if so, document and add tests to cover it
+            call_res = super().call(__context, __obj, *templar.proxy_or_render_template(args), **templar.proxy_or_render_kwargs(kwargs))
 
-        return port(res)
+        return templar.proxy_or_render_template(call_res)
 
     def _now(self, utc=False, fmt=None):
         """Jinja2 global function (now) to return current datetime, potentially formatted via strftime."""

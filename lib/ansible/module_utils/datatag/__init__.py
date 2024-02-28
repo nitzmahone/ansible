@@ -379,6 +379,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
     _collection_types: t.Set[t.Type[Collection]] = set()
 
     _empty_tags_as_native = True  # by default, untag will revert to the native type when no tags remain
+    _subclasses_native_type = True  # by default, tagged types are assumed to subclass the type they augment
     _ansible_tags_mapping = _EMPTY_INTERNAL_TAGS_MAPPING
     """
     Efficient internal storage of tags, indexed by tag type.
@@ -395,14 +396,22 @@ class AnsibleTaggedObject(AnsibleSerializable):
         except AttributeError:
             pass
 
+        if not cls._subclasses_native_type:
+            return  # NOTE: When not subclassing a native type, the derived type must set cls.native_type itself and cls._empty_tags_as_native to False.
+
         try:
+            # Subclasses of tagged types will already have a native type set and won't need to detect it.
+            # Special types which do not subclass a native type can also have their native type already set.
             cls.native_type
         except AttributeError:
+            # Direct subclasses of native types won't have cls.native_type set, so detect the native type.
             cls.native_type = cls.__bases__[0]
 
+        # Detect the item source if not already set.
         if cls.item_source is None and is_non_scalar_collection_type(cls.native_type):
             cls.item_source = cls.native_type.__iter__  # type: ignore[attr-defined]
 
+        # Use a collection specific factory for types with item sources.
         if cls.item_source:
             cls._instance_factory = cls._instance_factory_collection  # type: ignore[method-assign]
 
