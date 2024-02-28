@@ -38,8 +38,6 @@ class _AnsibleRangeListAdapter(c.Sequence, AnsibleTaggedObject):
     Ansible historically converted some common usages of range to lists.
     This wrapper is applied consistently at all Jinja plugin argument boundaries,
     """
-    # FIXME: templatability?
-
     native_type = list
 
     _empty_tags_as_native = False  # never revert to the native type when no tags remain
@@ -92,8 +90,8 @@ class _AnsibleLazyListAdapter(c.Sequence, AnsibleTaggedObject):
     Wraps iterators and MappingViews for lazy conversion and access as list-ish objects.
     Ansible historically converted some common usages of these types to lists.
     This wrapper is applied consistently at all Jinja plugin argument boundaries,
+    This adapter performs no templating; sources are expected to perform any necessary templating.
     """
-    # FIXME: templatability?
 
     native_type = list
 
