@@ -11,6 +11,21 @@
     that:
       result.results[0].item.endswith('/bar1')
 
+- name: verify lazy undefined handling
+  debug:
+    msg: "found: {{ item }}"
+  with_first_found:
+    - files: "{{ files }}"
+  register: result
+  vars:
+    files:
+      - "{{ missing_var }}foo1"
+      - bar1
+- name: verify the correct file was found
+  assert:
+    that:
+      result.results[0].item.endswith('/bar1')
+
 - name: test with_first_found
   set_fact: "first_found={{ item }}"
   with_first_found:
