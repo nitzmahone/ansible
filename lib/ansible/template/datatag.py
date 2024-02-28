@@ -16,15 +16,6 @@ class _JinjaConstTemplate(AnsibleSingletonTagBase):
     __slots__ = _NO_INSTANCE_STORAGE  # FIXME: this isn't covered by ansible-test unit tests (PyCharm finds it by accident)
 
 
-class _JinjaConstToTrustedTemplate(_MutatingAccessContextBase):
-    # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
-    _tag_type_interest = frozenset([_JinjaConstTemplate])
-
-    def _notify(self, o: t.Any) -> t.Any:
-        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {_repr_from(o)}", version="2.21")
-        return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
-
-
 class _RenderJinjaConstAsTemplate(_MutatingAccessContextBase):
     # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
     _tag_type_interest = frozenset([_JinjaConstTemplate])

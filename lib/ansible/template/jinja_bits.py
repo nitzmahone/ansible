@@ -43,7 +43,7 @@ from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientCon
 from ansible.module_utils.six import string_types
 from ansible.module_utils import datatag
 from ansible.plugins.loader import filter_loader, test_loader, Jinja2Loader
-from .datatag import _JinjaConstTemplate, _JinjaConstToTrustedTemplate
+from .datatag import _JinjaConstTemplate
 
 from .utils import Omit, TemplateContext, _repr_from
 from .lazy_containers import (
@@ -721,10 +721,11 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         # FUTURE: this doesn't scale well- as we add more globals that need special handling, we may want to move that down into the globals
         if __obj == templar._lookup or __obj == templar._query_lookup:  # we can't use reference equality here; bound methods differ by instance
-            with _JinjaConstToTrustedTemplate():
-                # FIXME: devel only called listify_lookup_plugin_terms on args, not kwargs
-                # FIXME: this isn't "sticky", so a constant passed through won't be trusted later when rendered
-                call_res = super().call(__context, __obj, args[0], *templar.proxy_or_render_template(args[1:]), **templar.proxy_or_render_kwargs(kwargs))
+            lookup_name = args[0]
+            args = templar.proxy_or_render_template(_trust_jinja_constants(args[1:]))  # for backwards compat, only trust constant templates in lookup pos args
+            kwargs = templar.proxy_or_render_kwargs(kwargs)
+
+            call_res = super().call(__context, __obj, lookup_name, *args, **kwargs)
         else:
             # FIXME: is there any case where proxy_or_render_template is actually needed for non-lookup inputs?
             #        variables from storage should already be lazy, constants aren't supported outside lookups, so what's left?
@@ -744,6 +745,27 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             return now.strftime(fmt)
 
         return now
+
+
+def _trust_jinja_constants(o: t.Any) -> t.Any:
+    """
+    Apply TrustedAsTemplate to values tagged with _JinjaConstTemplate and warn about not using templates in constants.
+    Used to provide backwards compatiblity with historical lookup behavior for positional arguments.
+    """
+    # FIXME: needs tests to exercise this
+    o_type = type(o)
+
+    if _JinjaConstTemplate.is_tagged_on(o):
+        display.deprecated(msg=f"Jinja constant strings should not contain embedded templates: {_repr_from(o)}", version="2.21")
+        return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
+
+    if o_type is dict:
+        return {k: _trust_jinja_constants(v) for k, v in o.items()}
+
+    if o_type in (list, tuple, set):
+        return o_type(_trust_jinja_constants(v) for v in o)
+
+    return o
 
 
 _DEFAULT_UNDEF = AnsibleUndefined("Mandatory variable has not been overridden", _no_template_source=True)
