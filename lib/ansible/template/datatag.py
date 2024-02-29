@@ -3,6 +3,7 @@ from __future__ import annotations
 from ansible.module_utils.compat import typing as t
 from ansible.module_utils.datatag import Deprecated, NotATemplate, AnsibleSourcePosition, AnsibleSingletonTagBase, TrustedAsTemplate, _NO_INSTANCE_STORAGE
 from ansible.module_utils.datatag.access import _NotifiableAccessContextBase, _MutatingAccessContextBase, POORLY_NAMED_SENTINEL
+from ansible.template.utils import TemplateContext
 from ansible.utils.display import Display
 
 
