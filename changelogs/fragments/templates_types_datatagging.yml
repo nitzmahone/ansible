@@ -8,6 +8,11 @@ major_changes:
 minor_changes:
   - debug - # FIXME: Explain how debug handles templating on its own now.
   - templating - Templating errors now provide more information about both the location and context of the error, especially for deeply-nested and/or indirected templating scenarios.
+  - templating - Handling of omitted values is now a first-class feature of the template engine, and is usable in all Ansible Jinja template contexts.
+    Any template that resolves to ``omit`` is automatically removed from its parent container during templating.  # FIXME: porting guide entry?
+  - templating - Unified ``omit`` behavior now requires that plugins calling ``Templar.template()`` handle cases where the entire template result is omitted, either by
+    setting ``value_for_omit`` to a suitable substitute value (e.g., ``None``) or catching the ``AnsibleValueOmittedError`` that is raised by default.
+    Previously, this condition caused a randomly-generated string marker to appear in the template result.  # FIXME: porting guide entry?
   - vault - Vault-encrypted strings are now decrypted immediately when loaded (if the relevant secrets are available), instead of being repeatedly decrypted on each access.
   - templating - Template evaluation is lazier than in previous versions.
     Template expressions which resolve only portions of a data structure no longer result in the entire structure being templated.
