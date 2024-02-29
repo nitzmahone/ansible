@@ -18,7 +18,7 @@ from jinja2.exceptions import TemplateSyntaxError, UndefinedError
 from jinja2.loaders import FileSystemLoader
 from jinja2 import __version__ as jinja2_version
 
-from ansible import constants as C
+from ansible.constants import config
 from ansible.errors import (
     AnsibleError,
     AnsibleLookupError,
@@ -127,8 +127,8 @@ class Templar:
     # allow unit tests to easily patch trust check failures to raise instead of just warn
     _raise_on_trust_check_fail = False
     _sentinel = object()
-    _allow_broken_conditionals = C.config.get_config_value('ALLOW_BROKEN_CONDITIONALS')
-    _jinja_extensions = C.config.get_config_value('DEFAULT_JINJA2_EXTENSIONS')
+    _allow_broken_conditionals = config.get_config_value('ALLOW_BROKEN_CONDITIONALS')
+    _jinja_extensions = config.get_config_value('DEFAULT_JINJA2_EXTENSIONS')
 
     def __init__(
         self,
