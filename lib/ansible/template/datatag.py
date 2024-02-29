@@ -5,8 +5,6 @@ from ansible.module_utils.datatag import Deprecated, NotATemplate, AnsibleSource
 from ansible.module_utils.datatag.access import _NotifiableAccessContextBase, _MutatingAccessContextBase, POORLY_NAMED_SENTINEL
 from ansible.utils.display import Display
 
-from .utils import TemplateContext, _repr_from
-
 
 display = Display()
 
