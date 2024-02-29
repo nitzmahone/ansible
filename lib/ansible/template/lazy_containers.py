@@ -155,7 +155,7 @@ class _AnsibleLazyTemplateMixin:
         type(Omit),
         # FIXME: if we optimize to use type reference equality later, update this list to include relevant derived types
         Undefined,
-        # Jinja passes these into filters/tests via @pass_environment et al; silently ignore them
+        # Jinja passes these into filters/tests via @pass_environment et al.; silently ignore them
         Environment,
         Context,
         EvalContext,

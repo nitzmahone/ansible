@@ -381,7 +381,7 @@ class JinjaPluginIntercept(c.MutableMapping):
 
         self._pluginloader = pluginloader
 
-        # Jinja environment's mapping of known names (initially just J2 builtins)
+        # Jinja's environment mapping of known names (initially just J2 builtins)
         self._delegatee = delegatee
 
         # our names take precedence over Jinja's, but let things we've tried to resolve skip the pluginloader
@@ -393,7 +393,7 @@ class JinjaPluginIntercept(c.MutableMapping):
 
         original_exc = None
         if key not in self._seen_it:
-            # this looks too early to set this- it isn't. Setting it here keeps requests for Jinja builtins from
+            # This looks too early to set this, but it isn't. Setting it here keeps requests for Jinja builtins from
             # going through the pluginloader more than once, which is extremely slow for something that won't ever succeed.
             self._seen_it.add(key)
             plugin = None
@@ -672,8 +672,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             # FIXME: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
             return node_list[0]
 
-        # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc), do a recursive finalize before we repr (otherwise we can end up
-        # repr'ing Undefineds etc). Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
+        # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc.), do a recursive finalize before we repr (otherwise we can end up
+        # repr'ing Undefineds etc.) Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
         try:
             node_list = _finalize_template_result(node_list, mode=FinalizeMode.CONCAT)
         except AnsibleUndefinedError as ex:
@@ -730,7 +730,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     ) -> t.Any:
         templar = TemplateContext.current_or_raise().templar
 
-        # FUTURE: this doesn't scale well- as we add more globals that need special handling, we may want to move that down into the globals
+        # FUTURE: this doesn't scale well, as we add more globals that need special handling, we may want to move that down into the globals
         if __obj == templar._lookup or __obj == templar._query_lookup:  # we can't use reference equality here; bound methods differ by instance
             lookup_name = args[0]
             args = templar.proxy_or_render_template(_trust_jinja_constants(args[1:]))  # for backwards compat, only trust constant templates in lookup pos args
@@ -863,7 +863,7 @@ def _new_context(
         # pick apart the ChainMaps to enforce non-template-able globals, or to risk things that *should* be template-able not being lazified.
         layers.extend(_flatten_and_lazify_vars(globals))
 
-    # only return a ChainMap if we're combining layers or we have none
+    # only return a ChainMap if we're combining layers, or we have none
     parent = layers[0] if len(layers) == 1 else ChainMap(*layers)
 
     # the `parent` cast is only to satisfy Jinja's overly-strict type hint
