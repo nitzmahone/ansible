@@ -25,12 +25,12 @@ from jinja2.runtime import Context
 import unittest
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplatePluginNotFoundError
+from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplatePluginNotFoundError, AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
 from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError, TemplateMode
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template
-from ansible.template.undefined_behaviors import BestEffort, BestEffortOmitUndefined
+from ansible.template.undefined_behaviors import ReplaceUndefined, OmitUndefined
 from ansible.utils.display import Display
 from units.mock.loader import DictDataLoader
 
@@ -165,15 +165,13 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         self.assertRaises(AnsibleError, templar.template, TrustedAsTemplate().tag("{{recursive}}"))
         self.assertRaises(AnsibleUndefinedVariable, templar.template, TrustedAsTemplate().tag("{{foo-bar}}"))
 
-        # FIXME: this currently expects the best effort result to match the hint, which is a reconstructed version of the original template with additional
-        #        spaces, which may not be what we want (or what we end up with after refactoring)
-        assert "'bad_var' is undefined" in templar.template(TrustedAsTemplate().tag("{{bad_var}}"), options=TemplateOptions(undefined_behavior=BestEffort()))
+        result = templar.template(TrustedAsTemplate().tag("{{bad_var}}"), options=TemplateOptions(undefined_behavior=ReplaceUndefined()))
+        assert "<< error 1 - 'bad_var' is undefined >>" in result
 
         # test setting available_variables
         templar.available_variables = dict(foo="bam")
         self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}")), "bam")
         # variables must be a dict() for available_variables setter
-        # FIXME Use assertRaises() as a context manager (added in 2.7) once we do not run tests on Python 2.6 anymore.
         try:
             templar.available_variables = "foo=bam"
         except AssertionError:
@@ -515,7 +513,7 @@ def test_jinja_sourced_undefined(template: str, variables: dict[str, t.Any], err
     Ensure when Jinja encounters AnsibleUndefined and raises UndefinedError,
     that we turn it back into AnsibleUndefined so undefined_behavior can handle it during finalization.
     """
-    assert error in Templar(variables=variables).template(TRUST.tag(template), options=TemplateOptions(undefined_behavior=BestEffort()))
+    assert error in Templar(variables=variables).template(TRUST.tag(template), options=TemplateOptions(undefined_behavior=ReplaceUndefined()))
 
 
 def test_omit_concat() -> None:
@@ -523,7 +521,8 @@ def test_omit_concat() -> None:
 
 
 def test_omit_undefined_concat() -> None:
-    assert Templar().template(TRUST.tag("{{ a }}hi{{ b }} mom"), options=TemplateOptions(undefined_behavior=BestEffortOmitUndefined())) == 'hi mom'
+    with pytest.raises(AnsibleValueOmittedError):
+        assert Templar().template(TRUST.tag("{{ a }}hi{{ b }} mom"), options=TemplateOptions(undefined_behavior=OmitUndefined()))
 
 
 @pytest.mark.parametrize("conditional", (

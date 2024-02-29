@@ -808,7 +808,7 @@ def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
             # This instance may be embedded in a data structure and will be subject to UndefinedBehavior handling during template finalization.
             yield ex.source
             # Normal error handling will convert the first AnsibleUndefined encountered into an exception, ignoring any further AnsibleUndefined values.
-            # When using BestEffort having a second AnsibleUndefined allows us to warn the user about potential omission of subsequent template nodes.
+            # When using ReplaceUndefined having a second AnsibleUndefined allows us to warn the user about potential omission of subsequent template nodes.
             # FUTURE: We should be able to accurately determine if truncation occurred by having the code generator smuggle out the number of expected nodes.
             yield AnsibleUndefined('template potentially truncated')
         else:
@@ -926,6 +926,8 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
         return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o, mode)
     elif o_type is _AnsibleTaggedVaultBomb:
         raise o.detonate()  # this raise is just to keep silly tools that don't understand NoReturn happy about value_type/expression not being assigned
+    elif o_type is Omit:
+        return o  # allow pass through of omit for later handling after top-level finalize completes
     elif mode is FinalizeMode.TOP_LEVEL:  # unsupported type (raise)
         raise AnsibleVariableTypeError(variable_type=o_type)
     else:  # unsupported type (do not raise)

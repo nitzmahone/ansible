@@ -365,12 +365,6 @@ class Templar:
                 # If we're the outermost template operation, we need to recursively finalize the template result.
                 # This will render any embedded templates and trigger undefined, omit and vault bomb behaviors.
                 if template_ctx.is_top_level:
-                    if template_result is Omit:
-                        if options.value_for_omit is Omit:
-                            raise AnsibleValueOmittedError()
-
-                        return options.value_for_omit  # value_for_omit was not manipulated, trust that it contains only allowed types
-
                     if mode is TemplateMode.STOP_ON_CONTAINER and type(template_result) in AnsibleTaggedObject._collection_types:
                         # Use of STOP_ON_CONTAINER implies the caller will perform necessary checks on values,
                         # most likely by passing them back into the templating system.
@@ -383,6 +377,15 @@ class Templar:
                     with DetonateVaultBombsTripwire():
                         template_result = _finalize_template_result(template_result, mode=FinalizeMode.TOP_LEVEL)
                         template_result = options.undefined_behavior.post_finalize(template_result)
+
+                    # Check for Omit as a template result after post_finalize, which may have converted an AnsibleUndefined to Omit.
+                    # When value_for_omit is Omit and the template result is Omit, raise an AnsibleValueOmittedError.
+                    # Other occurrences of Omit will simply drop out of containers during _finalize_template_result or post_finalize.
+                    if template_result is Omit:
+                        if options.value_for_omit is Omit:
+                            raise AnsibleValueOmittedError()
+
+                        return options.value_for_omit  # value_for_omit was not manipulated, trust that it contains only allowed types
             except TemplateEncountered:
                 raise
             except Exception as ex:

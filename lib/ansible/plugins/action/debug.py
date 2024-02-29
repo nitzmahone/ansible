@@ -25,7 +25,7 @@ from ansible.module_utils.datatag import AnsibleTaggedObject, NotATemplate
 from ansible.plugins.action import ActionBase
 from ansible.template.templar import TemplateOptions
 from ansible.template.utils import Omit
-from ansible.template.undefined_behaviors import BestEffort, FAIL_ON_UNDEFINED
+from ansible.template.undefined_behaviors import ReplaceUndefined, FAIL_ON_UNDEFINED
 
 
 class ActionModule(ActionBase):
@@ -37,7 +37,7 @@ class ActionModule(ActionBase):
 
     def run(self, tmp=None, task_vars=None):
         # FIXME: we need more consistent error handling, either all failures should be ignored or none of them
-        best_effort = BestEffort()
+        replace_undefined = ReplaceUndefined()
 
         argument_spec = {
             'msg': {'type': 'raw', 'default': 'Hello world!'},
@@ -45,14 +45,14 @@ class ActionModule(ActionBase):
             'verbosity': {'type': 'int', 'default': 0},
         }
 
-        custom_undefined_handlers = dict(msg=best_effort, var=best_effort)
+        undefined_behaviors = dict(msg=replace_undefined, var=replace_undefined)
 
         # special omit handling; we're popping omitted items, so need to iterate a static copy
         for arg_name, arg in list(self._task.args.items()):
-            undefined_handler = custom_undefined_handlers.get(arg_name, FAIL_ON_UNDEFINED)
+            undefined_behavior = undefined_behaviors.get(arg_name, FAIL_ON_UNDEFINED)
 
             try:
-                self._task.args[arg_name] = self._templar.template(arg, options=TemplateOptions(undefined_behavior=undefined_handler))
+                self._task.args[arg_name] = self._templar.template(arg, options=TemplateOptions(undefined_behavior=undefined_behavior))
             except AnsibleValueOmittedError:
                 self._task.args.pop(arg_name)
                 continue
@@ -84,7 +84,7 @@ class ActionModule(ActionBase):
                 template_wrapped_arg = AnsibleTaggedObject.tag_copy(raw_var_arg, "{{" + raw_var_arg + "}}")
 
                 try:
-                    results = self._templar.template(template_wrapped_arg, options=TemplateOptions(undefined_behavior=best_effort))
+                    results = self._templar.template(template_wrapped_arg, options=TemplateOptions(undefined_behavior=replace_undefined))
                 except AnsibleValueOmittedError:
                     results = repr(Omit)
                     result.setdefault('warnings', []).append(
@@ -98,7 +98,7 @@ class ActionModule(ActionBase):
                     )
 
                 # FIXME: how should debug handle the case of var being a template?
-                #        if the template results in an undefined value, the best effort handling makes the result even more confusing
+                #        if the template results in an undefined value, the ReplaceUndefined behavior makes the result even more confusing
                 #        it seems like at a minimum, a warning about not using templates for `var` would be appropriate
                 # handle the corner case where the input was untrusted- if so, return the raw input, not the
                 # generated template
@@ -114,8 +114,8 @@ class ActionModule(ActionBase):
             result['_ansible_verbose_always'] = True
 
             # propagate any undefined warnings in the task result unless we're skipping the task
-            if best_effort.has_warnings:
-                result.setdefault('warnings', []).extend(best_effort.warnings())
+            if replace_undefined.has_warnings:
+                result.setdefault('warnings', []).extend(replace_undefined.warnings())
         else:
             result['skipped_reason'] = "Verbosity threshold not met."
             result['skipped'] = True

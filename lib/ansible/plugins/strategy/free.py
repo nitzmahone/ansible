@@ -38,7 +38,7 @@ from ansible.playbook.included_file import IncludedFile
 from ansible.plugins.loader import action_loader
 from ansible.plugins.strategy import StrategyBase
 from ansible.template.templar import Templar, TemplateOptions, as_non_templatable_text
-from ansible.template.undefined_behaviors import BestEffort
+from ansible.template.undefined_behaviors import ReplaceUndefined
 from ansible.module_utils.common.text.converters import to_text
 from ansible.utils.display import Display
 
@@ -156,8 +156,8 @@ class StrategyModule(StrategyBase):
                             action = None
 
                         try:
-                            with BestEffort.warning_context() as best_effort:
-                                task.name = as_non_templatable_text(templar.template(task.name, options=TemplateOptions(undefined_behavior=best_effort)))
+                            with ReplaceUndefined.warning_context() as replace_undefined:
+                                task.name = as_non_templatable_text(templar.template(task.name, options=TemplateOptions(undefined_behavior=replace_undefined)))
                         except AnsibleTemplateError as ex:
                             display.warning(f'Templating task name {task.name!r} failed: {ex}')
                             display.debug(f'Templating task name {task.name!r} failed: {ex}', host=host_name)
