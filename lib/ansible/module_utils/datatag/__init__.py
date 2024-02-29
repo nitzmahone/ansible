@@ -91,6 +91,8 @@ class AnsibleSerializable(metaclass=abc.ABCMeta):
 class Tripwire:
     """Marker mixin for types that should raise an error when encountered (e.g., AnsibleUndefined, VaultBomb)."""
 
+    __slots__ = _NO_INSTANCE_STORAGE
+
     def trip(self) -> t.NoReturn:
         """Derived types should implement a failure behavior."""
         raise NotImplementedError()
