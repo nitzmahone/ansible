@@ -24,7 +24,6 @@ from jinja2.runtime import Context
 
 import unittest
 
-from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplatePluginNotFoundError, AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader

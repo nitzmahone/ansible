@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from traceback import format_exc, format_stack
 from collections import ChainMap
 
-from jinja2.exceptions import TemplateSyntaxError, UndefinedError
+from jinja2.exceptions import TemplateSyntaxError
 from jinja2.loaders import FileSystemLoader
 from jinja2 import __version__ as jinja2_version
 
@@ -23,7 +23,6 @@ from ansible.errors import (
     AnsibleError,
     AnsibleLookupError,
     AnsibleValueOmittedError,
-    AnsibleOptionsError,
     AnsibleUndefinedVariable,
     AnsibleTemplateError,
     AnsibleTemplateSyntaxError,
