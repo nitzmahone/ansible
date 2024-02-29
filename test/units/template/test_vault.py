@@ -6,7 +6,7 @@ from ansible.module_utils.datatag import UndecryptableVaultedValue
 from ansible.template.vault import _VaultBomb, UndecryptableVaultError
 
 
-def check_methods() -> list[str, ...]:
+def check_methods() -> list[str]:
     """
     Return a list of _VaultBomb method names that are expected to detonate on use.
     When new methods are added in future Python versions, they need to be added to _VaultBomb or the ignore list below.
