@@ -191,17 +191,6 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\\\t' }}"), options=TemplateOptions(escape_backslashes=True)), "\\bar\\\\t")
         self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\\\t' }}"), options=TemplateOptions(escape_backslashes=False)), "\\bar\\t")
 
-    def test_template_jinja2_extensions(self):
-        fake_loader = DictDataLoader({})
-        templar = Templar(loader=fake_loader)
-
-        old_exts = C.DEFAULT_JINJA2_EXTENSIONS
-        try:
-            C.DEFAULT_JINJA2_EXTENSIONS = "foo,bar"
-            self.assertEqual(templar._get_extensions(), ['foo', 'bar'])
-        finally:
-            C.DEFAULT_JINJA2_EXTENSIONS = old_exts
-
 
 class TestTemplarLookup(BaseTemplar, unittest.TestCase):
     def test_lookup_missing_plugin(self):

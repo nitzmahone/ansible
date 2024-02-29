@@ -128,6 +128,7 @@ class Templar:
     _raise_on_trust_check_fail = False
     _sentinel = object()
     _allow_broken_conditionals = C.config.get_config_value('ALLOW_BROKEN_CONDITIONALS')
+    _jinja_extensions = C.config.get_config_value('DEFAULT_JINJA2_EXTENSIONS')
 
     def __init__(
         self,
@@ -148,7 +149,7 @@ class Templar:
     def environment(self) -> AnsibleEnvironment:
         if not self._environment:
             env = AnsibleEnvironment(
-                extensions=self._get_extensions(),
+                extensions=self._jinja_extensions,
                 loader=FileSystemLoader(self.basedir),
             )
 
@@ -194,24 +195,6 @@ class Templar:
             return i
 
         return i - 1 - j
-
-    @staticmethod
-    def _get_extensions():
-        """
-        Return jinja2 extensions to load.
-
-        If some extensions are set via jinja_extensions in ansible.cfg, we try
-        to load them with the jinja environment.
-        """
-        jinja_exts = []
-
-        if default_exts := C.DEFAULT_JINJA2_EXTENSIONS:
-            # make sure the configuration directive doesn't contain spaces
-            # and split extensions in an array
-            jinja_exts = default_exts.replace(" ", "").split(',')
-
-        # FIXME: cache this
-        return jinja_exts
 
     @property
     def available_variables(self) -> dict[str, t.Any] | ChainMap[str, t.Any]:

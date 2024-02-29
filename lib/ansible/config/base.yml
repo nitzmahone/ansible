@@ -766,6 +766,7 @@ DEFAULT_INVENTORY_PLUGIN_PATH:
 DEFAULT_JINJA2_EXTENSIONS:
   name: Enabled Jinja2 extensions
   default: []
+  type: list
   description:
     - This is a developer-specific feature that allows enabling additional Jinja2 extensions.
     - "See the Jinja2 documentation for details. If you do not know what these do, you probably don't need to change this setting :)"
