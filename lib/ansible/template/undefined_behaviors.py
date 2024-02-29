@@ -38,7 +38,7 @@ class FailOnUndefined(UndefinedBehavior):
         if TemplateContext.current_or_raise().is_top_level:
             raise AnsibleUndefinedVariable(value._undefined_message)  # exiting the templating system, use the external exception type
 
-        value._fail_with_undefined_error()  # not exiting templating yet, use an internal exception which can be converted back to AnsibleUndefined
+        value.trip()  # not exiting templating yet, use an internal exception which can be converted back to AnsibleUndefined
 
 
 FAIL_ON_UNDEFINED: t.Final = FailOnUndefined()  # no sense in making many instances...
@@ -96,7 +96,7 @@ class BestEffort(UndefinedBehavior):
 class BestEffortOmitUndefined(BestEffort):
     def handle_undefined(self, value: AnsibleUndefined, mode: FinalizeMode) -> t.Any:
         if mode == FinalizeMode.CONCAT:
-            value._fail_with_undefined_error()
+            value.trip()
 
         super().handle_undefined(value, mode)
 

@@ -9,7 +9,7 @@ import collections.abc as c
 import datetime
 import dataclasses
 
-from ansible.module_utils.datatag import AnsibleSerializable, AnsibleTaggedObject
+from ansible.module_utils.datatag import AnsibleSerializable, AnsibleTaggedObject, Tripwire
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 
 
@@ -89,6 +89,9 @@ class AnsibleJSONEncoder(json.JSONEncoder):
             value = o
         elif isinstance(o, bytes):
             value = o.decode()  # only reachable on Python 3.x due to str being in the type list for the previous conditional
+        elif isinstance(o, Tripwire):
+            # FUTURE: since Tripwire.trip() is NoReturn, ideally we'd not need this bogus assignment, but it's not handled properly by all tools
+            value = o.trip()  # trip failures for AnsibleUndefined, VaultBomb, etc.
         else:
             # use default encoder, which will likely result in an exception
             value = super(AnsibleJSONEncoder, self).default(o)

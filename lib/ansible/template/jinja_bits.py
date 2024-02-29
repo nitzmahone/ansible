@@ -38,6 +38,7 @@ from ansible.module_utils.datatag import (
     _AnsibleTaggedTuple,
     _AnsibleTaggedSet,
     _inject_post_init_validation,
+    Tripwire,
 )
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
 from ansible.module_utils.six import string_types
@@ -245,7 +246,7 @@ class AnsibleUndefinedError(UndefinedError):
         self.source = source
 
 
-class AnsibleUndefined(StrictUndefined):
+class AnsibleUndefined(StrictUndefined, Tripwire):
     """A custom Undefined class, which returns further Undefined objects on access, rather than throwing an exception."""
 
     __slots__ = ('_undefined_template_source',)
@@ -281,6 +282,9 @@ class AnsibleUndefined(StrictUndefined):
     # FIXME: we should probably intercept the dunder methods calling this instead -- and then make sure this function complains loudly if it is called
     def _fail_with_undefined_error(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
         raise AnsibleUndefinedError(self._undefined_message, self)
+
+    def trip(self) -> t.NoReturn:
+        self._fail_with_undefined_error()
 
     def __getattr__(self, name):
         if name[:2] == "__":

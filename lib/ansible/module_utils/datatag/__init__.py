@@ -88,6 +88,14 @@ class AnsibleSerializable(metaclass=abc.ABCMeta):
         return f'{name}({arg_string})'
 
 
+class Tripwire:
+    """Marker mixin for types that should raise an error when encountered (e.g., AnsibleUndefined, VaultBomb)."""
+
+    def trip(self) -> t.NoReturn:
+        """Derived types should implement a failure behavior."""
+        raise NotImplementedError()
+
+
 # FIXME: need caution tape about adding new tag types being a bad idea
 #  (eg, since propagation behavior has to be considered for each type every place it happens)
 class AnsibleDatatagBase(AnsibleSerializable, metaclass=abc.ABCMeta):

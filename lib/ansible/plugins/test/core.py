@@ -124,8 +124,7 @@ def regex(value='', pattern='', ignorecase=False, multiline=False, match_type='s
         This is likely only useful for `search` and `match` which already
         have their own filters.
     '''
-    # In addition to ensuring the correct type, to_text here will ensure
-    # _fail_with_undefined_error happens if the value is Undefined
+    # In addition to ensuring the correct type, to_text ensures that AnsibleUndefinedError is raised if the value is undefined
     value = to_text(value, errors='surrogate_or_strict')
     flags = 0
     if ignorecase:
