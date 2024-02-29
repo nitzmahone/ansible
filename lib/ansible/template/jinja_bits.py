@@ -188,7 +188,12 @@ class AnsibleContext(Context):
         # this is a clone of Jinja's impl of derived, but using our lazy-aware _new_context
 
         context = _new_context(
-            self.environment, self.name, {}, self.get_all(), True, None, locals
+            environment=self.environment,
+            template_name=self.name,
+            blocks={},
+            vars=self.get_all(),
+            shared=True,
+            locals=locals
         )
         context.eval_ctx = self.eval_ctx
         context.blocks.update((k, list(v)) for k, v in self.blocks.items())
@@ -231,7 +236,15 @@ class AnsibleTemplate(Template):
         shared: bool = False,
         locals: c.Mapping[str, t.Any] | None = None,
     ) -> Context:
-        return _new_context(self.environment, self.name, self.blocks, vars, shared, self.globals, locals)
+        return _new_context(
+            environment=self.environment,
+            template_name=self.name,
+            blocks=self.blocks,
+            vars=vars,
+            shared=shared,
+            globals=self.globals,
+            locals=locals,
+        )
 
 
 # FIXME: give this a name that reflects its usage as an internal-only flow control exception
@@ -660,7 +673,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         res = super()._compile(source, filename)
         return res
 
-    def concat(self, nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
+    @staticmethod
+    def concat(nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
         node_list = list(_flatten_nodes(nodes))
 
         if not node_list:
@@ -745,7 +759,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         return templar.proxy_or_render_template(call_res)
 
-    def _now(self, utc=False, fmt=None):
+    @staticmethod
+    def _now(utc=False, fmt=None):
         """Jinja2 global function (now) to return current datetime, potentially formatted via strftime."""
         if utc:
             now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)

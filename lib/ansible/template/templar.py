@@ -433,7 +433,8 @@ class Templar:
 
         return result
 
-    def _emit_deprecation_warnings(self, deprecated: DeprecatedAccessAuditContext) -> None:
+    @staticmethod
+    def _emit_deprecation_warnings(deprecated: DeprecatedAccessAuditContext) -> None:
         # FIXME: create a dataclass or something for runtime capture of deprecation info plus the template context the access occurred in
         for deprecation_template, deprecation in deprecated.deprecated_access:
             # FIXME: if we're in a worker, propagate deprecated access warnings back to the controller for deduplication
@@ -649,7 +650,8 @@ class Templar:
 
         raise AnsibleBrokenConditionalError(message)
 
-    def _trust_check(self, data: str, mode: TemplateMode) -> bool:
+    @staticmethod
+    def _trust_check(data: str, mode: TemplateMode) -> bool:
         """
         Return True if the given template data is trusted for templating, otherwise return False.
 
