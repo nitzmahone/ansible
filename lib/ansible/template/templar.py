@@ -43,7 +43,8 @@ from ansible.parsing.dataloader import DataLoader
 
 from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, \
-    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result, FinalizeMode
+    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result, FinalizeMode, \
+    AnsibleUndefinedError
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext, _repr_from
 from .lazy_containers import _AnsibleLazyTemplateMixin
@@ -478,8 +479,6 @@ class Templar:
         return self._lookup(name, *args, **kwargs)
 
     def _lookup(self, name, /, *args, **kwargs):
-        # FIXME: we should probably be running the result of lookup plugins through proxy_or_render_template
-
         instance = lookup_loader.get(name, loader=self._loader, templar=self)
 
         if instance is None:
@@ -495,36 +494,30 @@ class Templar:
         try:
             ran = instance.run(args, variables=self.available_variables, **kwargs)
         # FIXME: most of this exception handling should occur at the edge of templating
-        except AnsibleUndefinedVariable:
+        except AnsibleUndefinedError:
             # this is just to prevent the broad `except Exception` from firing below
             raise
-        except UndefinedError:
-            # this is just to prevent the broad `except Exception` from firing below
-            raise
-        except AnsibleOptionsError:
-            # invalid options given to lookup, just reraise
-            raise
-        except AnsibleLookupError as e:
+        except AnsibleLookupError as ex:
             # lookup handled error but still decided to bail
-            msg = 'Lookup failed but the error is being ignored: %s' % to_native(e)
+            msg = 'Lookup failed but the error is being ignored: %s' % to_native(ex)
             if errors == 'warn':
                 _display.warning(msg)
             elif errors == 'ignore':
                 _display.display(msg, log_only=True)
             else:
-                raise e
+                raise
             return [] if wantlist else None
-        except Exception as e:
+        except Exception as ex:
             # errors not handled by lookup
             msg = u"An unhandled exception occurred while running the lookup plugin '%s'. Error was a %s, original message: %s" % \
-                  (name, type(e), to_text(e))
+                  (name, type(ex), to_text(ex))
             if errors == 'warn':
                 _display.warning(msg)
             elif errors == 'ignore':
                 _display.display(msg, log_only=True)
             else:
                 _display.vvv('exception during Jinja2 execution: {0}'.format(format_exc()))
-                raise AnsibleError(to_native(msg), orig_exc=e)
+                raise AnsibleLookupError(f"Lookup {name!r} failed: {ex}") from ex
             return [] if wantlist else None
 
         is_nonstring_sequence = is_sequence(ran)
@@ -550,8 +543,7 @@ class Templar:
             except TypeError:
                 # FIXME: is this reachable? If so, just return the list anyway...
                 if not is_nonstring_sequence:
-                    raise AnsibleError("The lookup plugin '%s' did not return a list."
-                                       % name)
+                    raise AnsibleLookupError(f"Lookup {name!r} did not return a list.")
         return ran
 
     def evaluate_expression(self, expression: str, escape_backslashes=True) -> t.Any:

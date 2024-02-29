@@ -18,12 +18,16 @@ from __future__ import annotations
 
 import io
 import pytest
-
+import typing as t
 import unittest
+
+import pytest_mock
+
 from ansible.parsing import vault
-from ansible.module_utils.datatag import TrustedAsTemplate
+from ansible.module_utils.datatag import TrustedAsTemplate, VaultedValue
 from ansible.parsing.yaml import dumper, objects
 from ansible.parsing.yaml.loader import AnsibleLoader
+from ansible.plugins.filter.core import to_yaml, to_nice_yaml
 from ansible.template.jinja_bits import AnsibleUndefinedError, _DEFAULT_UNDEF
 
 from units.mock.yaml_helper import YamlTestUtils
@@ -91,3 +95,34 @@ class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
     def test_undefined(self):
         with pytest.raises(AnsibleUndefinedError):
             self._dump_string(_DEFAULT_UNDEF, dumper=self.dumper)
+
+
+@pytest.mark.parametrize("filter_impl, dump_vault_tags, expected_output, expected_warning", [
+    (to_yaml, True, "!vault |-\n  ciphertext\n", None),
+    (to_yaml, None, "!vault |-\n  ciphertext\n", "Implicit YAML dumping"),
+    (to_yaml, False, "secret plaintext\n", None),
+    (to_nice_yaml, True, "!vault |-\n    ciphertext\n", None),
+    (to_nice_yaml, None, "!vault |-\n    ciphertext\n", "Implicit YAML dumping"),
+    (to_nice_yaml, False, "secret plaintext\n", None),
+])
+def test_vaulted_value_dump(
+        filter_impl: t.Callable,
+        dump_vault_tags: bool | None,
+        expected_output: str,
+        expected_warning: str | None,
+        mocker: pytest_mock.MockerFixture
+) -> None:
+    """Validate that strings tagged VaultedValue are represented properly."""
+    value = VaultedValue(ciphertext="ciphertext").tag("secret plaintext")
+
+    from ansible.utils.display import Display
+
+    deprecated_spy = mocker.spy(Display(), 'deprecated')
+
+    res = filter_impl(value, dump_vault_tags=dump_vault_tags)
+
+    assert res == expected_output
+
+    if expected_warning:
+        assert deprecated_spy.call_count == 1
+        assert expected_warning in deprecated_spy.call_args.kwargs['msg']

@@ -276,14 +276,20 @@ class AnsibleTemplatePluginNotFoundError(AnsibleTemplateError):
     """The specified template plugin (lookup/filter/test) was not found."""
 
 
-class AnsibleFilterError(AnsibleTemplateError):
-    ''' a templating failure '''
-    pass
+class AnsibleTemplatePluginError(AnsibleTemplateError):
+    """Base class for template plugin errors."""
 
 
-class AnsibleLookupError(AnsibleTemplateError):
-    ''' a lookup failure '''
-    pass
+class AnsibleFilterError(AnsibleTemplatePluginError):
+    """Error raised by a filter plugin."""
+
+
+class AnsibleTestError(AnsibleTemplatePluginError):
+    """Error raised by a test plugin."""
+
+
+class AnsibleLookupError(AnsibleTemplatePluginError):
+    """Error raised by a lookup plugin."""
 
 
 class AnsibleUndefinedVariable(AnsibleTemplateError):

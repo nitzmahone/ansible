@@ -44,23 +44,16 @@ display = Display()
 UUID_NAMESPACE_ANSIBLE = uuid.UUID('361E6D51-FAEC-444A-9079-341386DA8E2E')
 
 
-def to_yaml(a, *args, **kw):
-    '''Make verbose, human-readable yaml'''
-    default_flow_style = kw.pop('default_flow_style', None)
-    try:
-        transformed = yaml.dump(a, Dumper=AnsibleDumper, allow_unicode=True, default_flow_style=default_flow_style, **kw)
-    except Exception as e:
-        raise AnsibleFilterError("to_yaml - %s" % to_native(e), orig_exc=e)
-    return to_text(transformed)
+def to_yaml(a, *_args, allow_unicode=True, default_flow_style: bool | None = None, dump_vault_tags: bool | None = None, **kwargs) -> str:
+    """Serialize input as terse flow-style YAML."""
+    dumper = partial(AnsibleDumper, dump_vault_tags=dump_vault_tags)
+
+    return yaml.dump(a, Dumper=dumper, allow_unicode=allow_unicode, default_flow_style=default_flow_style, **kwargs)
 
 
-def to_nice_yaml(a, indent=4, *args, **kw):
-    '''Make verbose, human-readable yaml'''
-    try:
-        transformed = yaml.dump(a, Dumper=AnsibleDumper, indent=indent, allow_unicode=True, default_flow_style=False, **kw)
-    except Exception as e:
-        raise AnsibleFilterError("to_nice_yaml - %s" % to_native(e), orig_exc=e)
-    return to_text(transformed)
+def to_nice_yaml(a, indent=4, *_args, default_flow_style=False, **kwargs) -> str:
+    """Serialize input as verbose multi-line YAML."""
+    return to_yaml(a, indent=indent, default_flow_style=default_flow_style, **kwargs)
 
 
 def to_json(a, *args, **kw):

@@ -66,6 +66,8 @@ bugfixes:
   - vars lookup - The ``default`` substitution only applies when trying to look up a variable which is not defined.
     If the variable is defined, but templates to an undefined value, the ``default`` substitution will not apply.
     Use the ``default`` filter to coerce those values instead.
+  - to_yaml/to_nice_yaml filters - Eliminated possibility of keyword arg collisions with internally-set defaults.
+  - Jinja plugins - Errors raised will always be derived from ``AnsibleTemplatePluginError``.
 
 deprecated_features:
   - facts - In a future Ansible release, gathered facts will no longer be accessible as top-level host variables; they must be accessed via `ansible_facts`.
@@ -79,3 +81,5 @@ deprecated_features:
     Jinja2 native mode is now the default and only option.
   - conditionals - Conditionals using Jinja templating delimiters (e.g., ``{{``, ``{%``) should be rewritten as expressions without delimiters.
   - templating - The ``disable_lookups`` option has no effect, since plugins must be updated to apply trust before any templating can be performed.
+  - to_yaml/to_nice_yaml filters - Implicit YAML dumping of vaulted value ciphertext is deprecated.
+    Set `dump_vault_tags` to explicitly specify the desired behavior.

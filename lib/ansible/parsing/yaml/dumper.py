@@ -20,14 +20,20 @@ from __future__ import annotations
 import typing as t
 
 # FIXME: consider using AnsibleSerializable to register known types automatically?
-from ansible.module_utils.datatag import AnsibleTaggedObject, Tripwire
+from ansible.module_utils.datatag import AnsibleTaggedObject, Tripwire, VaultedValue
 from ansible.module_utils.datatag.access import AnsibleAccessContext
 from ansible.module_utils.common.yaml import SafeDumper
+from ansible.utils.display import Display
 from ansible.vars.hostvars import HostVars, HostVarsVars
 
 
 class AnsibleDumper(SafeDumper):
     """A simple stub class that allows us to add representers for our custom types."""
+
+    def __init__(self, *args, dump_vault_tags: bool | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._dump_vault_tags = dump_vault_tags
 
 
 def represent_hostvars(self, data):
@@ -35,14 +41,18 @@ def represent_hostvars(self, data):
     return self.represent_dict(dict(data))
 
 
-# Note: only want to represent the encrypted data
-def represent_vault_encrypted_unicode(self, data):
-    # FIXME: not currently used
-    return self.represent_scalar(u'!vault', data._ciphertext.decode(), style='|')
-
-
 def represent_ansible_tagged_object(self, data):
     data = AnsibleAccessContext.current().access(data)
+
+    if (vv := VaultedValue.get_tag(data)) and self._dump_vault_tags is not False:
+        if self._dump_vault_tags is None:
+            Display().deprecated(
+                msg="Implicit YAML dumping of vaulted value ciphertext is deprecated. Set `dump_vault_tags` to explicitly specify the desired behavior",
+                version="2.21",
+            )
+
+        return self.represent_scalar(u'!vault', vv.ciphertext, style='|')
+
     # access might change it to a non-tagged type, account for that...
     if isinstance(data, AnsibleTaggedObject):
         return self.represent_data(data.native_copy())
@@ -66,6 +76,6 @@ AnsibleDumper.add_representer(
 
 AnsibleDumper.add_multi_representer(Tripwire, represent_tripwire)
 
-# FIXME: do we actually need knobs to allow re-serialization of !!unsafe or !!vault?
+# FIXME: do we actually need knobs to allow re-serialization of !!unsafe
 # FIXME: how do we want to handle this for lazy containers, for cases like using the to_yaml filter in templates?
 AnsibleDumper.add_multi_representer(AnsibleTaggedObject, represent_ansible_tagged_object)

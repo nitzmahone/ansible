@@ -24,7 +24,7 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing, LRUCache
 
 from ansible.utils.display import Display
-from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleVariableTypeError
+from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleVariableTypeError, AnsibleFilterError, AnsibleTestError
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
 from ansible.module_utils.datatag import (
@@ -475,7 +475,15 @@ class JinjaPluginIntercept(c.MutableMapping):
             # FIXME: see question in __call__ about needing to wrap input args
             tc = TemplateContext.current_or_raise()
             templar = tc.templar
-            test_res = func(*templar.proxy_or_render_template(args), **templar.proxy_or_render_kwargs(kwargs))
+            args = templar.proxy_or_render_template(args)
+            kwargs = templar.proxy_or_render_kwargs(kwargs)
+
+            try:
+                test_res = func(*args, **kwargs)
+            except AnsibleTestError:
+                raise
+            except Exception as ex:
+                raise AnsibleTestError(f"Test {plugin_name!r} failed: {ex}") from ex
 
             if not isinstance(test_res, bool):
                 template = tc.template_value
@@ -491,13 +499,21 @@ class JinjaPluginIntercept(c.MutableMapping):
         return wrapper
 
     @staticmethod
-    def _wrap_filter(func: t.Callable, _plugin_name: str) -> t.Callable:
+    def _wrap_filter(func: t.Callable, plugin_name: str) -> t.Callable:
         """Intercept point for all filter plugins to ensure that args are properly templated/lazified."""
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             # FIXME: see question in __call__ about needing to wrap input args
             templar = TemplateContext.current_or_raise().templar
-            filter_res = func(*templar.proxy_or_render_template(args), **templar.proxy_or_render_kwargs(kwargs))
+            args = templar.proxy_or_render_template(args)
+            kwargs = templar.proxy_or_render_kwargs(kwargs)
+
+            try:
+                filter_res = func(*args, **kwargs)
+            except AnsibleFilterError:
+                raise
+            except Exception as ex:
+                raise AnsibleFilterError(f"Filter {plugin_name!r} failed: {ex}") from ex
 
             return templar.proxy_or_render_template(filter_res)
 
