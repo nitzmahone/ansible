@@ -9,6 +9,7 @@ from ansible.module_utils.datatag import (
     AnsibleSingletonTagBase,
     AnsibleSourcePosition,
     AnsibleTaggedObject,
+    Tripwire,
     UndecryptableVaultedValue,
     _ANSIBLE_TAGGED_OBJECT_SLOTS,
     _AnsibleTagsMapping,
@@ -31,7 +32,7 @@ class UndecryptableVaultError(AnsibleError):
     pass
 
 
-class _VaultBomb:
+class _VaultBomb(Tripwire):
     __slots__ = tuple(('_value',))
 
     def __init__(self, value: str) -> None:
@@ -55,7 +56,15 @@ class _VaultBomb:
         unwrapped = _VaultBombPoorlyNamedTag.untag(unwrapped)
         return unwrapped
 
-    def detonate(self, *_args, **_kwargs) -> None:
+    def trip(self) -> t.NoReturn:
+        """Detonate this VaultBomb via the generic Tripwire mixin."""
+        self.detonate()
+
+    def detonate(self, *_args, **_kwargs) -> t.NoReturn:
+        """
+        Immediately raise UndecryptableVaultError.
+        This method accepts (and ignores) arbitrary args/kwargs, as it stands in for a number of dunder methods with varying signatures.
+        """
         # FIXME: use central error forensics
         msg = "attempt to use undecryptable variable"
         source_pos = AnsibleSourcePosition.get_tag(self)

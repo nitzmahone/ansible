@@ -912,7 +912,7 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
             _finalize_template_result(v, mode)
         ) for k, v in o.items() if v is not Omit)
         value_type = dict
-    elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
+    elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList, _AnsibleLazyListAdapter, _AnsibleRangeListAdapter):
         value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
         value_type = list
     elif o_type in (tuple, _AnsibleTaggedTuple, _AnsibleLazyTemplateTuple):
@@ -922,15 +922,11 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
         value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
         value_type = set
     elif o_type is AnsibleUndefined:
-        # FIXME: this assumes handle_undefined follows our variable type rules
+        # this early return assumes handle_undefined follows our variable type rules
         return TemplateContext.current_or_raise().options.undefined_behavior.handle_undefined(o, mode)
-    elif mode in (FinalizeMode.TOP_LEVEL, FinalizeMode.CONCAT) and o_type in (_AnsibleLazyListAdapter, _AnsibleRangeListAdapter):
-        value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
-        value_type = list
+    elif o_type is _AnsibleTaggedVaultBomb:
+        raise o.detonate()  # this raise is just to keep silly tools that don't understand NoReturn happy about value_type/expression not being assigned
     elif mode is FinalizeMode.TOP_LEVEL:  # unsupported type (raise)
-        if o_type is _AnsibleTaggedVaultBomb:
-            o.detonate()
-
         raise AnsibleVariableTypeError(variable_type=o_type)
     else:  # unsupported type (do not raise)
         return o

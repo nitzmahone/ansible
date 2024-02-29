@@ -20,10 +20,9 @@ from __future__ import annotations
 import typing as t
 
 # FIXME: consider using AnsibleSerializable to register known types automatically?
-from ansible.module_utils.datatag import AnsibleTaggedObject
+from ansible.module_utils.datatag import AnsibleTaggedObject, Tripwire
 from ansible.module_utils.datatag.access import AnsibleAccessContext
 from ansible.module_utils.common.yaml import SafeDumper
-from ansible.template.jinja_bits import AnsibleUndefined
 from ansible.vars.hostvars import HostVars, HostVarsVars
 
 
@@ -51,7 +50,7 @@ def represent_ansible_tagged_object(self, data):
     return self.represent_data(data)
 
 
-def represent_undefined(self, data: AnsibleUndefined) -> t.NoReturn:
+def represent_tripwire(self, data: Tripwire) -> t.NoReturn:
     data.trip()
 
 
@@ -65,9 +64,7 @@ AnsibleDumper.add_representer(
     represent_hostvars,
 )
 
-# FIXME: special-case dumper support for VaultedValue-tagged objects?
-
-AnsibleDumper.add_multi_representer(AnsibleUndefined, represent_undefined)
+AnsibleDumper.add_multi_representer(Tripwire, represent_tripwire)
 
 # FIXME: do we actually need knobs to allow re-serialization of !!unsafe or !!vault?
 # FIXME: how do we want to handle this for lazy containers, for cases like using the to_yaml filter in templates?
