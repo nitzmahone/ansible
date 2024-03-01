@@ -24,7 +24,7 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing, LRUCache
 
 from ansible.utils.display import Display
-from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleVariableTypeError, AnsibleFilterError, AnsibleTestError
+from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleVariableTypeError, AnsibleTemplatePluginError
 from ansible.module_utils.common.text.converters import to_text, to_native
 from ansible.module_utils.compat import typing as t
 from ansible.module_utils.datatag import (
@@ -480,12 +480,10 @@ class JinjaPluginIntercept(c.MutableMapping):
 
             try:
                 test_res = func(*args, **kwargs)
-            except (AnsibleTestError, AnsibleUndefinedError):
-                # AnsibleTestError - If a plugin raises this, it doesn't need to be wrapped.
-                # AnsibleUndefinedError - Don't wrap this, allowing template infrastructure to process it.
+            except AnsibleUndefinedError:
                 raise
             except Exception as ex:
-                raise AnsibleTestError(f"Test {plugin_name!r} failed: {ex}") from ex
+                raise AnsibleTemplatePluginError(f"Test {plugin_name!r} failed: {ex}") from ex
 
             if not isinstance(test_res, bool):
                 template = tc.template_value
@@ -512,12 +510,10 @@ class JinjaPluginIntercept(c.MutableMapping):
 
             try:
                 filter_res = func(*args, **kwargs)
-            except (AnsibleFilterError, AnsibleUndefinedError):
-                # AnsibleFilterError - If a plugin raises this, it doesn't need to be wrapped.
-                # AnsibleUndefinedError - Don't wrap this, allowing template infrastructure to process it.
+            except AnsibleUndefinedError:
                 raise
             except Exception as ex:
-                raise AnsibleFilterError(f"Filter {plugin_name!r} failed: {ex}") from ex
+                raise AnsibleTemplatePluginError(f"Filter {plugin_name!r} failed: {ex}") from ex
 
             return templar.proxy_or_render_template(filter_res)
 

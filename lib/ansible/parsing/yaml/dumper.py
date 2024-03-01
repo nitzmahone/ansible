@@ -45,11 +45,12 @@ def represent_ansible_tagged_object(self, data):
     data = AnsibleAccessContext.current().access(data)
 
     if (vv := VaultedValue.get_tag(data)) and self._dump_vault_tags is not False:
-        if self._dump_vault_tags is None:
-            Display().deprecated(
-                msg="Implicit YAML dumping of vaulted value ciphertext is deprecated. Set `dump_vault_tags` to explicitly specify the desired behavior",
-                version="2.21",
-            )
+        # deprecated: description='enable the deprecation warning below' core_version='2.21'
+        # if self._dump_vault_tags is None:
+        #     Display().deprecated(
+        #         msg="Implicit YAML dumping of vaulted value ciphertext is deprecated. Set `dump_vault_tags` to explicitly specify the desired behavior",
+        #         version="2.25",
+        #     )
 
         return self.represent_scalar(u'!vault', vv.ciphertext, style='|')
 

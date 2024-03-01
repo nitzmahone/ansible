@@ -117,12 +117,13 @@ def test_vaulted_value_dump(
 
     from ansible.utils.display import Display
 
-    deprecated_spy = mocker.spy(Display(), 'deprecated')
+    _deprecated_spy = mocker.spy(Display(), 'deprecated')
 
     res = filter_impl(value, dump_vault_tags=dump_vault_tags)
 
     assert res == expected_output
 
-    if expected_warning:
-        assert deprecated_spy.call_count == 1
-        assert expected_warning in deprecated_spy.call_args.kwargs['msg']
+    # deprecated: description='enable the assertion for the deprecation warning below' core_version='2.21'
+    # if expected_warning:
+    #     assert _deprecated_spy.call_count == 1
+    #     assert expected_warning in _deprecated_spy.call_args.kwargs['msg']

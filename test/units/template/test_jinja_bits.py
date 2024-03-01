@@ -5,10 +5,9 @@ import typing as t
 import pytest
 import pytest_mock
 
-from ansible.errors import AnsibleFilterError, AnsibleTestError, AnsibleLookupError
+from ansible.errors import AnsibleTemplatePluginError
 from ansible.module_utils.datatag import TrustedAsTemplate
 from ansible.template.jinja_bits import AnsibleEnvironment, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, _TEMPLATE_OVERRIDE_DEFAULT
-from ansible.template import templar as _templar_module
 from ansible.template.templar import Templar, TemplateOptions
 from jinja2.loaders import DictLoader
 
@@ -138,73 +137,44 @@ def test_template_override_extract_failure(value: str):
 
 
 def test_filter_plugin_error_wrap():
-    expected_filter_error = AnsibleFilterError("bang")
-    expected_other_error_cause = Exception("bang")
+    expected_error_cause = Exception("bang")
 
-    def raises_filter_error(_input):
-        raise expected_filter_error
-
-    def raises_other_error(_input):
-        raise expected_other_error_cause
+    def raises_error(_input):
+        raise expected_error_cause
 
     templar = Templar()
-    templar.environment.filters['raises_filter_error'] = raises_filter_error
-    templar.environment.filters['raises_other_error'] = raises_other_error
+    templar.environment.filters['raises_error'] = raises_error
 
-    with pytest.raises(AnsibleFilterError) as err:
-        templar.template(TRUST.tag("{{ true | raises_filter_error }}"))
+    with pytest.raises(AnsibleTemplatePluginError) as err:
+        templar.template(TRUST.tag("{{ true | raises_error }}"))
 
-    assert err.value is expected_filter_error
-
-    with pytest.raises(AnsibleFilterError) as err:
-        templar.template(TRUST.tag("{{ true | raises_other_error }}"))
-
-    assert err.value.__cause__ is expected_other_error_cause
+    assert err.value.__cause__ is expected_error_cause
 
 
 def test_test_plugin_error_wrap():
-    expected_test_error = AnsibleTestError("bang")
-    expected_other_error_cause = Exception("bang")
+    expected_error_cause = Exception("bang")
 
-    def raises_test_error(_input):
-        raise expected_test_error
-
-    def raises_other_error(_input):
-        raise expected_other_error_cause
+    def raises_error(_input):
+        raise expected_error_cause
 
     templar = Templar()
-    templar.environment.tests['raises_test_error'] = raises_test_error
-    templar.environment.tests['raises_other_error'] = raises_other_error
+    templar.environment.tests['raises_error'] = raises_error
 
-    with pytest.raises(AnsibleTestError) as err:
-        templar.template(TRUST.tag("{{ true is raises_test_error }}"))
+    with pytest.raises(AnsibleTemplatePluginError) as err:
+        templar.template(TRUST.tag("{{ true is raises_error }}"))
 
-    assert err.value is expected_test_error
-
-    with pytest.raises(AnsibleTestError) as err:
-        templar.template(TRUST.tag("{{ true is raises_other_error }}"))
-
-    assert err.value.__cause__ is expected_other_error_cause
+    assert err.value.__cause__ is expected_error_cause
 
 
 def test_lookup_plugin_error_wrap(mocker: pytest_mock.MockerFixture):
-    expected_lookup_error = AnsibleLookupError("bang")
-    expected_other_error_cause = Exception("bang")
+    expected_error_cause = Exception("bang")
 
-    class RaisesLookupError:
+    class RaisesError:
         def run(self, _input, *args, **kwargs):
-            raise expected_lookup_error
-
-    class RaisesOtherError:
-        def run(self, _input, *args, **kwargs):
-            raise expected_other_error_cause
+            raise expected_error_cause
 
     def mock_lookup_get(name, *args, **kwargs) -> t.Any:
-        if name == 'raises_lookup_error':
-            return RaisesLookupError()
-
-        if name == 'raises_other_error':
-            return RaisesOtherError()
+        return RaisesError()
 
     templar = Templar()
     mock_lookup_loader = mocker.MagicMock()
@@ -212,12 +182,7 @@ def test_lookup_plugin_error_wrap(mocker: pytest_mock.MockerFixture):
 
     mocker.patch('ansible.template.templar.lookup_loader', mock_lookup_loader)
 
-    with pytest.raises(AnsibleLookupError) as err:
-        templar.template(TRUST.tag("{{ lookup('raises_lookup_error') }}"))
+    with pytest.raises(AnsibleTemplatePluginError) as err:
+        templar.template(TRUST.tag("{{ lookup('raises_error') }}"))
 
-    assert err.value is expected_lookup_error
-
-    with pytest.raises(AnsibleLookupError) as err:
-        templar.template(TRUST.tag("{{ lookup('raises_other_error') }}"))
-
-    assert err.value.__cause__ is expected_other_error_cause
+    assert err.value.__cause__ is expected_error_cause

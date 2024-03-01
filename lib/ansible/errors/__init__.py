@@ -277,19 +277,12 @@ class AnsibleTemplatePluginNotFoundError(AnsibleTemplateError):
 
 
 class AnsibleTemplatePluginError(AnsibleTemplateError):
-    """Base class for template plugin errors."""
+    """An error sourced by a template plugin."""
 
 
-class AnsibleFilterError(AnsibleTemplatePluginError):
-    """Error raised by a filter plugin."""
-
-
-class AnsibleTestError(AnsibleTemplatePluginError):
-    """Error raised by a test plugin."""
-
-
-class AnsibleLookupError(AnsibleTemplatePluginError):
-    """Error raised by a lookup plugin."""
+# deprecated: description='add deprecation warnings for these aliases' core_version='2.21'
+AnsibleFilterError = AnsibleTemplatePluginError
+AnsibleLookupError = AnsibleTemplatePluginError
 
 
 class AnsibleUndefinedVariable(AnsibleTemplateError):

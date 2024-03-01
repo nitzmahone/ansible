@@ -21,12 +21,13 @@ from jinja2 import __version__ as jinja2_version
 from ansible.constants import config
 from ansible.errors import (
     AnsibleError,
-    AnsibleLookupError,
     AnsibleValueOmittedError,
     AnsibleUndefinedVariable,
     AnsibleTemplateError,
     AnsibleTemplateSyntaxError,
-    AnsibleBrokenConditionalError, AnsibleTemplatePluginNotFoundError,
+    AnsibleBrokenConditionalError,
+    AnsibleTemplatePluginNotFoundError,
+    AnsibleTemplatePluginError,
 )
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
@@ -496,7 +497,8 @@ class Templar:
         except AnsibleUndefinedError:
             # AnsibleUndefinedError - Don't wrap this, allowing template infrastructure to process it.
             raise
-        except AnsibleLookupError as ex:
+        # FIXME: collapse these two?
+        except AnsibleTemplatePluginError as ex:
             # lookup handled error but still decided to bail
             msg = 'Lookup failed but the error is being ignored: %s' % to_native(ex)
             if errors == 'warn':
@@ -504,7 +506,7 @@ class Templar:
             elif errors == 'ignore':
                 _display.display(msg, log_only=True)
             else:
-                raise
+                raise AnsibleTemplatePluginError(f"Lookup {name!r} failed: {ex}") from ex
             return [] if wantlist else None
         except Exception as ex:
             # errors not handled by lookup
@@ -516,7 +518,7 @@ class Templar:
                 _display.display(msg, log_only=True)
             else:
                 _display.vvv('exception during Jinja2 execution: {0}'.format(format_exc()))
-                raise AnsibleLookupError(f"Lookup {name!r} failed: {ex}") from ex
+                raise AnsibleTemplatePluginError(f"Lookup {name!r} failed: {ex}") from ex
             return [] if wantlist else None
 
         is_nonstring_sequence = is_sequence(ran)
@@ -542,7 +544,7 @@ class Templar:
             except TypeError:
                 # FIXME: is this reachable? If so, just return the list anyway...
                 if not is_nonstring_sequence:
-                    raise AnsibleLookupError(f"Lookup {name!r} did not return a list.")
+                    raise AnsibleTemplatePluginError(f"Lookup {name!r} did not return a list.")
         return ran
 
     def evaluate_expression(self, expression: str, escape_backslashes=True) -> t.Any:
