@@ -648,9 +648,8 @@ class Templar:
 
         return True
 
-    def proxy_or_render_template(self, item: t.Any, key: str | None = None):
+    def proxy_or_render_template(self, item: t.Any):
         # FIXME: always blindly access item here?
-        # FIXME: should we do something with key here, or remove it?
         return self.template(AnsibleAccessContext.current().access(item))
 
     def proxy_or_render_kwargs(self, kwargs: c.Mapping[str, t.Any]) -> dict[str, t.Any]:

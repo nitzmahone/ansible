@@ -184,6 +184,7 @@ class AnsibleContext(Context):
 
         return ChainMap(self.vars, self.parent)
 
+    # noinspection PyShadowingBuiltins
     def derived(self, locals: t.Optional[t.Dict[str, t.Any]] = None) -> Context:
         # this is a clone of Jinja's impl of derived, but using our lazy-aware _new_context
 
@@ -191,9 +192,9 @@ class AnsibleContext(Context):
             environment=self.environment,
             template_name=self.name,
             blocks={},
-            vars=self.get_all(),
             shared=True,
-            locals=locals
+            jinja_locals=locals,
+            jinja_vars=self.get_all(),
         )
         context.eval_ctx = self.eval_ctx
         context.blocks.update((k, list(v)) for k, v in self.blocks.items())
@@ -230,6 +231,7 @@ class AnsibleTemplate(Template):
     def __call__(self, *args, **kwargs) -> t.Any:
         return self.render(*args, **kwargs)
 
+    # noinspection PyShadowingBuiltins
     def new_context(
         self,
         vars: c.Mapping[str, t.Any] | None = None,
@@ -240,10 +242,10 @@ class AnsibleTemplate(Template):
             environment=self.environment,
             template_name=self.name,
             blocks=self.blocks,
-            vars=vars,
             shared=shared,
-            globals=self.globals,
-            locals=locals,
+            jinja_locals=locals,
+            jinja_vars=vars,
+            jinja_globals=self.globals,
         )
 
 
@@ -744,12 +746,12 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # FIXME: do we actually need to managed-access both sides of templates/strings here?
         # example: "{{ some['thing'] }}" -- obj is the "some" dict, argument is "thing"
         # access on the result of super().getitem is necessary
-        return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getitem(obj, argument), argument)
+        return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getitem(obj, argument))
 
     def getattr(self, obj: t.Any, attribute: str) -> t.Any:
         # example: "{{ some.thing }}" -- obj is the "some" dict, argument is "thing"
         # access on the result of super().getattr is necessary
-        return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getattr(obj, attribute), attribute)
+        return TemplateContext.current_or_raise().templar.proxy_or_render_template(super().getattr(obj, attribute))
 
     def call(
         self,
@@ -865,40 +867,41 @@ def _flatten_and_lazify_vars(mapping: c.Mapping) -> t.Iterable[c.Mapping]:
 
 
 def _new_context(
+    *,
     environment: Environment,
     template_name: str | None,
     blocks: dict[str, t.Callable[[Context], c.Iterator[str]]],
-    vars: c.Mapping[str, t.Any] | None = None,
     shared: bool = False,
-    globals: c.MutableMapping[str, t.Any] | None = None,
-    locals: c.Mapping[str, t.Any] | None = None,
+    jinja_locals: c.Mapping[str, t.Any] | None = None,
+    jinja_vars: c.Mapping[str, t.Any] | None = None,
+    jinja_globals: c.MutableMapping[str, t.Any] | None = None,
 ) -> Context:
     """Override Jinja's context vars setup to use ChainMaps and containers that support lazy templating."""
     layers = []
 
-    if locals:
+    if jinja_locals:
         # FIXME: if we can't trip this in coverage, kill it off?
-        if type(locals) is not dict:  # pylint: disable=unidiomatic-typecheck
+        if type(jinja_locals) is not dict:  # pylint: disable=unidiomatic-typecheck
             raise NotImplementedError("locals must be a dict")
 
         # Omit values set to Jinja's internal `missing` sentinel; they are locals that have not yet been
         # initialized in the current context, and should not be exposed to child contexts. e.g.: {% import 'a' as b with context %}.
         # The `b` local will be `missing` in the `a` context and should not be propagated as a local to the child context we're creating.
-        layers.append(_AnsibleLazyTemplateMixin.try_create({k: v for k, v in locals.items() if v is not missing}))
+        layers.append(_AnsibleLazyTemplateMixin.try_create({k: v for k, v in jinja_locals.items() if v is not missing}))
 
-    if vars:
-        layers.extend(_flatten_and_lazify_vars(vars))
+    if jinja_vars:
+        layers.extend(_flatten_and_lazify_vars(jinja_vars))
 
-    if globals and not shared:
+    if jinja_globals and not shared:
         # Even though we don't currently support templating globals, it's easier to ensure that everything is template-able rather than trying to
         # pick apart the ChainMaps to enforce non-template-able globals, or to risk things that *should* be template-able not being lazified.
-        layers.extend(_flatten_and_lazify_vars(globals))
+        layers.extend(_flatten_and_lazify_vars(jinja_globals))
 
     # only return a ChainMap if we're combining layers, or we have none
     parent = layers[0] if len(layers) == 1 else ChainMap(*layers)
 
     # the `parent` cast is only to satisfy Jinja's overly-strict type hint
-    return environment.context_class(environment, t.cast(dict, parent), template_name, blocks, globals=globals)
+    return environment.context_class(environment, t.cast(dict, parent), template_name, blocks, globals=jinja_globals)
 
 
 def is_possibly_template(value: str, overrides: TemplateOverrides):
