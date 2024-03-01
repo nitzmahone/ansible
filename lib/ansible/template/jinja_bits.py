@@ -624,11 +624,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         # FUTURE: this doesn't scale well, as we add more globals that need special handling, we may want to move that down into the globals
         if __obj is _lookup or __obj is _query:
-            lookup_name = args[0]
-            args = templar.proxy_or_render_template(_trust_jinja_constants(args[1:]))  # for backwards compat, only trust constant templates in lookup pos args
-            kwargs = templar.proxy_or_render_kwargs(kwargs)
-
-            call_res = super().call(__context, __obj, lookup_name, *args, **kwargs)
+            call_res = super().call(__context, __obj, *args, **kwargs)
         else:
             # FIXME: is there any case where proxy_or_render_template is actually needed for non-lookup inputs?
             #        variables from storage should already be lazy, constants aren't supported outside lookups, so what's left?
@@ -636,26 +632,6 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             call_res = super().call(__context, __obj, *templar.proxy_or_render_template(args), **templar.proxy_or_render_kwargs(kwargs))
 
         return templar.proxy_or_render_template(call_res)
-
-
-def _trust_jinja_constants(o: t.Any) -> t.Any:
-    """
-    Apply TrustedAsTemplate to values tagged with _JinjaConstTemplate and warn about not using templates in constants.
-    Used to provide backwards compatiblity with historical lookup behavior for positional arguments.
-    """
-    # FIXME: needs tests to exercise this
-    o_type = type(o)
-
-    if _JinjaConstTemplate.is_tagged_on(o):
-        return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
-
-    if o_type is dict:
-        return {k: _trust_jinja_constants(v) for k, v in o.items()}
-
-    if o_type in (list, tuple, set):
-        return o_type(_trust_jinja_constants(v) for v in o)
-
-    return o
 
 
 _DEFAULT_UNDEF = AnsibleUndefined("Mandatory variable has not been overridden", _no_template_source=True)

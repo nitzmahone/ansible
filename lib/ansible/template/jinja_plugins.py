@@ -12,8 +12,10 @@ from jinja2.exceptions import UndefinedError
 
 from ..errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleTemplatePluginError
 from ..module_utils.common.collections import is_sequence
+from ..module_utils.datatag import TrustedAsTemplate
 from ..plugins.loader import lookup_loader, Jinja2Loader
 from ..utils.display import Display
+from .datatag import _JinjaConstTemplate
 from .utils import TemplateContext, _repr_from
 
 _display = Display()
@@ -175,6 +177,11 @@ def _lookup(name, /, *args, **kwargs) -> t.Any:
     # some plugins make a poor assumption that `run` takes a list
     args = list(args)
 
+    # FIXME: is there any case where proxy_or_render_template is actually needed for lookup inputs, aside from constant trust?
+    #        variables from storage should already be lazy, as are outputs from plugins/calls, so what's left?
+    args = templar.proxy_or_render_template(_trust_jinja_constants(args))  # for backwards compat, only trust constant templates in lookup pos args
+    kwargs = templar.proxy_or_render_kwargs(kwargs)
+
     wantlist = kwargs.pop('wantlist', False)
     errors = kwargs.pop('errors', 'strict')
 
@@ -246,3 +253,23 @@ def _now(utc=False, fmt=None):
         return now.strftime(fmt)
 
     return now
+
+
+def _trust_jinja_constants(o: t.Any) -> t.Any:
+    """
+    Apply TrustedAsTemplate to values tagged with _JinjaConstTemplate and warn about not using templates in constants.
+    Used to provide backwards compatiblity with historical lookup behavior for positional arguments.
+    """
+    # FIXME: needs tests to exercise this
+    o_type = type(o)
+
+    if _JinjaConstTemplate.is_tagged_on(o):
+        return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
+
+    if o_type is dict:
+        return {k: _trust_jinja_constants(v) for k, v in o.items()}
+
+    if o_type in (list, tuple, set):
+        return o_type(_trust_jinja_constants(v) for v in o)
+
+    return o
