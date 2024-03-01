@@ -24,3 +24,10 @@ try:
 except NameError:
     def cast(typ, val):  # type: ignore[no-redef]
         return val
+
+
+try:
+    Protocol  # type: ignore[used-before-def]
+except NameError:
+    class Protocol:  # type: ignore[no-redef]
+        pass
