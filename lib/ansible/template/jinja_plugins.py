@@ -112,12 +112,6 @@ class JinjaPluginIntercept(c.MutableMapping):
         """Intercept point for all test plugins to ensure that args are properly templated/lazified."""
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> bool:
-            # FIXME: see question in AnsibleEnvironment.call about needing to wrap input args
-            tc = TemplateContext.current_or_raise()
-            templar = tc.templar
-            args = templar.proxy_or_render_template(args)
-            kwargs = templar.proxy_or_render_kwargs(kwargs)
-
             try:
                 test_res = func(*args, **kwargs)
             except UndefinedError:
@@ -126,12 +120,14 @@ class JinjaPluginIntercept(c.MutableMapping):
                 raise AnsibleTemplatePluginError(f"Test {plugin_name!r} failed: {ex}") from ex
 
             if not isinstance(test_res, bool):
-                template = tc.template_value
+                template = TemplateContext.current_or_raise().template_value
+
                 _display.deprecated(
                     msg=f"The test plugin {plugin_name!r} used in template {_repr_from(template)} returned a non-boolean result of type {type(test_res)!r}. "
                         f"Test plugins must have a boolean result.",
                     version="2.21",
                 )
+
                 test_res = bool(test_res)
 
             return test_res
@@ -143,17 +139,14 @@ class JinjaPluginIntercept(c.MutableMapping):
         """Intercept point for all filter plugins to ensure that args are properly templated/lazified."""
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            # FIXME: see question in AnsibleEnvironment.call about needing to wrap input args
-            templar = TemplateContext.current_or_raise().templar
-            args = templar.proxy_or_render_template(args)
-            kwargs = templar.proxy_or_render_kwargs(kwargs)
-
             try:
                 filter_res = func(*args, **kwargs)
             except UndefinedError:
                 raise
             except Exception as ex:
                 raise AnsibleTemplatePluginError(f"Filter {plugin_name!r} failed: {ex}") from ex
+
+            templar = TemplateContext.current_or_raise().templar
 
             return templar.proxy_or_render_template(filter_res)
 
@@ -177,10 +170,7 @@ def _lookup(name, /, *args, **kwargs) -> t.Any:
     # some plugins make a poor assumption that `run` takes a list
     args = list(args)
 
-    # FIXME: is there any case where proxy_or_render_template is actually needed for lookup inputs, aside from constant trust?
-    #        variables from storage should already be lazy, as are outputs from plugins/calls, so what's left?
     args = templar.proxy_or_render_template(_trust_jinja_constants(args))  # for backwards compat, only trust constant templates in lookup pos args
-    kwargs = templar.proxy_or_render_kwargs(kwargs)
 
     wantlist = kwargs.pop('wantlist', False)
     errors = kwargs.pop('errors', 'strict')

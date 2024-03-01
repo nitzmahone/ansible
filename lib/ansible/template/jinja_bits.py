@@ -620,16 +620,9 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         *args: t.Any,
         **kwargs: t.Any,
     ) -> t.Any:
-        templar = TemplateContext.current_or_raise().templar
+        call_res = super().call(__context, __obj, *args, **kwargs)
 
-        # FUTURE: this doesn't scale well, as we add more globals that need special handling, we may want to move that down into the globals
-        if __obj is _lookup or __obj is _query:
-            call_res = super().call(__context, __obj, *args, **kwargs)
-        else:
-            # FIXME: is there any case where proxy_or_render_template is actually needed for non-lookup inputs?
-            #        variables from storage should already be lazy, constants aren't supported outside lookups, so what's left?
-            #        one thing this does give us is access, is that why it's here? if so, document and add tests to cover it
-            call_res = super().call(__context, __obj, *templar.proxy_or_render_template(args), **templar.proxy_or_render_kwargs(kwargs))
+        templar = TemplateContext.current_or_raise().templar
 
         return templar.proxy_or_render_template(call_res)
 
