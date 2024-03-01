@@ -180,7 +180,7 @@ def test_lookup_plugin_error_wrap(mocker: pytest_mock.MockerFixture):
     mock_lookup_loader = mocker.MagicMock()
     mock_lookup_loader.get = mock_lookup_get
 
-    mocker.patch('ansible.template.templar.lookup_loader', mock_lookup_loader)
+    mocker.patch('ansible.template.jinja_plugins.lookup_loader', mock_lookup_loader)
 
     with pytest.raises(AnsibleTemplatePluginError) as err:
         templar.template(TRUST.tag("{{ lookup('raises_error') }}"))

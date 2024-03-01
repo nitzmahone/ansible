@@ -27,9 +27,11 @@ import unittest
 from ansible.errors import AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplatePluginNotFoundError, AnsibleValueOmittedError
 from ansible.module_utils.datatag import AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
+from ansible.template.jinja_plugins import _lookup
 from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError, TemplateMode
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template
 from ansible.template.undefined_behaviors import ReplaceUndefined, OmitUndefined
+from ansible.template.utils import TemplateContext
 from ansible.utils.display import Display
 from units.mock.loader import DictDataLoader
 
@@ -192,15 +194,20 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
 
 
 class TestTemplarLookup(BaseTemplar, unittest.TestCase):
+    @staticmethod
+    def lookup(name: str, /, *args, **kwargs) -> t.Any:
+        with TemplateContext(template_value=None, templar=Templar(), options=TemplateOptions(), stop_on_template=False):
+            return _lookup(name, *args, **kwargs)
+
     def test_lookup_missing_plugin(self):
         self.assertRaisesRegex(AnsibleTemplatePluginNotFoundError,
                                "lookup plugin 'not_a_real_lookup_plugin' not found",
-                               self.templar._lookup,
+                               self.lookup,
                                'not_a_real_lookup_plugin',
                                'an_arg', a_keyword_arg='a_keyword_arg_value')
 
     def test_lookup_list(self):
-        res = self.templar._lookup('list', 'an_arg', 'another_arg')
+        res = self.lookup('list', 'an_arg', 'another_arg')
         self.assertEqual(res, 'an_arg,another_arg')
 
     def test_lookup_jinja_undefined(self):
@@ -210,25 +217,25 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
                                TrustedAsTemplate().tag('{{ lookup("list", an_undefined_jinja_var) }}'))
 
     def test_lookup_jinja_defined(self):
-        res = self.templar._lookup('list', '{{ some_var }}')
+        res = self.lookup('list', '{{ some_var }}')
         assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict_string_passed(self):
         self.assertRaisesRegex(AnsibleError,
                                "with_dict expects a dict",
-                               self.templar._lookup,
+                               self.lookup,
                                'dict',
                                '{{ some_var }}')
 
     def test_lookup_jinja_dict_list_passed(self):
         self.assertRaisesRegex(AnsibleError,
                                "with_dict expects a dict",
-                               self.templar._lookup,
+                               self.lookup,
                                'dict',
                                ['foo', 'bar'])
 
     def test_lookup_jinja_kwargs(self):
-        res = self.templar._lookup('list', 'blip', random_keyword='12345')
+        res = self.lookup('list', 'blip', random_keyword='12345')
         assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_list_wantlist(self):
@@ -242,7 +249,7 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
                                TrustedAsTemplate().tag('{{ lookup("list", some_undefined_var, wantlist=True) }}'))
 
     def test_lookup_jinja_list_wantlist_unsafe(self):
-        res = self.templar._lookup('list', '{{ some_unsafe_var }}', wantlist=True)
+        res = self.lookup('list', '{{ some_unsafe_var }}', wantlist=True)
         for lookup_result in res:
             assert not TrustedAsTemplate.is_tagged_on(lookup_result)
 
@@ -254,17 +261,17 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
         assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict_unsafe(self):
-        res = self.templar._lookup('list', {'{{ some_unsafe_key }}': '{{ some_unsafe_var }}'})
+        res = self.lookup('list', {'{{ some_unsafe_key }}': '{{ some_unsafe_var }}'})
         assert not TrustedAsTemplate.is_tagged_on(res['{{ some_unsafe_key }}'])
         assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict_unsafe_value(self):
-        res = self.templar._lookup('list', {'{{ a_keyword }}': '{{ some_unsafe_var }}'})
+        res = self.lookup('list', {'{{ a_keyword }}': '{{ some_unsafe_var }}'})
         assert not TrustedAsTemplate.is_tagged_on(res['{{ a_keyword }}'])
         assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_none(self):
-        res = self.templar._lookup('list', None)
+        res = self.lookup('list', None)
         self.assertIsNone(res)
 
 

@@ -11,7 +11,7 @@ import os
 import ansible.module_utils.compat.typing as t
 
 from contextlib import contextmanager
-from traceback import format_exc, format_stack
+from traceback import format_stack
 from collections import ChainMap
 
 from jinja2.exceptions import TemplateSyntaxError
@@ -26,12 +26,7 @@ from ansible.errors import (
     AnsibleTemplateError,
     AnsibleTemplateSyntaxError,
     AnsibleBrokenConditionalError,
-    AnsibleTemplatePluginNotFoundError,
-    AnsibleTemplatePluginError,
 )
-from ansible.module_utils.common.text.converters import to_native, to_text
-from ansible.module_utils.common.collections import is_sequence
-from ansible.plugins.loader import lookup_loader
 from ansible.module_utils.datatag import (
     AnsibleSourcePosition, AnsibleTaggedObject, TrustedAsTemplate, NotATemplate, NotTaggableError
 )
@@ -43,8 +38,7 @@ from ansible.parsing.dataloader import DataLoader
 
 from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
 from .jinja_bits import AnsibleEnvironment, AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, \
-    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result, FinalizeMode, \
-    AnsibleUndefinedError
+    _TEMPLATE_OVERRIDE_DEFAULT, is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result, FinalizeMode
 from .vault import DetonateVaultBombsTripwire, UndecryptableAccessMutator
 from .utils import Omit, TemplateContext, _repr_from
 from .lazy_containers import _AnsibleLazyTemplateMixin
@@ -149,18 +143,10 @@ class Templar:
     @property
     def environment(self) -> AnsibleEnvironment:
         if not self._environment:
-            env = AnsibleEnvironment(
+            self._environment = AnsibleEnvironment(
                 extensions=self._jinja_extensions,
                 loader=FileSystemLoader(self.basedir),
             )
-
-            env.globals.update(
-                lookup=self._lookup,
-                query=self._query_lookup,
-                q=self._query_lookup,
-            )
-
-            self._environment = env
 
         return self._environment
 
@@ -472,80 +458,6 @@ class Templar:
             return True
         else:
             return False
-
-    def _query_lookup(self, name, /, *args, **kwargs):
-        """wrapper for lookup, force wantlist true"""
-        kwargs['wantlist'] = True
-        return self._lookup(name, *args, **kwargs)
-
-    def _lookup(self, name, /, *args, **kwargs):
-        instance = lookup_loader.get(name, loader=self._loader, templar=self)
-
-        if instance is None:
-            raise AnsibleTemplatePluginNotFoundError(f"lookup plugin {name!r} not found")
-
-        # some plugins make a poor assumption that `run` takes a list
-        args = list(args)
-
-        wantlist = kwargs.pop('wantlist', False)
-        errors = kwargs.pop('errors', 'strict')
-
-        # safely catch run failures per #5059
-        try:
-            ran = instance.run(args, variables=self.available_variables, **kwargs)
-        # FIXME: most of this exception handling should occur at the edge of templating
-        except AnsibleUndefinedError:
-            # AnsibleUndefinedError - Don't wrap this, allowing template infrastructure to process it.
-            raise
-        # FIXME: collapse these two?
-        except AnsibleTemplatePluginError as ex:
-            # lookup handled error but still decided to bail
-            msg = 'Lookup failed but the error is being ignored: %s' % to_native(ex)
-            if errors == 'warn':
-                _display.warning(msg)
-            elif errors == 'ignore':
-                _display.display(msg, log_only=True)
-            else:
-                raise AnsibleTemplatePluginError(f"Lookup {name!r} failed: {ex}") from ex
-            return [] if wantlist else None
-        except Exception as ex:
-            # errors not handled by lookup
-            msg = u"An unhandled exception occurred while running the lookup plugin '%s'. Error was a %s, original message: %s" % \
-                  (name, type(ex), to_text(ex))
-            if errors == 'warn':
-                _display.warning(msg)
-            elif errors == 'ignore':
-                _display.display(msg, log_only=True)
-            else:
-                _display.vvv('exception during Jinja2 execution: {0}'.format(format_exc()))
-                raise AnsibleTemplatePluginError(f"Lookup {name!r} failed: {ex}") from ex
-            return [] if wantlist else None
-
-        is_nonstring_sequence = is_sequence(ran)
-
-        if not is_nonstring_sequence:
-            _display.deprecated(
-                f'The lookup plugin \'{name}\' was expected to return a list, got \'{type(ran)}\' instead. '
-                f'The lookup plugin \'{name}\' needs to be changed to return a list. '
-                'This will be an error in Ansible 2.18',
-                version='2.18'
-            )
-
-        if ran:
-            if wantlist:
-                return ran
-
-            try:
-                if is_nonstring_sequence and len(ran) == 1:
-                    return ran[0]
-
-                # FIXME: this seems wrong to do to a string output, but it's been that way forever?
-                ran = ",".join(ran)
-            except TypeError:
-                # FIXME: is this reachable? If so, just return the list anyway...
-                if not is_nonstring_sequence:
-                    raise AnsibleTemplatePluginError(f"Lookup {name!r} did not return a list.")
-        return ran
 
     def evaluate_expression(self, expression: str, escape_backslashes=True) -> t.Any:
         if not isinstance(expression, str):

@@ -3,9 +3,7 @@ from __future__ import annotations
 import ast
 import collections.abc as c
 import dataclasses
-import datetime
 import enum
-import functools
 import os
 import tempfile
 
@@ -24,8 +22,8 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing, LRUCache
 
 from ansible.utils.display import Display
-from ansible.errors import AnsibleError, AnsibleTemplatePluginNotFoundError, AnsibleVariableTypeError, AnsibleTemplatePluginError
-from ansible.module_utils.common.text.converters import to_text, to_native
+from ansible.errors import AnsibleVariableTypeError
+from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.compat import typing as t
 from ansible.module_utils.datatag import (
     TrustedAsTemplate,
@@ -41,9 +39,8 @@ from ansible.module_utils.datatag import (
     Tripwire,
 )
 from ansible.module_utils.datatag.access import AnsibleAccessContext, AmbientContextBase
-from ansible.module_utils.six import string_types
 from ansible.module_utils import datatag
-from ansible.plugins.loader import filter_loader, test_loader, Jinja2Loader
+from ansible.plugins.loader import filter_loader, test_loader
 from .datatag import _JinjaConstTemplate
 
 from .utils import Omit, TemplateContext, _repr_from
@@ -56,6 +53,7 @@ from .lazy_containers import (
     _AnsibleLazyListAdapter, _AnsibleRangeListAdapter,
 )
 from .vault import _AnsibleTaggedVaultBomb
+from .jinja_plugins import JinjaPluginIntercept, _query, _lookup, _now
 
 JINJA2_OVERRIDE = '#jinja2:'
 
@@ -381,147 +379,6 @@ class AnsibleCodeGenerator(NativeCodeGenerator):
             self.write(repr(value))
 
 
-class JinjaPluginIntercept(c.MutableMapping):
-    """
-    Simulated dict class that loads Jinja2Plugins at request
-    otherwise all plugins would need to be loaded a priori.
-
-    NOTE: plugin_loader still loads all 'builtin/legacy' at
-    start so only collection plugins are really at request.
-    """
-
-    def __init__(self, delegatee, pluginloader: Jinja2Loader, *args, **kwargs):
-
-        super(JinjaPluginIntercept, self).__init__(*args, **kwargs)
-
-        self._pluginloader = pluginloader
-
-        # Jinja's environment mapping of known names (initially just J2 builtins)
-        self._delegatee = delegatee
-
-        # our names take precedence over Jinja's, but let things we've tried to resolve skip the pluginloader
-        self._seen_it: set[str] = set()
-
-    def __getitem__(self, key):
-        if not isinstance(key, string_types):
-            raise ValueError('key must be a string, got %s instead' % type(key))
-
-        original_exc = None
-        if key not in self._seen_it:
-            # This looks too early to set this, but it isn't. Setting it here keeps requests for Jinja builtins from
-            # going through the pluginloader more than once, which is extremely slow for something that won't ever succeed.
-            self._seen_it.add(key)
-            plugin = None
-            try:
-                plugin = self._pluginloader.get(key)
-            except (AnsibleError, KeyError) as e:
-                original_exc = e
-            except Exception as e:
-                display.vvvv('Unexpected plugin load (%s) exception: %s' % (key, to_native(e)))
-                raise e
-
-            # if a plugin was found/loaded
-            if plugin:
-                # set in filter cache and avoid expensive plugin load
-                self._delegatee[key] = plugin.j2_function
-
-        # raise template syntax error if we could not find ours or jinja2 one
-        try:
-            func = self._delegatee[key]
-        except KeyError:
-            self._seen_it.remove(key)
-            plugin_type = self._pluginloader.type
-            message = f'{plugin_type} plugin {key!r} not found{": " + str(original_exc) if original_exc else ""}'
-            raise AnsibleTemplatePluginNotFoundError(message) from original_exc
-
-        # FIXME: can/should we handle this in finalize instead, or at least allow plugins to opt into/out of this behavior?
-        # if i do have func and it is a filter, it needs wrapping
-        if self._pluginloader.type == 'filter':
-            # deprecated: description="deprecate STRING_TYPE_FILTERS config entry (formerly used here) once 2.18 is EOL" core_version="2.19"
-            # conditionally unroll iterators/generators to avoid having to use `|list` after every filter
-            func = self._wrap_filter(func, key)
-
-            # FIXME: we should probably be running the result of filter plugins through proxy_or_render_template
-        else:
-            func = self._wrap_test(func, key)
-
-        return func
-
-    def __setitem__(self, key, value):
-        return self._delegatee.__setitem__(key, value)
-
-    def __delitem__(self, key):
-        raise NotImplementedError()
-
-    def __contains__(self, item: t.Any) -> bool:
-        try:
-            self.__getitem__(item)
-        except AnsibleTemplatePluginNotFoundError:
-            return False
-
-        return True
-
-    def __iter__(self):
-        # not strictly accurate since we're not counting dynamically-loaded values
-        return iter(self._delegatee)
-
-    def __len__(self):
-        # not strictly accurate since we're not counting dynamically-loaded values
-        return len(self._delegatee)
-
-    @staticmethod
-    def _wrap_test(func: t.Callable, plugin_name: str) -> t.Callable:
-        """Intercept point for all test plugins to ensure that args are properly templated/lazified."""
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> bool:
-            # FIXME: see question in __call__ about needing to wrap input args
-            tc = TemplateContext.current_or_raise()
-            templar = tc.templar
-            args = templar.proxy_or_render_template(args)
-            kwargs = templar.proxy_or_render_kwargs(kwargs)
-
-            try:
-                test_res = func(*args, **kwargs)
-            except AnsibleUndefinedError:
-                raise
-            except Exception as ex:
-                raise AnsibleTemplatePluginError(f"Test {plugin_name!r} failed: {ex}") from ex
-
-            if not isinstance(test_res, bool):
-                template = tc.template_value
-                display.deprecated(
-                    msg=f"The test plugin {plugin_name!r} used in template {_repr_from(template)} returned a non-boolean result of type {type(test_res)!r}. "
-                        f"Test plugins must have a boolean result.",
-                    version="2.21",
-                )
-                test_res = bool(test_res)
-
-            return test_res
-
-        return wrapper
-
-    @staticmethod
-    def _wrap_filter(func: t.Callable, plugin_name: str) -> t.Callable:
-        """Intercept point for all filter plugins to ensure that args are properly templated/lazified."""
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            # FIXME: see question in __call__ about needing to wrap input args
-            templar = TemplateContext.current_or_raise().templar
-            args = templar.proxy_or_render_template(args)
-            kwargs = templar.proxy_or_render_kwargs(kwargs)
-
-            try:
-                filter_res = func(*args, **kwargs)
-            except AnsibleUndefinedError:
-                raise
-            except Exception as ex:
-                raise AnsibleTemplatePluginError(f"Filter {plugin_name!r} failed: {ex}") from ex
-
-            return templar.proxy_or_render_template(filter_res)
-
-        return wrapper
-
-
 @pass_context
 def _ansible_finalize(_ctx: AnsibleContext, value: t.Any) -> t.Any:
     """
@@ -624,9 +481,12 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.globals.update(
             range=range,  # the sandboxed environment limits range in ways that may cause us problems; use the real Python one
-            now=self._now,
+            now=_now,
             undef=_undef,
             omit=Omit,
+            lookup=_lookup,
+            query=_query,
+            q=_query,
         )
 
         # Disabling the optimizer prevents compile-time constant expression folding, which prevents our
@@ -763,7 +623,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         templar = TemplateContext.current_or_raise().templar
 
         # FUTURE: this doesn't scale well, as we add more globals that need special handling, we may want to move that down into the globals
-        if __obj == templar._lookup or __obj == templar._query_lookup:  # we can't use reference equality here; bound methods differ by instance
+        if __obj is _lookup or __obj is _query:
             lookup_name = args[0]
             args = templar.proxy_or_render_template(_trust_jinja_constants(args[1:]))  # for backwards compat, only trust constant templates in lookup pos args
             kwargs = templar.proxy_or_render_kwargs(kwargs)
@@ -776,19 +636,6 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             call_res = super().call(__context, __obj, *templar.proxy_or_render_template(args), **templar.proxy_or_render_kwargs(kwargs))
 
         return templar.proxy_or_render_template(call_res)
-
-    @staticmethod
-    def _now(utc=False, fmt=None):
-        """Jinja2 global function (now) to return current datetime, potentially formatted via strftime."""
-        if utc:
-            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-        else:
-            now = datetime.datetime.now()
-
-        if fmt:
-            return now.strftime(fmt)
-
-        return now
 
 
 def _trust_jinja_constants(o: t.Any) -> t.Any:
