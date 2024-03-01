@@ -13,6 +13,7 @@ import sys
 import typing as t
 
 import argparse
+import functools
 
 from ansible import constants as C
 from ansible import context
@@ -181,7 +182,10 @@ class InventoryCLI(CLI):
         if context.CLIARGS['yaml']:
             import yaml
             from ansible.parsing.yaml.dumper import AnsibleDumper
-            results = to_text(yaml.dump(stuff, Dumper=AnsibleDumper, default_flow_style=False, allow_unicode=True))
+
+            # FIXME: need shared infra to smuggle custom kwargs to dumpers, since yaml.dump cannot (as of PyYAML 6.0.1)
+            dumper = functools.partial(AnsibleDumper, dump_vault_tags=True)
+            results = to_text(yaml.dump(stuff, Dumper=dumper, default_flow_style=False, allow_unicode=True))
         elif context.CLIARGS['toml']:
             try:
                 results = toml_dumps(stuff)

@@ -64,12 +64,13 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         o = AnsibleAccessContext.current().access(o)
 
         # FIXME: optimize this; maybe direct-dispatch from a type mapping instead of using isinstance?
+        # FIXME: serialization "flavors" will affect this behavior
         if self._preserve_datatags and isinstance(o, AnsibleSerializable):
             o = o.serialize()
         elif isinstance(o, AnsibleTaggedObject):
             o = o.native_copy()
 
-        # FIXME: remove?
+        # FIXME: serialization "flavors" will affect this behavior; need to reimplement this for ansible-inventory compat
         # elif getattr(o, '__ENCRYPTED__', False):
         #     # vault object
         #     if self._vault_to_text:
