@@ -256,8 +256,13 @@ def _inject_post_init_validation(cls: type, allow_subclasses=False) -> None:
     setattr(cls, method_name, exec_globals[method_name])
 
 
+class CollectionWithMro(t.Collection, t.Protocol):
+    """Used to represent a Collection with __mro__ in a TypeGuard for tools that don't include __mro__ in Collection."""
+    __mro__: tuple[type, ...]
+
+
 # FIXME: This should probably reside elsewhere.
-def is_non_scalar_collection_type(value: type) -> t.TypeGuard[type[t.Collection]]:
+def is_non_scalar_collection_type(value: type) -> t.TypeGuard[type[CollectionWithMro]]:
     """Returns True if the value is a non-scalar collection type, otherwise returns False."""
     # FIXME: this includes _AnsibleTaggedVaultBomb and thus _VaultBomb
     return issubclass(value, Collection) and not issubclass(value, str) and not issubclass(value, bytes)
