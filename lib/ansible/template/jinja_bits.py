@@ -480,7 +480,9 @@ class JinjaPluginIntercept(c.MutableMapping):
 
             try:
                 test_res = func(*args, **kwargs)
-            except AnsibleTestError:
+            except (AnsibleTestError, AnsibleUndefinedError):
+                # AnsibleTestError - If a plugin raises this, it doesn't need to be wrapped.
+                # AnsibleUndefinedError - Don't wrap this, allowing template infrastructure to process it.
                 raise
             except Exception as ex:
                 raise AnsibleTestError(f"Test {plugin_name!r} failed: {ex}") from ex
@@ -510,7 +512,9 @@ class JinjaPluginIntercept(c.MutableMapping):
 
             try:
                 filter_res = func(*args, **kwargs)
-            except AnsibleFilterError:
+            except (AnsibleFilterError, AnsibleUndefinedError):
+                # AnsibleFilterError - If a plugin raises this, it doesn't need to be wrapped.
+                # AnsibleUndefinedError - Don't wrap this, allowing template infrastructure to process it.
                 raise
             except Exception as ex:
                 raise AnsibleFilterError(f"Filter {plugin_name!r} failed: {ex}") from ex

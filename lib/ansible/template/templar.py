@@ -494,7 +494,7 @@ class Templar:
             ran = instance.run(args, variables=self.available_variables, **kwargs)
         # FIXME: most of this exception handling should occur at the edge of templating
         except AnsibleUndefinedError:
-            # this is just to prevent the broad `except Exception` from firing below
+            # AnsibleUndefinedError - Don't wrap this, allowing template infrastructure to process it.
             raise
         except AnsibleLookupError as ex:
             # lookup handled error but still decided to bail
