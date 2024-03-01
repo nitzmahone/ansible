@@ -23,7 +23,6 @@ import typing as t
 from ansible.module_utils.datatag import AnsibleTaggedObject, Tripwire, VaultedValue
 from ansible.module_utils.datatag.access import AnsibleAccessContext
 from ansible.module_utils.common.yaml import SafeDumper
-from ansible.utils.display import Display
 from ansible.vars.hostvars import HostVars, HostVarsVars
 
 
