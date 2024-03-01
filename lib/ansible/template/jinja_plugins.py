@@ -180,7 +180,6 @@ def _lookup(name, /, *args, **kwargs) -> t.Any:
         ran = instance.run(args, variables=templar.available_variables, **kwargs)
     # FIXME: most of this exception handling should occur at the edge of templating
     except UndefinedError:
-        # AnsibleUndefinedError - Don't wrap this, allowing template infrastructure to process it.
         raise
     # FIXME: collapse these two?
     except AnsibleTemplatePluginError as ex:
