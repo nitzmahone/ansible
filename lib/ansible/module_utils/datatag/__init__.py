@@ -437,6 +437,12 @@ class AnsibleTaggedObject(AnsibleSerializable):
             AnsibleTaggedObject._collection_types.update({cls, cls.__mro__[1]})
 
     def native_copy(self) -> t.Any:
+        """
+        Returns a copy of the current instance as its native Python type.
+        Any dynamic access behaviors that apply to this instance will be used during creation of the copy.
+        In the case of a container type, this is a shallow copy.
+        Recursive calls to native_copy are the responsibility of the caller.
+        """
         return self.native_type(self)  # pylint: disable=abstract-class-instantiated
 
     @classmethod
@@ -610,7 +616,10 @@ class AnsibleTaggedObject(AnsibleSerializable):
         return instance
 
     def _copy_collection(self) -> AnsibleTaggedObject:
-        # use the underlying iterator to avoid access/iteration side effects (e.g. templating/wrapping on Lazy subclasses)
+        """
+        Return a shallow copy of this instance, which must be a collection.
+        This uses the underlying iterator to avoid access/iteration side effects (e.g. templating/wrapping on Lazy subclasses).
+        """
         return AnsibleTaggedObject.tag_copy(self, self.item_source(), value_type=type(self))  # type: ignore[misc]
 
     @classmethod
