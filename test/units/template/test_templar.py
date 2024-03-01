@@ -217,7 +217,7 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
                                TrustedAsTemplate().tag('{{ lookup("list", an_undefined_jinja_var) }}'))
 
     def test_lookup_jinja_defined(self):
-        res = self.lookup('list', '{{ some_var }}')
+        res = self.lookup('list', 'x')
         assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict_string_passed(self):
@@ -225,7 +225,7 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
                                "with_dict expects a dict",
                                self.lookup,
                                'dict',
-                               '{{ some_var }}')
+                               'x')
 
     def test_lookup_jinja_dict_list_passed(self):
         self.assertRaisesRegex(AnsibleError,
@@ -249,7 +249,7 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
                                TrustedAsTemplate().tag('{{ lookup("list", some_undefined_var, wantlist=True) }}'))
 
     def test_lookup_jinja_list_wantlist_unsafe(self):
-        res = self.lookup('list', '{{ some_unsafe_var }}', wantlist=True)
+        res = self.lookup('list', 'x', wantlist=True)
         for lookup_result in res:
             assert not TrustedAsTemplate.is_tagged_on(lookup_result)
 
@@ -261,13 +261,13 @@ class TestTemplarLookup(BaseTemplar, unittest.TestCase):
         assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict_unsafe(self):
-        res = self.lookup('list', {'{{ some_unsafe_key }}': '{{ some_unsafe_var }}'})
-        assert not TrustedAsTemplate.is_tagged_on(res['{{ some_unsafe_key }}'])
+        res = self.lookup('list', {'x': 'x'})
+        assert not TrustedAsTemplate.is_tagged_on(res['x'])
         assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict_unsafe_value(self):
-        res = self.lookup('list', {'{{ a_keyword }}': '{{ some_unsafe_var }}'})
-        assert not TrustedAsTemplate.is_tagged_on(res['{{ a_keyword }}'])
+        res = self.lookup('list', {'x': 'x'})
+        assert not TrustedAsTemplate.is_tagged_on(res['x'])
         assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_none(self):
