@@ -182,6 +182,19 @@ def test_lazy_generator() -> None:
     assert gen.count(2) == 1
 
 
+@pytest.mark.parametrize("template, variables, expected", [
+    (TRUST.tag("{{ (d1 | items) + (d2 | items) }}"), dict(d1=dict(a=1), d2=dict(b=2)), [('a', 1), ('b', 2)]),
+    (TRUST.tag("{{ (d1 | items) + [('c', 3)] }}"), dict(d1=dict(a=1)), [('a', 1), ('c', 3)]),
+    (TRUST.tag("{{ [('c', 3)] + (d1 | items) }}"), dict(d1=dict(a=1)), [('c', 3), ('a', 1)]),
+    (TRUST.tag("{{ (d1 | items) * 2 }}"), dict(d1=dict(a=1)), [('a', 1), ('a', 1)]),
+    (TRUST.tag("{{ 2 * (d1 | items) }}"), dict(d1=dict(a=1)), [('a', 1), ('a', 1)]),
+])
+def test_lazy_list_adapter_operators(template, variables, expected) -> None:
+    templar = Templar(variables=variables)
+
+    assert templar.template(TRUST.tag(template)) == expected
+
+
 def test_generator_length_passthru() -> None:
     value = dict(a=1, b=2)
     raw_gen_iterator = value.items()

@@ -130,6 +130,23 @@ class _AnsibleLazyListAdapter(c.Sequence, AnsibleTaggedObject):
     def __eq__(self, other):
         return self._cached_elements == other
 
+    def __add__(self, other) -> list:
+        return self._cached_elements + other
+
+    # FDI043 - Jinja doesn't appear to support += anyway, but plugins might expect this. Need to decide how we're handling mutability.
+    # def __iadd__(self, other) -> list:
+    #     self._cached_elements += other
+    #     return self._cached_elements
+
+    def __radd__(self, other) -> list:
+        return other + self._cached_elements
+
+    def __mul__(self, other):
+        return self._cached_elements * other
+
+    def __rmul__(self, other):
+        return other * self._cached_elements
+
     def index(self, value: t.Any, *args, **kwargs) -> int:
         return self._cached_elements.index(value, *args, **kwargs)
 

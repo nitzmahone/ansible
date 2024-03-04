@@ -74,7 +74,7 @@ class HostVars(Mapping):
 class HostVarsVars(Mapping):
     """A read-only view of a specific host's vars that will template on access under that host's variable context."""
 
-    def __init__(self, variables: dict[str, t.Any], loader: DataLoader, host: str) -> None:
+    def __init__(self, variables: dict[str, t.Any], loader: DataLoader | None, host: str) -> None:
         self._vars = variables
         self._templar = Templar(variables=variables, loader=loader)
         self._host = host

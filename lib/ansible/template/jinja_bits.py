@@ -392,6 +392,10 @@ def _ansible_finalize(_ctx: AnsibleContext, value: t.Any) -> t.Any:
 
 @dataclasses.dataclass(kw_only=True, slots=True)
 class _TemplateCompileContext(AmbientContextBase):
+    """
+    This context is active during Ansible's explicit compilation of templates/expressions, but not during Jinja's runtime compilation.
+    Historically, Ansible-specific pre-processing like `escape_backslashes` was not applied to imported/included templates.
+    """
     escape_backslashes: bool
 
 
