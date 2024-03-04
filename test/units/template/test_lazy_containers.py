@@ -11,6 +11,7 @@ from ansible.module_utils.datatag import TrustedAsTemplate, AnsibleSourcePositio
 from ansible.template.utils import TemplateContext
 from ansible.template.templar import Templar, TemplateOptions
 from ansible.template.lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyListAdapter
+from ansible.vars.hostvars import HostVarsVars
 
 TRUST = TrustedAsTemplate()
 
@@ -180,6 +181,37 @@ def test_lazy_generator() -> None:
     assert 3 in gen
     assert gen.index(2) == 0
     assert gen.count(2) == 1
+
+
+def test_generator_context_sampling() -> None:
+    """Ensure that a deferred-consumption generator has properly sampled and restored the contextvars that were active when it was created."""
+
+    def gimmetemplatecontext(self, *args, **kwargs):
+        """
+        A generator filter that can cause deferred access to a TemplateContext. When the template variable invoking this filter
+        is rendered by the HostVarsVars templar on access to `gen_info`, the current TemplateContext should be the enclosing templar's variables,
+        but without context sampling and restoration, when the generator access is deferred until after the HostVarsVars TemplateContext has exited
+        (the expected behavior for lazy wrapped generators), it will see the "wrong" set of variables.
+        """
+        tc_vars = TemplateContext.current_or_raise().templar.available_variables
+
+        yield tc_vars["inventory_hostname"]
+
+    host1 = HostVarsVars(dict(inventory_hostname="host1", gen_info=TRUST.tag('{{ 1 | gimmetemplatecontext }}')), loader=None, host="host1")
+    host2 = HostVarsVars(dict(inventory_hostname="host2", gen_info=TRUST.tag('{{ 1 | gimmetemplatecontext }}')), loader=None, host="host2")
+
+    host1._templar.environment.filters["gimmetemplatecontext"] = gimmetemplatecontext
+    host2._templar.environment.filters["gimmetemplatecontext"] = gimmetemplatecontext
+
+    hostvars = dict(
+        host1=host1,
+        host2=host2,
+    )
+
+    templar = Templar(variables=dict(hostvars=hostvars, inventory_hostname="localhost", gen_info=TRUST.tag('{{ 1 | gimmetemplatecontext }}')))
+    templar.environment.filters["gimmetemplatecontext"] = gimmetemplatecontext
+
+    assert templar.template(TRUST.tag("{{ [hostvars.host1['gen_info'], hostvars.host2['gen_info'], gen_info] }}")) == [["host1"], ["host2"], ["localhost"]]
 
 
 @pytest.mark.parametrize("template, variables, expected", [

@@ -563,6 +563,3 @@ class Templar:
     def proxy_or_render_template(self, item: t.Any):
         # FIXME: always blindly access item here?
         return self.template(AnsibleAccessContext.current().access(item))
-
-    def proxy_or_render_kwargs(self, kwargs: c.Mapping[str, t.Any]) -> dict[str, t.Any]:
-        return {kwarg: self.proxy_or_render_template(value) for kwarg, value in kwargs.items()}

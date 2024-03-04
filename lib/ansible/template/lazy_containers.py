@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 import types
 
 from collections import abc as c
@@ -227,8 +228,10 @@ class _AnsibleLazyTemplateMixin:
                 if type(item) is range:  # pylint: disable=unidiomatic-typecheck
                     return _AnsibleRangeListAdapter(item)
 
-                # FIXME: use a better/cheaper identification mechanism
-                if isinstance(item, (c.Iterator, c.MappingView)):
+                if isinstance(item, c.Iterator):
+                    return _AnsibleLazyListAdapter(_wrap_with_current_context(item))
+
+                if isinstance(item, c.MappingView):
                     return _AnsibleLazyListAdapter(item)
 
                 # FIXME: what do we want here? such as HostVars, HostVarsVars
@@ -440,3 +443,21 @@ class _AnsibleLazyTemplateSet(_AnsibleTaggedSet, _AnsibleLazyTemplateMixin):
 
     def untemplated_tagged_copy(self) -> set:
         return AnsibleTaggedObject.tag_copy(self, set.__iter__(self), value_type=set)
+
+
+def _wrap_with_current_context(gen: t.Iterator) -> t.Generator:
+    """Generator wrapper that samples contextvars state on creation and restores it as the wrapped generator is consumed."""
+    ctx = contextvars.copy_context()
+
+    # FIXME: need to consider the effects this defer/restore has on each of our AccessContext lifetimes and behaviors, since it can break
+    #  strict nesting assumptions (eg TemplateContext) and defer interactions with contexts that we assume have completely finished their
+    #  work (eg, DeprecatedAccessAuditContext, VaultBombs),
+
+    def wrap_gen():
+        while True:
+            try:
+                yield ctx.run(next, gen)
+            except StopIteration:
+                return
+
+    return wrap_gen()
