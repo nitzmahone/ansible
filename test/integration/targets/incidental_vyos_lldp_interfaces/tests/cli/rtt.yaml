@@ -41,7 +41,7 @@
 
     - name: Assert that changes were applied
       assert:
-        that: "{{ round_trip['after'] | symmetric_difference(result['after']) |length == 0 }}"
+        that: "round_trip['after'] | symmetric_difference(result['after']) |length == 0"
 
     - name: Revert back to base config using facts round trip
       vyos.vyos.vyos_lldp_interfaces:
@@ -51,7 +51,7 @@
 
     - name: Assert that config was reverted
       assert:
-        that: "{{ base_config['after'] | symmetric_difference(revert['after']) |length == 0 }}"
+        that: "base_config['after'] | symmetric_difference(revert['after']) |length == 0"
 
   always:
     - include_tasks: _remove_config.yaml

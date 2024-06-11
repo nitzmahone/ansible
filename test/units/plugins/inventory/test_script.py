@@ -79,28 +79,26 @@ class TestInventoryModule(unittest.TestCase):
 
         with pytest.raises(AnsibleError) as e:
             self.inventory_module.parse(self.inventory, self.loader, '/foo/bar/foobar.py')
-        assert e.value.message == to_native("Inventory script (/foo/bar/foobar.py) had an execution error: "
-                                            "dummyédata\n ")
+        assert e.value.message == to_native("Inventory script (/foo/bar/foobar.py) had an execution error: dummyédata")
 
     def test_parse_utf8_fail(self):
         self.popen_result.returncode = 0
-        self.popen_result.stderr = to_bytes("dummyédata")
-        self.loader.load.side_effect = TypeError('obj must be string')
+        self.popen_result.stdout = b'"bytes not string"'
 
         with pytest.raises(AnsibleError) as e:
             self.inventory_module.parse(self.inventory, self.loader, '/foo/bar/foobar.py')
+
         assert e.value.message == to_native("failed to parse executable inventory script results from "
-                                            "/foo/bar/foobar.py: obj must be string\ndummyédata\n")
+                                            "/foo/bar/foobar.py: value is <class 'str'> instead of <class 'dict'>")
 
     def test_parse_dict_fail(self):
         self.popen_result.returncode = 0
-        self.popen_result.stderr = to_bytes("dummyédata")
-        self.loader.load.return_value = 'i am not a dict'
+        self.popen_result.stdout = '"not a dict"'
 
         with pytest.raises(AnsibleError) as e:
             self.inventory_module.parse(self.inventory, self.loader, '/foo/bar/foobar.py')
         assert e.value.message == to_native("failed to parse executable inventory script results from "
-                                            "/foo/bar/foobar.py: needs to be a json dict\ndummyédata\n")
+                                            "/foo/bar/foobar.py: value is <class 'str'> instead of <class 'dict'>")
 
     def test_get_host_variables_subprocess_script_raises_error(self):
         self.popen_result.returncode = 1

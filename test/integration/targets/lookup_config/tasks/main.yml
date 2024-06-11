@@ -53,14 +53,17 @@
   vars:
     ansible_remote_tmp: yolo
 
+- debug:
+    var: ssh_user_and_port_and_origin
+
 - name: Verify lookup_config
   assert:
     that:
       - '"meow" in lookup("config", "ANSIBLE_COW_ACCEPTLIST")'
       - lookup_config_1 is failed
-      - '"Unable to find setting" in lookup_config_1.msg'
+      - lookup_config_1.msg is contains "Setting 'THIS_DOES_NOT_EXIST' does not exist."
       - lookup_config_2 is failed
-      - '"Unable to find setting" in lookup_config_2.msg'
+      - lookup_config_2.msg is contains "Setting 'THIS_DOES_NOT_EXIST' does not exist."
       - lookup_config_3 is success
       - 'lookup3|length == 0'
       - lookup_config_4 is success
@@ -72,5 +75,6 @@
       - lookup_config_7 is failed
       - '"Invalid setting" in lookup_config_7.msg'
       - ssh_user_and_port == ['lola', 2022]
+      # FIXME: how are we seeing tuples here when we didn't in devel?
       - "ssh_user_and_port_and_origin == [['lola', 'var: ansible_ssh_user'], [2022, 'var: ansible_ssh_port']]"
       - yolo_remote == ["yolo"]

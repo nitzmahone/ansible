@@ -11,6 +11,8 @@ import os.path
 import sys
 import time
 
+import yaml
+
 from jinja2 import __version__ as j2_version
 
 import ansible
@@ -182,13 +184,28 @@ def version(prog=None):
         cpath = "Default w/o overrides"
     else:
         cpath = C.DEFAULT_MODULE_PATH
+
+    if HAS_LIBYAML:
+        libyaml_fragment = "with libyaml"
+
+        # noinspection PyBroadException
+        try:
+            from yaml._yaml import get_version_string
+
+            libyaml_fragment += f" v{get_version_string()}"
+        except Exception:  # pylint: disable=broad-except
+            libyaml_fragment += ", version unknown"
+    else:
+        libyaml_fragment = "without libyaml"
+
     result.append("  configured module search path = %s" % cpath)
     result.append("  ansible python module location = %s" % ':'.join(ansible.__path__))
     result.append("  ansible collection location = %s" % ':'.join(C.COLLECTIONS_PATHS))
     result.append("  executable location = %s" % sys.argv[0])
     result.append("  python version = %s (%s)" % (''.join(sys.version.splitlines()), to_native(sys.executable)))
     result.append("  jinja version = %s" % j2_version)
-    result.append("  libyaml = %s" % HAS_LIBYAML)
+    result.append(f"  pyyaml version = {yaml.__version__} ({libyaml_fragment})")
+
     return "\n".join(result)
 
 

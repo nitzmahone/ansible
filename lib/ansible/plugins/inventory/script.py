@@ -151,16 +151,20 @@ EXAMPLES = r'''# fmt: code
 '''
 
 
+import json
 import os
 import subprocess
+import typing as t
 
 from collections.abc import Mapping
 
-from ansible.errors import AnsibleError, AnsibleParserError
+from ansible.errors import AnsibleError, AnsibleParserError, AnsibleJSONParserError
 from ansible.module_utils.basic import json_dict_bytes_to_unicode
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.plugins.inventory import BaseInventoryPlugin
 from ansible.utils.display import Display
+from ansible.module_utils.serialization import get_decoder
+from ansible.utils.serialization import legacy_inventory
 
 display = Display()
 
@@ -169,6 +173,8 @@ class InventoryModule(BaseInventoryPlugin):
     ''' Host inventory parser for ansible using external inventory scripts. '''
 
     NAME = 'script'
+
+    # FIXME: currently no way to apply trust- see _meta handling in parse() below
 
     def __init__(self):
 
@@ -230,7 +236,7 @@ class InventoryModule(BaseInventoryPlugin):
                 raise AnsibleError("Inventory {0} contained characters that cannot be interpreted as UTF-8: {1}".format(path, to_native(e)))
 
             try:
-                processed = self.loader.load(data, json_only=True)
+                processed = parse_inventory(data)
             except Exception as e:
                 raise AnsibleError("failed to parse executable inventory script results from {0}: {1}\n{2}".format(path, to_native(e), err))
 
@@ -250,20 +256,20 @@ class InventoryModule(BaseInventoryPlugin):
             # if called with --host for backwards compat with 1.2 and earlier.
             for (group, gdata) in processed.items():
                 if group == '_meta':
+                    # FIXME: add support for a new template_trust declaration in _meta and let the script plugin's trusted_by_default impl consult it
                     if 'hostvars' in gdata:
                         data_from_meta = gdata['hostvars']
                 else:
                     self._parse_group(group, gdata)
 
             for host in self._hosts:
-                got = {}
                 if data_from_meta is None:
                     got = self.get_host_variables(path, host)
                 else:
                     try:
                         got = data_from_meta.get(host, {})
-                    except AttributeError as e:
-                        raise AnsibleError("Improperly formatted host information for %s: %s" % (host, to_native(e)), orig_exc=e)
+                    except AttributeError as ex:
+                        raise AnsibleError(f"Improperly formatted host information for {host!r}.") from ex
 
                 self._populate_host_vars([host], got)
 
@@ -319,3 +325,37 @@ class InventoryModule(BaseInventoryPlugin):
             return json_dict_bytes_to_unicode(self.loader.load(out, file_name=path))
         except ValueError:
             raise AnsibleError("could not parse post variable response: %s, %s" % (cmd, out))
+
+
+def detect_profile_name(value: str) -> str:
+    """
+    Detect (optional) JSON profile name from an inventory JSON document.
+    Defaults to `legacy_inventory`.
+    """
+    data = json.loads(value)
+
+    if not isinstance(data, dict):
+        raise TypeError(f'value is {type(data)} instead of {dict}')
+
+    if (meta := data.get('_meta', ...)) is ...:
+        return legacy_inventory.Decoder.profile_name
+
+    if (profile := meta.get('profile', ...)) is ...:
+        return legacy_inventory.Decoder.profile_name
+
+    if not isinstance(profile, str):
+        raise TypeError(f'_meta.profile is {type(profile)} instead of {str}')
+
+    return profile
+
+
+def parse_inventory(value: str) -> dict[str, t.Any]:
+    """Parse an inventory JSON document after auto-detecting the serialization profile."""
+    profile_name = detect_profile_name(value)
+    decoder = get_decoder(profile_name)
+    file_name = '<script inventory plugin>'  # FIXME: is there a better way to indicate the source than using a bogus file_name value?
+
+    try:
+        return json.loads(value, cls=decoder, file_name=file_name)
+    except Exception as json_ex:
+        AnsibleJSONParserError.handle_exception(json_ex, src=file_name)

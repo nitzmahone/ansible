@@ -28,7 +28,7 @@ ansible-playbook test.yml -i inventory "$@"
 # test keyword docs
 ansible-doc -t keyword -l | grep "${GREP_OPTS[@]}" 'vars_prompt: list of variables to prompt for.'
 ansible-doc -t keyword vars_prompt | grep "${GREP_OPTS[@]}" 'description: list of variables to prompt for.'
-ansible-doc -t keyword asldkfjaslidfhals 2>&1 | grep "${GREP_OPTS[@]}" 'Skipping Invalid keyword'
+ansible-doc -t keyword asldkfjaslidfhals 2>&1 | grep "${GREP_OPTS[@]}" 'Skipping invalid keyword'
 
 # collections testing
 (
@@ -205,7 +205,7 @@ EOF
 ANSIBLE_LIBRARY='./nolibrary' ansible-doc --metadata-dump --no-fail-on-errors --playbook-dir broken-docs testns.testcol 1>/dev/null 2>&1
 
 # ensure that --metadata-dump does fail when --no-fail-on-errors is not supplied
-output=$(ANSIBLE_LIBRARY='./nolibrary' ansible-doc --metadata-dump --playbook-dir broken-docs testns.testcol 2>&1 | grep -c 'ERROR!' || true)
+output=$(ANSIBLE_LIBRARY='./nolibrary' ansible-doc --metadata-dump --playbook-dir broken-docs testns.testcol 2>&1 | grep -c 'ERROR' || true)
 test "${output}" -eq 1
 
 

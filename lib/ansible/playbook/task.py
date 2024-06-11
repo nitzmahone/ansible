@@ -17,13 +17,15 @@
 
 from __future__ import annotations
 
+import typing as t
+
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError
+from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError, AnsibleValueOmittedError
 from ansible.module_utils.common.text.converters import to_native
+from ansible.module_utils.datatag import AnsibleTagHelper
 from ansible.module_utils.six import string_types
 from ansible.parsing.mod_args import ModuleArgsParser
-from ansible.parsing.yaml.objects import AnsibleBaseYAMLObject, AnsibleMapping
-from ansible.plugins.loader import lookup_loader
+from ansible.plugins.loader import action_loader, module_loader, lookup_loader
 from ansible.playbook.attribute import NonInheritableFieldAttribute
 from ansible.playbook.base import Base
 from ansible.playbook.block import Block
@@ -34,6 +36,8 @@ from ansible.playbook.loop_control import LoopControl
 from ansible.playbook.notifiable import Notifiable
 from ansible.playbook.role import Role
 from ansible.playbook.taggable import Taggable
+from ansible.template.templar import TemplateOptions, TemplateMode
+from ansible.template.jinja_bits import is_possibly_template
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
@@ -78,6 +82,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
     poll = NonInheritableFieldAttribute(isa='int', default=C.DEFAULT_POLL_INTERVAL)
     register = NonInheritableFieldAttribute(isa='string', static=True)
     retries = NonInheritableFieldAttribute(isa='int')  # default is set in TaskExecutor
+    untemplated_args: dict[str, t.Any] = None
     until = NonInheritableFieldAttribute(isa='list', default=list)
 
     # deprecated, used to be loop and loop_args but loop has been repurposed
@@ -130,8 +135,72 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
 
     @staticmethod
     def load(data, block=None, role=None, task_include=None, variable_manager=None, loader=None):
-        t = Task(block=block, role=role, task_include=task_include)
-        return t.load_data(data, variable_manager=variable_manager, loader=loader)
+        task = Task(block=block, role=role, task_include=task_include)
+        return task.load_data(data, variable_manager=variable_manager, loader=loader)
+
+    def _post_validate_args(self, attr, value, templar):
+        # FIXME: the args dict should be tagged with the source position of the task
+        # smuggle an untemplated copy of the task args for actions that need more control over the templating of their
+        # input (eg, debug's var/msg, assert's "that" conditional expressions)
+        # FIXME: should the _variable_params splat be stored here or not? Probably...
+        self.untemplated_args = value
+
+        # FIXME: this is None for pseudo-actions like include_tasks, should it be?
+        # FIXME: this is None for anything using old `action: assert` or `action: module: assert`, should it be?
+        # FIXME: this may still be insufficient to ensure that resolved_action on `action:` and `action: module` cases
+        #        (which have undocumented deferral behavior)
+        if not self.resolved_action and self.action:
+            # FIXME: omit/undefined handling?
+            if is_possibly_template(self.action):
+                self.action = templar.template(self.action)
+
+            # FIXME: extract to a helper method, shared with Task.post_validate_args
+            context = action_loader.find_plugin_with_context(self.action, collection_list=self.collections)
+            if not context.resolved:
+                context = module_loader.find_plugin_with_context(self.action, collection_list=self.collections)
+
+            if context.resolved:
+                self.resolved_action = context.resolved_fqcn
+            else:
+                raise AnsibleError(f"FIXME couldn't late-load templated module/action {self.action}")
+
+        if self.resolved_action:
+            ctx = action_loader.get_with_context(self.resolved_action, collection_list=self.collections, class_only=True)
+
+            # FIXME: decide the final name for this class attribute
+            # FIXME: need to preserve resolved action and resolved as module separately to handle action subsystems that want to do their own templating?
+            # FIXME: centralized k=v handling?
+            # FIXME: verify module_defaults behavior; looks like {{ my_args }} does not merge properly; handling embedded omit fallbacks is also "fun"
+            if ctx.plugin_load_context.resolved and getattr(ctx.object, 'FIXME_DOES_OWN_TEMPLATING', False):
+                # template _variable_params, but stop if we encounter a container, let plugin template from there
+                if vp := value.pop('_variable_params', None):
+                    value = templar.template(vp, options=TemplateOptions(value_for_omit={}), mode=TemplateMode.STOP_ON_CONTAINER)
+                    # merge any explicitly-defined args back on top
+                    if isinstance(value, dict):
+                        value.update(self.untemplated_args)
+                    # FIXME: raw_params handling- we should
+                return value
+
+        # if we didn't resolve, it's probably a module, just move along like normal
+
+        # now recursively template the args dict
+        args = templar.template(value)
+
+        # FIXME: could we just nuke this entirely and/or wrap it up in ModuleArgsParser or something?
+        if '_variable_params' in args:
+            variable_params = args.pop('_variable_params')
+            if isinstance(variable_params, dict):
+                if C.INJECT_FACTS_AS_VARS:
+                    display.warning("Using a variable for a task's 'args' is unsafe in some situations "
+                                    "(see https://docs.ansible.com/ansible/devel/reference_appendices/faq.html#argsplat-unsafe)")
+                variable_params.update(args)
+                args = variable_params
+            else:
+                # if we didn't get a dict, it means there's garbage remaining after k=v parsing, just give up
+                # see https://github.com/ansible/ansible/issues/79862
+                raise AnsibleError(f"invalid or malformed argument: '{variable_params}'")
+
+        return args
 
     def __repr__(self):
         ''' returns a human-readable representation of the task '''
@@ -162,12 +231,9 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         if not isinstance(ds, dict):
             raise AnsibleAssertionError('ds (%s) should be a dict but was a %s' % (ds, type(ds)))
 
-        # the new, cleaned datastructure, which will have legacy
-        # items reduced to a standard structure suitable for the
-        # attributes of the task class
-        new_ds = AnsibleMapping()
-        if isinstance(ds, AnsibleBaseYAMLObject):
-            new_ds.ansible_pos = ds.ansible_pos
+        # the new, cleaned datastructure, which will have legacy items reduced to a standard structure suitable for the
+        # attributes of the task class; copy any tagged data to preserve things like source position
+        new_ds = AnsibleTagHelper.tag_copy(ds, {})
 
         # since this affects the task action parsing, we have to resolve in preprocess instead of in typical validator
         default_collection = AnsibleCollectionConfig.default_collection
@@ -200,13 +266,14 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         args_parser = ModuleArgsParser(task_ds=ds, collection_list=collections_list)
         try:
             (action, args, delegate_to) = args_parser.parse()
-        except AnsibleParserError as e:
+        except AnsibleParserError as ex:
+            # FIXME: find a better pattern
             # if the raises exception was created with obj=ds args, then it includes the detail
             # so we dont need to add it so we can just re raise.
-            if e.obj:
+            if ex.obj:
                 raise
             # But if it wasn't, we can add the yaml object now to get more detail
-            raise AnsibleParserError(to_native(e), obj=ds, orig_exc=e)
+            raise AnsibleParserError("Error parsing task arguments.", obj=ds) from ex
         else:
             # Set the resolved action plugin (or if it does not exist, module) for callbacks.
             self.resolved_action = args_parser.resolved_action
@@ -283,6 +350,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         if self._parent:
             self._parent.post_validate(templar)
 
+        # FIXME: why is this here, dump it?
         if AnsibleCollectionConfig.default_collection:
             pass
 
@@ -301,38 +369,54 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         template these too early.
         '''
         env = {}
-        if value is not None:
 
-            def _parse_env_kv(k, v):
-                try:
-                    env[k] = templar.template(v, convert_bare=False)
-                except AnsibleUndefinedVariable as e:
-                    error = to_native(e)
-                    if self.action in C._ACTION_FACT_GATHERING and 'ansible_facts.env' in error or 'ansible_env' in error:
-                        # ignore as fact gathering is required for 'env' facts
-                        return
-                    raise
+        # FIXME: move this into an integration test for environment
+        #     """
+        # - shell: echo "IAMHERE = $IAMHERE; NOTHERE = $NOTHERE; ANOTHER = $ANOTHER"
+        #   environment:
+        #     - NOTHERE: '{{ omit }}'
+        #       IAMHERE: hello
+        #     - '{{ omit }}'
+        #     - ANOTHER: stillhere
+        #
+        # - shell: echo hi
+        #   environment: '{{ omit }}'
+        #
+        # - shell: echo hi
+        #   environment:
+        #     - blar
+        #
+        #     """
 
-            if isinstance(value, list):
-                for env_item in value:
-                    if isinstance(env_item, dict):
-                        for k in env_item:
-                            _parse_env_kv(k, env_item[k])
-                    else:
-                        isdict = templar.template(env_item, convert_bare=False)
-                        if isinstance(isdict, dict):
-                            env |= isdict
-                        else:
-                            display.warning("could not parse environment value, skipping: %s" % value)
+        # FIXME: kill this with fire
+        def _parse_env_kv(k, v):
+            try:
+                env[k] = templar.template(v)
+            except AnsibleValueOmittedError:
+                # skip this value
+                return
+            except AnsibleUndefinedVariable as e:
+                error = to_native(e)
+                if self.action in C._ACTION_FACT_GATHERING and 'ansible_facts.env' in error or 'ansible_env' in error:
+                    # ignore as fact gathering is required for 'env' facts
+                    return
+                raise
 
-            elif isinstance(value, dict):
-                # should not really happen
-                env = dict()
-                for env_item in value:
-                    _parse_env_kv(env_item, value[env_item])
+        # NB: the environment FieldAttribute definition ensures that value is always a list
+        for env_item in value:
+            if isinstance(env_item, dict):
+                for k in env_item:
+                    _parse_env_kv(k, env_item[k])
             else:
-                # at this point it should be a simple string, also should not happen
-                env = templar.template(value, convert_bare=False)
+                try:
+                    isdict = templar.template(env_item)
+                except AnsibleValueOmittedError:
+                    continue
+
+                if isinstance(isdict, dict):
+                    env |= isdict
+                else:
+                    display.warning("could not parse environment value, skipping: %s" % value)
 
         return env
 

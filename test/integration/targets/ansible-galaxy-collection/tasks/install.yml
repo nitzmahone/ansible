@@ -796,7 +796,7 @@
     - name: assert cache version list is ignored on a collection version change - {{ test_id }}
       assert:
         that:
-        - '"Installing ''cache.cache:1.0.{{ cache_version_build }}'' to" in install_cached_update.stdout'
+        - '"Installing ''cache.cache:1.0." + cache_version_build + "'' to" in install_cached_update.stdout'
         - (install_cached_update_actual.content | b64decode | from_json).collection_info.version == '1.0.' ~ cache_version_build
 
 - name: install collection with symlink - {{ test_id }}

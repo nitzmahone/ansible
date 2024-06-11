@@ -53,10 +53,11 @@ from ansible.module_utils.ansible_release import __version__ as ansible_version
 from ansible.module_utils.common.collections import is_iterable
 from ansible.module_utils.common.yaml import yaml_dump, yaml_load
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
+from ansible.utils.datatag.tags import TrustedAsTemplate
 from ansible.module_utils import six
 from ansible.parsing.dataloader import DataLoader
 from ansible.playbook.role.requirement import RoleRequirement
-from ansible.template import Templar
+from ansible.template.templar import Templar
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.display import Display
 from ansible.utils.plugin_docs import get_versioned_doclink
@@ -889,8 +890,8 @@ class GalaxyCLI(CLI):
 
     @staticmethod
     def _get_skeleton_galaxy_yml(template_path, inject_data):
-        with open(to_bytes(template_path, errors='surrogate_or_strict'), 'rb') as template_obj:
-            meta_template = to_text(template_obj.read(), errors='surrogate_or_strict')
+        with open(to_bytes(template_path, errors='surrogate_or_strict'), 'r') as template_obj:
+            meta_template = TrustedAsTemplate().tag(to_text(template_obj.read(), errors='surrogate_or_strict'))
 
         galaxy_meta = get_collections_galaxy_meta_info()
 
@@ -1170,7 +1171,7 @@ class GalaxyCLI(CLI):
                 elif ext == ".j2" and not in_templates_dir:
                     src_template = os.path.join(root, f)
                     dest_file = os.path.join(obj_path, rel_root, filename)
-                    template_data = to_text(loader._get_file_contents(src_template)[0], errors='surrogate_or_strict')
+                    template_data = TrustedAsTemplate().tag(to_text(loader._get_file_contents(src_template)[0], errors='surrogate_or_strict'))
                     try:
                         b_rendered = to_bytes(templar.template(template_data), errors='surrogate_or_strict')
                     except AnsibleError as e:
@@ -1738,6 +1739,8 @@ class GalaxyCLI(CLI):
 
         return 0
 
+    _task_check_delay_sec = 10  # allows unit test override
+
     def execute_import(self):
         """ used to import a role into Ansible Galaxy """
 
@@ -1791,7 +1794,7 @@ class GalaxyCLI(CLI):
                     rc = ['SUCCESS', 'FAILED'].index(state)
                     finished = True
                 else:
-                    time.sleep(10)
+                    time.sleep(self._task_check_delay_sec)
 
         return rc
 

@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ansible.module_utils.common.messages import WarningMessageDetail
 from ansible.utils.display import _LIBC, _MAX_INT, Display, get_text_width
 from ansible.utils.multiprocessing import context as multiprocessing_context
 
@@ -116,7 +117,7 @@ def test_Display_display_warn_fork():
         display = Display()
         display.set_queue(queue)
         display.warning('foo')
-        queue.send_display.assert_called_once_with('warning', 'foo')
+        queue.send_display.assert_called_once_with('_warning', WarningMessageDetail(msg='foo'), wrap_text=True)
 
     p = multiprocessing_context.Process(target=test)
     p.start()

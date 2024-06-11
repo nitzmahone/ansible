@@ -9,15 +9,19 @@ from __future__ import annotations
 # ansible.cli needs to be imported first, to ensure the source bin/* scripts run that code first
 from ansible.cli import CLI
 
+import json
 import sys
+import typing as t
 
 import argparse
+import functools
 
 from ansible import constants as C
 from ansible import context
 from ansible.cli.arguments import option_helpers as opt_help
-from ansible.errors import AnsibleError, AnsibleOptionsError
+from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleRuntimeError
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
+from ansible.utils.serialization import legacy_inventory
 from ansible.utils.vars import combine_vars
 from ansible.utils.display import Display
 from ansible.vars.plugins import get_vars_from_inventory_sources, get_vars_from_path
@@ -156,13 +160,14 @@ class InventoryCLI(CLI):
 
     @staticmethod
     def dump(stuff):
-
         if context.CLIARGS['yaml']:
             import yaml
             from ansible.parsing.yaml.dumper import AnsibleDumper
-            results = to_text(yaml.dump(stuff, Dumper=AnsibleDumper, default_flow_style=False, allow_unicode=True))
+
+            # FIXME: need shared infra to smuggle custom kwargs to dumpers, since yaml.dump cannot (as of PyYAML 6.0.1)
+            dumper = functools.partial(AnsibleDumper, dump_vault_tags=True)
+            results = to_text(yaml.dump(stuff, Dumper=dumper, default_flow_style=False, allow_unicode=True))
         elif context.CLIARGS['toml']:
-            from ansible.plugins.inventory.toml import toml_dumps
             try:
                 results = toml_dumps(stuff)
             except TypeError as e:
@@ -177,13 +182,7 @@ class InventoryCLI(CLI):
                     'change.' % e.args[0]
                 )
         else:
-            import json
-            from ansible.parsing.ajson import AnsibleJSONEncoder
-            try:
-                results = json.dumps(stuff, cls=AnsibleJSONEncoder, sort_keys=True, indent=4, preprocess_unsafe=True, ensure_ascii=False)
-            except TypeError as e:
-                results = json.dumps(stuff, cls=AnsibleJSONEncoder, sort_keys=False, indent=4, preprocess_unsafe=True, ensure_ascii=False)
-                display.warning("Could not sort JSON output due to issues while sorting keys: %s" % to_native(e))
+            results = json.dumps(stuff, cls=legacy_inventory.Encoder, sort_keys=True, indent=4, ensure_ascii=False)
 
         return results
 
@@ -306,7 +305,11 @@ class InventoryCLI(CLI):
         results = format_group(top, frozenset(h.name for h in hosts))
 
         # populate meta
-        results['_meta'] = {'hostvars': {}}
+        results['_meta'] = {
+            'hostvars': {},
+            'profile': legacy_inventory.Encoder.profile_name,
+        }
+
         for host in hosts:
             hvars = self._get_host_variables(host)
             if hvars:
@@ -407,6 +410,17 @@ class InventoryCLI(CLI):
         results = format_group(top, available_hosts)
 
         return results
+
+
+def toml_dumps(data: t.Any) -> str:
+    try:
+        from tomli_w import dumps as _tomli_w_dumps
+    except ImportError:
+        pass
+    else:
+        return _tomli_w_dumps(data)
+
+    raise AnsibleRuntimeError('The Python library "tomli-w" is required when using the TOML output format.')
 
 
 def main(args=None):

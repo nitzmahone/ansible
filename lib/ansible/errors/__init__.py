@@ -1,42 +1,39 @@
 # (c) 2012-2014, Michael DeHaan <michael.dehaan@gmail.com>
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import annotations
 
-import re
+import enum
 import traceback
+import sys
+import types
+import typing as t
 
 from collections.abc import Sequence
 
-from ansible.errors.yaml_strings import (
-    YAML_COMMON_DICT_ERROR,
-    YAML_COMMON_LEADING_TAB_ERROR,
-    YAML_COMMON_PARTIALLY_QUOTED_LINE_ERROR,
-    YAML_COMMON_UNBALANCED_QUOTES_ERROR,
-    YAML_COMMON_UNQUOTED_COLON_ERROR,
-    YAML_COMMON_UNQUOTED_VARIABLE_ERROR,
-    YAML_POSITION_DETAILS,
-    YAML_AND_SHORTHAND_ERROR,
-)
-from ansible.module_utils.common.text.converters import to_native, to_text
+from json import JSONDecodeError
+
+from ansible.module_utils.common.text.converters import to_text
+from ..module_utils.common.messages import ErrorDetail
+from ..utils.datatag.tags import AnsibleSourcePosition
+
+from .utils import concat_message, get_chained_message, RedactAnnotatedSourceContext, SourceContext, _dedupe_and_concat_message_chain
+
+
+class ExitCode(enum.IntEnum):
+    SUCCESS = 0
+    GENERIC_ERROR = 1
+    HOST_FAILED = 2  # FIXME: TQM-sourced?
+    HOST_UNREACHABLE = 3  # FIXME: TQM-sourced?
+    PARSER_ERROR = 4
+    INVALID_CLI_OPTION = 5
+    UNICODE_ERROR = 6  # FIXME: obsolete, no longer used
+    KEYBOARD_INTERRUPT = 99
+    UNKNOWN_ERROR = 250
 
 
 class AnsibleError(Exception):
-    '''
+    """
     This is the base class for all errors raised from Ansible code,
     and can be instantiated with two optional parameters beyond the
     error message to control whether detailed information is displayed
@@ -44,187 +41,136 @@ class AnsibleError(Exception):
 
     Usage:
 
-        raise AnsibleError('some message here', obj=obj, show_content=True)
+        raise AnsibleError('some message here', obj=obj)
 
-    Where "obj" is some subclass of ansible.parsing.yaml.objects.AnsibleBaseYAMLObject,
-    which should be returned by the DataLoader() class.
-    '''
+    Where "obj" may be tagged with AnsibleSourcePosition to provide context for error messages.
+    """
 
-    def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=False, orig_exc=None):
-        super(AnsibleError, self).__init__(message)
+    # FIXME: this is part of the new DT changes, the API needs additional cleanup before releasing
+    exit_code = ExitCode.GENERIC_ERROR
+    default_prefix = ''
+    include_cause_message = True
+    """
+    When `True`, the exception message will be augmented with cause message(s).
+    Subclasses doing complex error analysis can disable this to take responsibility for reporting cause messages as needed.
+    """
+
+    def __init__(
+        self,
+        message: str = "",
+        obj: t.Any = None,
+        show_content: bool = True,
+        suppress_extended_error: bool | types.EllipsisType = ...,
+        orig_exc: BaseException | None = None,
+        help_text: str | None = None,
+    ) -> None:
+        # FIXME: these fallback cases mask incorrect use of AnsibleError.message
+        if message is None:
+            message = ''
+        elif not isinstance(message, str):
+            message = str(message)
+
+        if self.default_prefix and message:
+            message = concat_message(self.default_prefix, message)
+        elif self.default_prefix:
+            message = self.default_prefix
+        elif not message:
+            message = f'Unexpected {type(self).__name__} error.'
+
+        super().__init__(message)
 
         self._show_content = show_content
-        self._suppress_extended_error = suppress_extended_error
-        self._message = to_native(message)
+        self._message = message
+        self._help_text = help_text
         self.obj = obj
+
+        # deprecated: description='deprecate support for orig_exc, callers should use `raise ... from` only' core_version='2.22'
+        # deprecated: description='remove support for orig_exc' core_version='2.26'
         self.orig_exc = orig_exc
 
+        if suppress_extended_error is not ...:
+            from .utils import display
+
+            if suppress_extended_error:
+                self._show_content = False
+
+            display.deprecated(
+                msg=f"The `suppress_extended_error` argument to `{type(self).__name__}` is deprecated. Use `show_content=False` instead.",
+                version="2.22",
+            )
+
     @property
-    def message(self):
-        # we import this here to prevent an import loop problem,
-        # since the objects code also imports ansible.errors
-        from ansible.parsing.yaml.objects import AnsibleBaseYAMLObject
+    def original_message(self) -> str:
+        # FIXME: this is part of the new DT changes, the API needs additional cleanup before releasing
 
-        message = [self._message]
-        if isinstance(self.obj, AnsibleBaseYAMLObject):
-            extended_error = self._get_extended_error()
-            if extended_error and not self._suppress_extended_error:
-                message.append(
-                    '\n\n%s' % to_native(extended_error)
-                )
-        elif self.orig_exc:
-            message.append('. %s' % to_native(self.orig_exc))
+        return self._message
 
-        return ''.join(message)
+    @property
+    def message(self) -> str:
+        """
+        If `include_cause_message` is False, return the original message.
+        Otherwise, return the original message with cause message(s) appended, stopping on (and including) the first non-AnsibleError.
+        The recursion is due to `AnsibleError.__str__` calling this method, which uses `str` on child exceptions to create the cause message.
+        Recursion stops on the first non-AnsibleError since those exceptions do not implement the custom `__str__` behavior.
+        """
+        return get_chained_message(self)
 
     @message.setter
-    def message(self, val):
+    def message(self, val) -> None:
         self._message = val
 
-    def __str__(self):
+    @property
+    def formatted_source_context(self) -> str | None:
+        # FIXME: this is part of the new DT changes, the API needs additional cleanup before releasing
+
+        with RedactAnnotatedSourceContext.maybe(create=not self._show_content):
+            if source_context := SourceContext.from_value(self.obj):
+                return str(source_context)
+
+        return None
+
+    @property
+    def help_text(self) -> str | None:
+        # FIXME: this is part of the new DT changes, the API needs additional cleanup before releasing
+
+        return self._help_text
+
+    def __str__(self) -> str:
         return self.message
 
-    def __repr__(self):
-        return self.message
+    @property
+    def additional_error_detail(self) -> ErrorDetail | None:
+        return None
 
-    def _get_error_lines_from_file(self, file_name, line_number):
-        '''
-        Returns the line in the file which corresponds to the reported error
-        location, as well as the line preceding it (if the error did not
-        occur on the first line), to provide context to the error.
-        '''
 
-        target_line = ''
-        prev_line = ''
+class AnsibleUndefinedConfigEntry(AnsibleError):
+    """The requested config entry is not defined."""
 
-        with open(file_name, 'r') as f:
-            lines = f.readlines()
 
-            # In case of a YAML loading error, PyYAML will report the very last line
-            # as the location of the error. Avoid an index error here in order to
-            # return a helpful message.
-            file_length = len(lines)
-            if line_number >= file_length:
-                line_number = file_length - 1
+class AnsibleTaskError(AnsibleError):
+    """Task execution failed; provides contextual information about the task."""
 
-            # If target_line contains only whitespace, move backwards until
-            # actual code is found. If there are several empty lines after target_line,
-            # the error lines would just be blank, which is not very helpful.
-            target_line = lines[line_number]
-            while not target_line.strip():
-                line_number -= 1
-                target_line = lines[line_number]
-
-            if line_number > 0:
-                prev_line = lines[line_number - 1]
-
-        return (target_line, prev_line)
-
-    def _get_extended_error(self):
-        '''
-        Given an object reporting the location of the exception in a file, return
-        detailed information regarding it including:
-
-          * the line which caused the error as well as the one preceding it
-          * causes and suggested remedies for common syntax errors
-
-        If this error was created with show_content=False, the reporting of content
-        is suppressed, as the file contents may be sensitive (ie. vault data).
-        '''
-
-        error_message = ''
-
-        try:
-            (src_file, line_number, col_number) = self.obj.ansible_pos
-            error_message += YAML_POSITION_DETAILS % (src_file, line_number, col_number)
-            if src_file not in ('<string>', '<unicode>') and self._show_content:
-                (target_line, prev_line) = self._get_error_lines_from_file(src_file, line_number - 1)
-                target_line = to_text(target_line)
-                prev_line = to_text(prev_line)
-                if target_line:
-                    stripped_line = target_line.replace(" ", "")
-
-                    # Check for k=v syntax in addition to YAML syntax and set the appropriate error position,
-                    # arrow index
-                    if re.search(r'\w+(\s+)?=(\s+)?[\w/-]+', prev_line):
-                        error_position = prev_line.rstrip().find('=')
-                        arrow_line = (" " * error_position) + "^ here"
-                        error_message = YAML_POSITION_DETAILS % (src_file, line_number - 1, error_position + 1)
-                        error_message += "\nThe offending line appears to be:\n\n%s\n%s\n\n" % (prev_line.rstrip(), arrow_line)
-                        error_message += YAML_AND_SHORTHAND_ERROR
-                    else:
-                        arrow_line = (" " * (col_number - 1)) + "^ here"
-                        error_message += "\nThe offending line appears to be:\n\n%s\n%s\n%s\n" % (prev_line.rstrip(), target_line.rstrip(), arrow_line)
-
-                    # TODO: There may be cases where there is a valid tab in a line that has other errors.
-                    if '\t' in target_line:
-                        error_message += YAML_COMMON_LEADING_TAB_ERROR
-                    # common error/remediation checking here:
-                    # check for unquoted vars starting lines
-                    if ('{{' in target_line and '}}' in target_line) and ('"{{' not in target_line or "'{{" not in target_line):
-                        error_message += YAML_COMMON_UNQUOTED_VARIABLE_ERROR
-                    # check for common dictionary mistakes
-                    elif ":{{" in stripped_line and "}}" in stripped_line:
-                        error_message += YAML_COMMON_DICT_ERROR
-                    # check for common unquoted colon mistakes
-                    elif (len(target_line) and
-                            len(target_line) > 1 and
-                            len(target_line) > col_number and
-                            target_line[col_number] == ":" and
-                            target_line.count(':') > 1):
-                        error_message += YAML_COMMON_UNQUOTED_COLON_ERROR
-                    # otherwise, check for some common quoting mistakes
-                    else:
-                        # TEMPFIX: This needs to split on the first ':' to account for modules like lineinfile
-                        # that may have lines that contain legitimate colons, e.g., line: 'i ALL= (ALL) NOPASSWD: ALL'
-                        # and throw off the quote matching logic.
-                        parts = target_line.split(":")
-                        if len(parts) > 1:
-                            middle = parts[1].strip()
-                            match = False
-                            unbalanced = False
-
-                            if middle.startswith("'") and not middle.endswith("'"):
-                                match = True
-                            elif middle.startswith('"') and not middle.endswith('"'):
-                                match = True
-
-                            if (len(middle) > 0 and
-                                    middle[0] in ['"', "'"] and
-                                    middle[-1] in ['"', "'"] and
-                                    target_line.count("'") > 2 or
-                                    target_line.count('"') > 2):
-                                unbalanced = True
-
-                            if match:
-                                error_message += YAML_COMMON_PARTIALLY_QUOTED_LINE_ERROR
-                            if unbalanced:
-                                error_message += YAML_COMMON_UNBALANCED_QUOTES_ERROR
-
-        except (IOError, TypeError):
-            error_message += '\n(could not open file to display line)'
-        except IndexError:
-            error_message += '\n(specified line no longer in file, maybe it changed?)'
-
-        return error_message
+    default_prefix = 'Task failed.'
 
 
 class AnsiblePromptInterrupt(AnsibleError):
-    '''User interrupt'''
+    """User interrupt."""
 
 
 class AnsiblePromptNoninteractive(AnsibleError):
-    '''Unable to get user input'''
+    """Unable to get user input."""
 
 
 class AnsibleAssertionError(AnsibleError, AssertionError):
-    '''Invalid assertion'''
-    pass
+    """Invalid assertion."""
 
 
 class AnsibleOptionsError(AnsibleError):
-    ''' bad or incomplete options passed '''
-    pass
+    """Invalid options were passed."""
+
+    # FUTURE: This exception is used for many non-CLI related errors.
+    #         The few cases which are CLI related should really be handled by argparse instead, at which point the exit code here can be removed.
+    exit_code = ExitCode.INVALID_CLI_OPTION
 
 
 class AnsibleRequiredOptionError(AnsibleOptionsError):
@@ -233,64 +179,114 @@ class AnsibleRequiredOptionError(AnsibleOptionsError):
 
 
 class AnsibleParserError(AnsibleError):
-    ''' something was detected early that is wrong about a playbook or data file '''
-    pass
+    """A playbook or data file could not be parsed."""
+
+    exit_code = ExitCode.PARSER_ERROR
+
+
+class AnsibleFieldAttributeError(AnsibleParserError):
+    """Errors caused during field attribute processing."""
+
+
+class AnsibleJSONParserError(AnsibleParserError):
+    """JSON-specific parsing failure wrapping an exception raised by the JSON parser."""
+
+    default_prefix = 'JSON parsing failed.'
+    include_cause_message = False  # hide the underlying cause message, it's included by `handle_exception` as needed
+
+    @classmethod
+    def handle_exception(cls, exception: Exception, src: str) -> t.NoReturn:
+        if isinstance(exception, JSONDecodeError):
+            err_pos = AnsibleSourcePosition(src=src, line=exception.lineno, col=exception.colno)
+        else:
+            err_pos = AnsibleSourcePosition(src=src)
+
+        message = str(exception)
+
+        error = cls(message, obj=err_pos.tag(''))
+
+        raise error from exception
 
 
 class AnsibleInternalError(AnsibleError):
-    ''' internal safeguards tripped, something happened in the code that should never happen '''
-    pass
+    """Internal safeguards tripped, something happened in the code that should never happen."""
 
 
 class AnsibleRuntimeError(AnsibleError):
-    ''' ansible had a problem while running a playbook '''
-    pass
+    """Ansible had a problem while running a playbook."""
 
 
 class AnsibleModuleError(AnsibleRuntimeError):
-    ''' a module failed somehow '''
-    pass
+    """A module failed somehow."""
 
 
 class AnsibleConnectionFailure(AnsibleRuntimeError):
-    ''' the transport / connection_plugin had a fatal error '''
-    pass
+    """The transport / connection_plugin had a fatal error."""
 
 
 class AnsibleAuthenticationFailure(AnsibleConnectionFailure):
-    '''invalid username/password/key'''
-    pass
+    """Invalid username/password/key."""
 
 
 class AnsibleCallbackError(AnsibleRuntimeError):
-    ''' a callback failure '''
-    pass
+    """A callback failure."""
 
 
 class AnsibleTemplateError(AnsibleRuntimeError):
-    '''A template related error'''
-    pass
+    """A template related error."""
 
 
-class AnsibleFilterError(AnsibleTemplateError):
-    ''' a templating failure '''
-    pass
+class AnsibleTemplateSyntaxError(AnsibleTemplateError):
+    """A syntax error was encountered while parsing a Jinja template or expression."""
 
 
-class AnsibleLookupError(AnsibleTemplateError):
-    ''' a lookup failure '''
-    pass
+class AnsibleBrokenConditionalError(AnsibleTemplateError):
+    """A broken conditional with non-boolean result was used."""
+
+    help_text = 'Broken conditionals can be temporarily allowed with the `ALLOW_BROKEN_CONDITIONALS` configuration option.'
+
+
+class AnsibleTemplatePluginError(AnsibleTemplateError):
+    """An error sourced by a template plugin (lookup/filter/test)."""
+
+
+# deprecated: description='add deprecation warnings for these aliases' core_version='2.21'
+AnsibleFilterError = AnsibleTemplatePluginError
+AnsibleLookupError = AnsibleTemplatePluginError
+
+
+class AnsibleTemplatePluginRuntimeError(AnsibleTemplatePluginError):
+    """The specified template plugin (lookup/filter/test) raised an exception during execution."""
+
+    # FIXME: content authors shouldn't be raising this (or the other two below) template errors -- use TypeError, ValueError, etc. instead
+    #        so how should this be named, located? internal errors?
+
+    def __init__(self, plugin_type: str, plugin_name: str, ex: Exception) -> None:
+        super().__init__(f'{plugin_type} plugin {plugin_name!r} failed: {ex}')
+
+
+class AnsibleTemplatePluginLoadError(AnsibleTemplatePluginError):
+    """The specified template plugin (lookup/filter/test) failed to load."""
+
+    def __init__(self, plugin_type: str, plugin_name: str, ex: Exception) -> None:
+        super().__init__(f'{plugin_type} plugin {plugin_name!r} failed to load: {ex}')
+
+
+class AnsibleTemplatePluginNotFoundError(AnsibleTemplatePluginError):
+    """The specified template plugin (lookup/filter/test) was not found."""
+
+    def __init__(self, plugin_type: str, plugin_name: str) -> None:
+        super().__init__(f'{plugin_type} plugin {plugin_name!r} not found')
 
 
 class AnsibleUndefinedVariable(AnsibleTemplateError):
-    ''' a templating failure '''
-    pass
+    """A templating failure."""
 
 
 class AnsibleFileNotFound(AnsibleRuntimeError):
-    ''' a file missing failure '''
+    """A file missing failure."""
 
-    def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=False, orig_exc=None, paths=None, file_name=None):
+    def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=..., orig_exc=None, paths=None, file_name=None):
 
         self.file_name = file_name
         self.paths = paths
@@ -318,10 +314,9 @@ class AnsibleFileNotFound(AnsibleRuntimeError):
 # DO NOT USE as they will probably be removed soon.
 # We will port the action modules in our tree to use a context manager instead.
 class AnsibleAction(AnsibleRuntimeError):
-    ''' Base Exception for Action plugin flow control '''
+    """Base Exception for Action plugin flow control."""
 
-    def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=False, orig_exc=None, result=None):
-
+    def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=..., orig_exc=None, result=None):
         super(AnsibleAction, self).__init__(message=message, obj=obj, show_content=show_content,
                                             suppress_extended_error=suppress_extended_error, orig_exc=orig_exc)
         if result is None:
@@ -331,54 +326,83 @@ class AnsibleAction(AnsibleRuntimeError):
 
 
 class AnsibleActionSkip(AnsibleAction):
-    ''' an action runtime skip'''
+    """An action runtime skip."""
 
-    def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=False, orig_exc=None, result=None):
+    def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=..., orig_exc=None, result=None):
         super(AnsibleActionSkip, self).__init__(message=message, obj=obj, show_content=show_content,
                                                 suppress_extended_error=suppress_extended_error, orig_exc=orig_exc, result=result)
         self.result.update({'skipped': True, 'msg': message})
 
 
 class AnsibleActionFail(AnsibleAction):
-    ''' an action runtime failure'''
-    def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=False, orig_exc=None, result=None):
+    """An action runtime failure."""
+
+    def __init__(self, message="", obj=None, show_content=True, suppress_extended_error=..., orig_exc=None, result=None):
         super(AnsibleActionFail, self).__init__(message=message, obj=obj, show_content=show_content,
                                                 suppress_extended_error=suppress_extended_error, orig_exc=orig_exc, result=result)
-        self.result.update({'failed': True, 'msg': message, 'exception': traceback.format_exc()})
+
+        result_overrides = {'failed': True, 'msg': message}
+        # deprecated: description='use sys.exception()' python_version='3.11'
+        if sys.exc_info()[1]:
+            result_overrides['exception'] = traceback.format_exc()
+
+        self.result.update(result_overrides)
 
 
 class _AnsibleActionDone(AnsibleAction):
-    ''' an action runtime early exit'''
-    pass
+    """An action runtime early exit."""
 
 
 class AnsiblePluginError(AnsibleError):
-    ''' base class for Ansible plugin-related errors that do not need AnsibleError contextual data '''
+    """Base class for Ansible plugin-related errors that do not need AnsibleError contextual data."""
+
     def __init__(self, message=None, plugin_load_context=None):
         super(AnsiblePluginError, self).__init__(message)
         self.plugin_load_context = plugin_load_context
 
 
 class AnsiblePluginRemovedError(AnsiblePluginError):
-    ''' a requested plugin has been removed '''
-    pass
+    """A requested plugin has been removed."""
 
 
 class AnsiblePluginCircularRedirect(AnsiblePluginError):
-    '''a cycle was detected in plugin redirection'''
-    pass
+    """A cycle was detected in plugin redirection."""
 
 
 class AnsibleCollectionUnsupportedVersionError(AnsiblePluginError):
-    '''a collection is not supported by this version of Ansible'''
-    pass
+    """A collection is not supported by this version of Ansible."""
 
 
-class AnsibleFilterTypeError(AnsibleTemplateError, TypeError):
-    ''' a Jinja filter templating failure due to bad type'''
-    pass
+class AnsibleTypeError(AnsibleRuntimeError, TypeError):
+    """Ansible-augmented TypeError subclass."""
+
+
+# FIXME: deprecate
+AnsibleFilterTypeError = AnsibleTypeError
 
 
 class AnsiblePluginNotFound(AnsiblePluginError):
-    ''' Indicates we did not find an Ansible plugin '''
-    pass
+    """Indicates we did not find an Ansible plugin."""
+
+
+class AnsibleConditionalError(AnsibleRuntimeError):
+    """Errors related to failed conditional expression evaluation."""
+
+
+class AnsibleVariableTypeError(AnsibleRuntimeError):
+    """An error due to attempted storage of an unsupported variable type."""
+
+    def __init__(self, *, variable_type: type) -> None:
+        # FIXME: what else can we include here to guide users?
+        #        in cases where the value is "simple" we could possibly show the value, not just the type
+        super().__init__(f'Variables of type {variable_type} are not supported.')
+
+
+class AnsibleValueOmittedError(AnsibleTemplateError):
+    """
+    Raised when the result of a template operation was the Omit singleton. This exception purposely does
+    not derive from AnsibleError to avoid elision of the traceback, since uncaught errors of this type always
+    indicate a bug.
+    """
+    original_message = "A template was resolved to an Omit scalar."
+    help_text = "Callers must be prepared to handle this value. This is most likely a bug in the code requesting templating."

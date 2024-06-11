@@ -41,13 +41,12 @@ import shutil
 from ansible.release import __version__
 import ansible.utils.vars as utils_vars
 from ansible.parsing.dataloader import DataLoader
-from ansible.parsing.utils.jsonify import jsonify
 from ansible.parsing.splitter import parse_kv
 from ansible.plugins.loader import init_plugin_loader
 from ansible.executor import module_common
 import ansible.constants as C
 from ansible.module_utils.common.text.converters import to_native, to_text
-from ansible.template import Templar
+from ansible.template.templar import Templar
 
 import json
 
@@ -85,6 +84,22 @@ def parse():
         sys.exit(1)
     else:
         return options, args
+
+
+def jsonify(result, format=False):
+    ''' format JSON output (uncompressed or uncompressed) '''
+
+    if result is None:
+        return "{}"
+
+    indent = None
+    if format:
+        indent = 4
+
+    try:
+        return json.dumps(result, sort_keys=True, indent=indent, ensure_ascii=False)
+    except UnicodeDecodeError:
+        return json.dumps(result, sort_keys=True, indent=indent)
 
 
 def write_argsfile(argstring, json=False):
@@ -154,13 +169,16 @@ def boilerplate_module(modfile, args, interpreters, check, destfile):
 
     modname = os.path.basename(modfile)
     modname = os.path.splitext(modname)[0]
-    (module_data, module_style, shebang) = module_common.modify_module(
+
+    built_module = module_common.modify_module(
         modname,
         modfile,
         complex_args,
         Templar(loader=loader),
         task_vars=task_vars
     )
+
+    module_data, module_style = built_module.b_module_data, built_module.module_style
 
     if module_style == 'new' and '_ANSIBALLZ_WRAPPER = True' in to_native(module_data):
         module_style = 'ansiballz'

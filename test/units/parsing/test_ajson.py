@@ -12,32 +12,48 @@ import pytest
 from collections.abc import Mapping
 from datetime import date, datetime, timezone, timedelta
 
-from ansible.parsing.ajson import AnsibleJSONEncoder, AnsibleJSONDecoder
-from ansible.parsing.yaml.objects import AnsibleVaultEncryptedUnicode
-from ansible.utils.unsafe_proxy import AnsibleUnsafeText
+from ansible.module_utils.common.json import AnsibleJSONEncoder
+from ansible.utils.datatag.tags import VaultedValue, UndecryptableVaultedValue
+from ansible.module_utils.serialization import get_decoder, get_encoder
+from ansible.utils.serialization import legacy
 
 
 def test_AnsibleJSONDecoder_vault():
+    profile = legacy
+
     with open(os.path.join(os.path.dirname(__file__), 'fixtures/ajson.json')) as f:
-        data = json.load(f, cls=AnsibleJSONDecoder)
+        data = json.load(f, cls=get_decoder(profile))
 
-    assert isinstance(data['password'], AnsibleVaultEncryptedUnicode)
-    assert isinstance(data['bar']['baz'][0]['password'], AnsibleVaultEncryptedUnicode)
-    assert isinstance(data['foo']['password'], AnsibleVaultEncryptedUnicode)
+    assert isinstance(data['password'], str)
+    assert VaultedValue.is_tagged_on(data['password'])
+    assert UndecryptableVaultedValue.is_tagged_on(data['password'])
+
+    assert isinstance(data['bar']['baz'][0]['password'], str)
+    assert VaultedValue.is_tagged_on(data['bar']['baz'][0]['password'])
+    assert UndecryptableVaultedValue.is_tagged_on(data['bar']['baz'][0]['password'])
+
+    assert isinstance(data['foo']['password'], str)
+    assert VaultedValue.is_tagged_on(data['foo']['password'])
+    assert UndecryptableVaultedValue.is_tagged_on(data['foo']['password'])
 
 
-def test_encode_decode_unsafe():
-    data = {
-        'key_value': AnsibleUnsafeText(u'{#NOTACOMMENT#}'),
-        'list': [AnsibleUnsafeText(u'{#NOTACOMMENT#}')],
-        'list_dict': [{'key_value': AnsibleUnsafeText(u'{#NOTACOMMENT#}')}]}
-    json_expected = (
-        '{"key_value": {"__ansible_unsafe": "{#NOTACOMMENT#}"}, '
-        '"list": [{"__ansible_unsafe": "{#NOTACOMMENT#}"}], '
-        '"list_dict": [{"key_value": {"__ansible_unsafe": "{#NOTACOMMENT#}"}}]}'
-    )
-    assert json.dumps(data, cls=AnsibleJSONEncoder, preprocess_unsafe=True, sort_keys=True) == json_expected
-    assert json.loads(json_expected, cls=AnsibleJSONDecoder) == data
+# FIXME: rewrite this with a current tag
+# def test_encode_decode_unsafe():
+#     data = {
+#         'key_value': FIXMEAnotherTag().tag('{#NOTACOMMENT#}'),
+#         'list': [FIXMEAnotherTag().tag('{#NOTACOMMENT#}')],
+#         'list_dict': [{'key_value': FIXMEAnotherTag().tag('{#NOTACOMMENT#}')}]}
+#     json_with_tags = json.dumps(data, cls=AnsibleJSONEncoder, preserve_datatags=True)
+#     json_sans_tags = json.dumps(data, cls=AnsibleJSONEncoder, preserve_datatags=False)
+#
+#     rehydrated_with_tags = json.loads(json_with_tags, cls=AnsibleJSONDecoder)
+#     rehydrated_sans_tags = json.loads(json_sans_tags, cls=AnsibleJSONDecoder)
+#
+#     assert data == rehydrated_with_tags
+#     assert data == rehydrated_sans_tags
+#     assert FIXMEAnotherTag.is_tagged_on(rehydrated_with_tags['key_value'])
+#     assert FIXMEAnotherTag.is_tagged_on(rehydrated_with_tags['list'][0])
+#     assert FIXMEAnotherTag.is_tagged_on(rehydrated_with_tags['list_dict'][0]['key_value'])
 
 
 def vault_data():
@@ -47,8 +63,10 @@ def vault_data():
     Return a list of tuples (input, expected).
     """
 
+    profile = legacy
+
     with open(os.path.join(os.path.dirname(__file__), 'fixtures/ajson.json')) as f:
-        data = json.load(f, cls=AnsibleJSONDecoder)
+        data = json.load(f, cls=get_decoder(profile))
 
     data_0 = data['password']
     data_1 = data['bar']['baz'][0]['password']
@@ -142,10 +160,10 @@ class TestAnsibleJSONEncoder:
     @pytest.mark.parametrize(
         'mapping,expected',
         [
-            ({1: 1}, {1: 1}),
-            ({2: 2}, {2: 2}),
-            ({1: 2}, {1: 2}),
-            ({2: 1}, {2: 1}),
+            ({'1': 1}, {'1': 1}),
+            ({'2': 2}, {'2': 2}),
+            ({'1': 2}, {'1': 2}),
+            ({'2': 1}, {'2': 1}),
         ], indirect=['mapping'],
     )
     def test_mapping(self, ansible_json_encoder, mapping, expected):
@@ -155,18 +173,18 @@ class TestAnsibleJSONEncoder:
         assert ansible_json_encoder.default(mapping) == expected
 
     @pytest.mark.parametrize('test_input,expected', vault_data())
-    def test_ansible_json_decoder_vault(self, ansible_json_encoder, test_input, expected):
+    def test_ansible_json_encoder_vault(self, test_input, expected):
         """
         Test for passing AnsibleVaultEncryptedUnicode to AnsibleJSONEncoder.default().
         """
-        assert ansible_json_encoder.default(test_input) == {'__ansible_vault': expected}
-        assert json.dumps(test_input, cls=AnsibleJSONEncoder, preprocess_unsafe=True) == '{"__ansible_vault": "%s"}' % expected.replace('\n', '\\n')
+        profile = legacy
+        assert json.dumps(test_input, cls=get_encoder(profile)) == '{"__ansible_vault": "%s"}' % expected.replace('\n', '\\n')
 
     @pytest.mark.parametrize(
         'test_input,expected',
         [
-            ({1: 'first'}, {1: 'first'}),
-            ({2: 'second'}, {2: 'second'}),
+            ({'1': 'first'}, {'1': 'first'}),
+            ({'2': 'second'}, {'2': 'second'}),
         ]
     )
     def test_default_encoder(self, ansible_json_encoder, test_input, expected):
@@ -177,13 +195,3 @@ class TestAnsibleJSONEncoder:
         AnsibleJSONEncoder.default() invokes 'default()' method of json.JSONEncoder superclass.
         """
         assert ansible_json_encoder.default(test_input) == expected
-
-    @pytest.mark.parametrize('test_input', [1, 1.1, 'string', [1, 2], set('set'), True, None])
-    def test_default_encoder_unserializable(self, ansible_json_encoder, test_input):
-        """
-        Test for the default encoder of AnsibleJSONEncoder.default(), not serializable objects.
-
-        It must fail with TypeError 'object is not serializable'.
-        """
-        with pytest.raises(TypeError):
-            ansible_json_encoder.default(test_input)

@@ -1,0 +1,211 @@
+from __future__ import annotations
+
+import pytest
+
+from ansible.errors import get_chained_message, AnsibleError
+from ansible.errors.utils import _create_error_detail
+from ansible.module_utils.common.messages import ErrorDetail
+from ansible.utils.datatag.tags import AnsibleSourcePosition
+from ansible.utils.display import format_message
+
+
+def raise_exceptions(exceptions: list[BaseException]) -> None:
+    if len(exceptions) > 1:
+        try:
+            raise_exceptions(exceptions[1:])
+        except Exception as ex:
+            raise exceptions[0] from ex
+
+    raise exceptions[0]
+
+
+_shared_cause = Exception('shared cause')
+
+
+@pytest.mark.parametrize("exceptions, expected_message_chain, expected_formatted_message", (
+    ([AnsibleError('a')], 'a', None),
+    ([AnsibleError('a'), AnsibleError('b')], 'a: b', None),
+    ([AnsibleError('a: b'), AnsibleError('b')], 'a: b', None),
+    ([Exception('a')], 'a', None),
+    ([Exception('a'), Exception('b')], 'a: b', None),
+    ([Exception('a: b'), Exception('b')], 'a: b', None),
+    ([AnsibleError('a'), Exception('b')], 'a: b', None),
+    ([AnsibleError('a: b'), Exception('b')], 'a: b', None),
+    ([Exception('a'), AnsibleError('b')], 'a: b', None),
+    ([Exception('a: b'), AnsibleError('b')], 'a: b', None),
+    ([AnsibleError('a'), AnsibleError('b'), Exception('c'), Exception('d')], 'a: b: c: d', None),
+    ([AnsibleError('a: b: c: d'), AnsibleError('b'), Exception('c: d'), Exception('d')], 'a: b: c: d', None),
+
+    # collapsing help_text
+
+    (
+        [
+            AnsibleError('a', help_text='one'),
+            Exception('b'),
+        ],
+        'a: b',
+        (
+            'a: b\n\n'
+            'one'
+        ),
+    ),
+    (
+        [
+            AnsibleError('a', help_text='one'),
+            AnsibleError('b', help_text='one'),
+        ],
+        'a: b',
+        (
+            'a: b\n\n'
+            'one'
+        ),
+    ),
+    (
+        [
+            AnsibleError('a', help_text='one'),
+            Exception('b'),
+            AnsibleError('c', help_text='one'),
+        ],
+        'a: b: c',
+        (
+            'a: b: c\n\n'
+            'one'
+        ),
+    ),
+    (
+        [
+            AnsibleError('a', help_text='one'),
+            AnsibleError('b', help_text='two'),
+        ],
+        'a: b',
+        (
+            'a: b\n\n'
+            'a\n\n'
+            'one\n\n'
+            '<<< caused by >>>\n\n'
+            'b\n\n'
+            'two'
+        ),
+    ),
+    (
+        [
+            AnsibleError('a'),
+            AnsibleError('b', help_text='one'),
+        ],
+        'a: b',
+        (
+            'a: b\n\n'
+            'a\n\n'
+            '<<< caused by >>>\n\n'
+            'b\n\n'
+            'one'
+        ),
+    ),
+
+    # collapsing source position
+
+    (
+        [
+            AnsibleError('a', obj=AnsibleSourcePosition(src='x').tag('x'), orig_exc=Exception('ignored')),
+            Exception('b'),
+        ],
+        'a: b',
+        (
+            'a: b\n'
+            'Path: x\n\n'
+            '(source not shown: line number not provided)'
+        ),
+    ),
+    (
+        [
+            AnsibleError('a', obj=AnsibleSourcePosition(src='x').tag('x'), orig_exc=_shared_cause),
+            _shared_cause,
+        ],
+        'a: shared cause',
+        (
+            'a: shared cause\n'
+            'Path: x\n\n'
+            '(source not shown: line number not provided)'
+        ),
+    ),
+    (
+        [
+            # same as above, but exercises the old `orig_exc` path that displays a warning
+            AnsibleError('a', obj=AnsibleSourcePosition(src='x').tag('x'), orig_exc=Exception('b')),
+        ],
+        'a: b',
+        (
+            'a: b\n'
+            'Path: x\n\n'
+            '(source not shown: line number not provided)'
+        ),
+    ),
+    (
+        [
+            AnsibleError('a', obj=AnsibleSourcePosition(src='x').tag('x')),
+            AnsibleError('b', obj=AnsibleSourcePosition(src='x').tag('x')),
+        ],
+        'a: b',
+        (
+            'a: b\n'
+            'Path: x\n\n'
+            '(source not shown: line number not provided)'
+        ),
+    ),
+    (
+        [
+            AnsibleError('a', obj=AnsibleSourcePosition(src='x').tag('x')),
+            Exception('b'),
+            AnsibleError('c', obj=AnsibleSourcePosition(src='x').tag('x')),
+        ],
+        'a: b: c',
+        (
+            'a: b: c\n'
+            'Path: x\n\n'
+            '(source not shown: line number not provided)'
+        ),
+    ),
+    (
+        [
+            AnsibleError('a', obj=AnsibleSourcePosition(src='x').tag('x')),
+            AnsibleError('b', obj=AnsibleSourcePosition(src='y').tag('x')),
+        ],
+        'a: b',
+        (
+            'a: b\n\n'
+            'a\n'
+            'Path: x\n\n'
+            '(source not shown: line number not provided)\n\n'
+            '<<< caused by >>>\n\n'
+            'b\n'
+            'Path: y\n\n'
+            '(source not shown: line number not provided)'
+        ),
+    ),
+    (
+        [
+            AnsibleError('a'),
+            AnsibleError('b', obj=AnsibleSourcePosition(src='y').tag('x')),
+        ],
+        'a: b',
+        (
+            'a: b\n\n'
+            'a\n\n'
+            '<<< caused by >>>\n\n'
+            'b\n'
+            'Path: y\n\n'
+            '(source not shown: line number not provided)'
+        ),
+    ),
+), ids=str)
+def test_error_messages(exceptions: list[BaseException], expected_message_chain: str, expected_formatted_message: str | None) -> None:
+    with pytest.raises(Exception) as error:
+        raise_exceptions(exceptions)
+
+    error_chain = _create_error_detail(error.value).errors
+
+    message_chain = get_chained_message(error.value)
+    formatted_message = format_message(ErrorDetail(errors=error_chain))
+
+    assert message_chain == expected_message_chain
+    assert formatted_message.strip() == (expected_formatted_message or expected_message_chain)

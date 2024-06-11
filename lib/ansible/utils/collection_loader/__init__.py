@@ -6,10 +6,27 @@
 
 from __future__ import annotations
 
-# TEMPFIX: decide what of this we want to actually be public/toplevel, put other stuff on a utility class?
-from ._collection_config import AnsibleCollectionConfig
-from ._collection_finder import AnsibleCollectionRef
-from ansible.module_utils.common.text.converters import to_text
+
+def _to_text(value: str | bytes | None, strict: bool = False) -> str | None:
+    """Internal implementation to keep collection loader standalone."""
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        return value
+
+    return value.decode(errors='strict' if strict else 'surrogateescape')
+
+
+def _to_bytes(value: str | bytes | None, strict: bool = False) -> bytes | None:
+    """Internal implementation to keep collection loader standalone."""
+    if value is None:
+        return None
+
+    if isinstance(value, bytes):
+        return value
+
+    return value.encode(errors='strict' if strict else 'surrogateescape')
 
 
 def resource_from_fqcr(ref):
@@ -21,5 +38,10 @@ def resource_from_fqcr(ref):
     :param ref: collection reference to parse
     :return: the resource as a unicode string
     """
-    ref = to_text(ref, errors='strict')
+    ref = _to_text(ref, strict=True)
     return ref.split(u'.')[-1]
+
+
+# FIXME: decide what of this we want to actually be public/toplevel, put other stuff on a utility class?
+from ._collection_config import AnsibleCollectionConfig
+from ._collection_finder import AnsibleCollectionRef

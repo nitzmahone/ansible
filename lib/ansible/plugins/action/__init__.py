@@ -13,28 +13,40 @@ import re
 import shlex
 import stat
 import tempfile
+import typing as t
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleConnectionFailure, AnsibleActionSkip, AnsibleActionFail, AnsibleAuthenticationFailure
-from ansible.executor.module_common import modify_module
+from ansible.errors.utils import _create_error_detail, _dedupe_and_concat_message_chain
+from ansible.executor.module_common import modify_module, _BuiltModule
 from ansible.executor.interpreter_discovery import discover_interpreter, InterpreterDiscoveryRequiredError
+from ansible.module_utils._internal import _traceback
 from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
+from ansible.utils.datatag.tags import NotATemplate
 from ansible.module_utils.errors import UnsupportedError
 from ansible.module_utils.json_utils import _filter_non_json_lines
+from ansible.module_utils.serialization import get_module_decoder, Direction
 from ansible.module_utils.six import binary_type, string_types, text_type
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
-from ansible.parsing.utils.jsonify import jsonify
+from ansible.module_utils.common.json import AnsibleJSONEncoder
 from ansible.release import __version__
+from ansible.template.templar import Templar
 from ansible.utils.collection_loader import resource_from_fqcr
 from ansible.utils.display import Display
-from ansible.utils.unsafe_proxy import wrap_var, AnsibleUnsafeText
 from ansible.vars.clean import remove_internal_keys
 from ansible.utils.plugin_docs import get_versioned_doclink
+from ansible._internal import _errors
 
 display = Display()
+
+if t.TYPE_CHECKING:
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.playbook.play_context import PlayContext
+    from ansible.playbook.task import Task
+    from ansible.plugins.connection import ConnectionBase
 
 
 def _validate_utf8_json(d):
@@ -68,7 +80,7 @@ class ActionBase(ABC):
     _supports_check_mode = True
     _supports_async = False
 
-    def __init__(self, task, connection, play_context, loader, templar, shared_loader_obj):
+    def __init__(self, task: Task, connection: ConnectionBase, play_context: PlayContext, loader: DataLoader, templar: Templar, shared_loader_obj):
         self._task = task
         self._connection = connection
         self._play_context = play_context
@@ -78,11 +90,10 @@ class ActionBase(ABC):
         self._cleanup_remote_tmp = False
 
         # interpreter discovery state
-        self._discovered_interpreter_key = None
+        self._discovered_interpreter_key: str | None = None
         self._discovered_interpreter = False
-        self._discovery_deprecation_warnings = []
-        self._discovery_warnings = []
-        self._used_interpreter = None
+        self._discovery_warnings: list[str] = []
+        self._used_interpreter: str | None = None
 
         # Backwards compat: self._display isn't really needed, just import the global display and use that.
         self._display = display
@@ -109,6 +120,7 @@ class ActionBase(ABC):
         result = {}
 
         if tmp is not None:
+            # FIXME: WRONG KEY
             result['warning'] = ['ActionModule.run() no longer honors the tmp parameter. Action'
                                  ' plugins should set self._connection._shell.tmpdir to share'
                                  ' the tmpdir']
@@ -177,7 +189,7 @@ class ActionBase(ABC):
             if isinstance(error, UnsupportedError):
                 msg = f"Unsupported parameters for ({self._load_name}) module: {msg}"
 
-            raise AnsibleActionFail(msg)
+            raise AnsibleActionFail(msg, obj=self._task.args)
 
         return validation_result, new_module_args
 
@@ -218,7 +230,7 @@ class ActionBase(ABC):
             return True
         return False
 
-    def _configure_module(self, module_name, module_args, task_vars):
+    def _configure_module(self, module_name, module_args, task_vars) -> tuple[_BuiltModule, str]:
         '''
         Handles the loading and templating of the module code through the
         modify_module() function.
@@ -276,10 +288,10 @@ class ActionBase(ABC):
             raise AnsibleError("The module %s was not found in configured module paths" % (module_name))
 
         # insert shared code and arguments into the module
-        final_environment = dict()
+        final_environment: dict[str, t.Any] = {}
         self._compute_environment_string(final_environment)
 
-        become_kwargs = {}
+        become_kwargs: dict[str, t.Any] = {}
         if self._connection.become:
             become_kwargs['become'] = True
             become_kwargs['become_method'] = self._connection.become.name
@@ -291,23 +303,22 @@ class ActionBase(ABC):
                                                                                playcontext=self._play_context)
 
         # modify_module will exit early if interpreter discovery is required; re-run after if necessary
-        for dummy in (1, 2):
+        for _dummy in (1, 2):
             try:
-                (module_data, module_style, module_shebang) = modify_module(module_name, module_path, module_args, self._templar,
-                                                                            task_vars=use_vars,
-                                                                            module_compression=C.config.get_config_value('DEFAULT_MODULE_COMPRESSION',
-                                                                                                                         variables=task_vars),
-                                                                            async_timeout=self._task.async_val,
-                                                                            environment=final_environment,
-                                                                            remote_is_local=bool(getattr(self._connection, '_remote_is_local', False)),
-                                                                            **become_kwargs)
+                module_bits = modify_module(
+                    module_name, module_path, module_args, self._templar,
+                    task_vars=use_vars,
+                    module_compression=C.config.get_config_value('DEFAULT_MODULE_COMPRESSION', variables=task_vars),
+                    async_timeout=self._task.async_val,
+                    environment=final_environment,
+                    remote_is_local=bool(getattr(self._connection, '_remote_is_local', False)),
+                    **become_kwargs,
+                )
+
                 break
             except InterpreterDiscoveryRequiredError as idre:
-                self._discovered_interpreter = AnsibleUnsafeText(discover_interpreter(
-                    action=self,
-                    interpreter_name=idre.interpreter_name,
-                    discovery_mode=idre.discovery_mode,
-                    task_vars=use_vars))
+                self._discovered_interpreter = discover_interpreter(action=self, interpreter_name=idre.interpreter_name,
+                                                                    discovery_mode=idre.discovery_mode, task_vars=use_vars)
 
                 # update the local task_vars with the discovered interpreter (which might be None);
                 # we'll propagate back to the controller in the task result
@@ -327,7 +338,7 @@ class ActionBase(ABC):
                 else:
                     task_vars['ansible_delegated_vars'][self._task.delegate_to]['ansible_facts'][discovered_key] = self._discovered_interpreter
 
-        return (module_style, module_shebang, module_data, module_path)
+        return module_bits, module_path
 
     def _compute_environment_string(self, raw_environment_out=None):
         '''
@@ -562,7 +573,7 @@ class ActionBase(ABC):
         '''
 
         if isinstance(data, dict):
-            data = jsonify(data)
+            data = json.dumps(data, cls=AnsibleJSONEncoder, preserve_datatags=True)
 
         afd, afile = tempfile.mkstemp(dir=C.DEFAULT_LOCAL_TMP)
         afo = os.fdopen(afd, 'wb')
@@ -1001,6 +1012,9 @@ class ActionBase(ABC):
         # allow user to insert string to add context to remote loggging
         module_args['_ansible_target_log_info'] = C.config.get_config_value('TARGET_LOG_INFO', variables=task_vars)
 
+        # FIXME: are we adding enum serialization support?
+        module_args['_ansible_tracebacks_for'] = [value.name.lower() for value in _traceback.TracebackEvent if _traceback.is_traceback_enabled(value)]
+
     def _execute_module(self, module_name=None, module_args=None, tmp=None, task_vars=None, persist_files=False, delete_remote_tmp=None, wrap_async=False,
                         ignore_unknown_opts: bool = False):
         '''
@@ -1047,7 +1061,8 @@ class ActionBase(ABC):
             self._task.environment.append({"ANSIBLE_ASYNC_DIR": async_dir})
 
         # FUTURE: refactor this along with module build process to better encapsulate "smart wrapper" functionality
-        (module_style, shebang, module_data, module_path) = self._configure_module(module_name=module_name, module_args=module_args, task_vars=task_vars)
+        module_bits, module_path = self._configure_module(module_name=module_name, module_args=module_args, task_vars=task_vars)
+        (module_style, shebang, module_data) = (module_bits.module_style, module_bits.shebang, module_bits.b_module_data)
         display.vvv("Using module file %s" % module_path)
         if not shebang and module_style != 'binary':
             raise AnsibleError("module (%s) is missing interpreter line" % module_name)
@@ -1083,7 +1098,7 @@ class ActionBase(ABC):
                     args_data += '%s=%s ' % (k, shlex.quote(text_type(v)))
                 self._transfer_data(args_file_path, args_data)
             elif module_style in ('non_native_want_json', 'binary'):
-                self._transfer_data(args_file_path, json.dumps(module_args))
+                self._transfer_data(args_file_path, json.dumps(module_args))  # FIXME: encoder needed
             display.debug("done transferring module to remote")
 
         environment_string = self._compute_environment_string()
@@ -1106,8 +1121,8 @@ class ActionBase(ABC):
 
         if wrap_async and not self._connection.always_pipeline_modules:
             # configure, upload, and chmod the async_wrapper module
-            (async_module_style, shebang, async_module_data, async_module_path) = self._configure_module(
-                module_name='ansible.legacy.async_wrapper', module_args=dict(), task_vars=task_vars)
+            (async_module_bits, async_module_path) = self._configure_module(module_name='ansible.legacy.async_wrapper', module_args=dict(), task_vars=task_vars)
+            (async_module_style, shebang, async_module_data) = (async_module_bits.module_style, async_module_bits.shebang, async_module_bits.b_module_data)
             async_module_remote_filename = self._connection._shell.get_remote_filename(async_module_path)
             remote_async_module_path = self._connection._shell.join_path(tmpdir, async_module_remote_filename)
             self._transfer_data(remote_async_module_path, async_module_data)
@@ -1156,7 +1171,7 @@ class ActionBase(ABC):
         res = self._low_level_execute_command(cmd, sudoable=sudoable, in_data=in_data)
 
         # parse the main result
-        data = self._parse_returned_data(res)
+        data = self._parse_returned_data(res, module_bits.serialization_profile)
 
         # NOTE: INTERNAL KEYS ONLY ACCESSIBLE HERE
         # get internal info before cleaning
@@ -1197,30 +1212,23 @@ class ActionBase(ABC):
 
             data['ansible_facts'][self._discovered_interpreter_key] = self._discovered_interpreter
 
-        if self._discovery_warnings:
-            if data.get('warnings') is None:
-                data['warnings'] = []
-            data['warnings'].extend(self._discovery_warnings)
-
-        if self._discovery_deprecation_warnings:
-            if data.get('deprecations') is None:
-                data['deprecations'] = []
-            data['deprecations'].extend(self._discovery_deprecation_warnings)
-
-        # mark the entire module results untrusted as a template right here, since the current action could
-        # possibly template one of these values.
-        data = wrap_var(data)
+        # FIXME: collapse all this stuff and just call display.warning at the sources so the tracebacks are correct?
+        for warning in self._discovery_warnings:
+            display.warning(warning)
 
         display.debug("done with _execute_module (%s, %s)" % (module_name, module_args))
         return data
 
-    def _parse_returned_data(self, res):
+    def _parse_returned_data(self, res, profile: str):
         try:
             filtered_output, warnings = _filter_non_json_lines(res.get('stdout', u''), objects_only=True)
             for w in warnings:
                 display.warning(w)
 
-            data = json.loads(filtered_output)
+            decoder = get_module_decoder(profile, Direction.MODULE_TO_CONTROLLER)
+            data = json.loads(filtered_output, cls=decoder)
+
+            _errors.AnsibleModuleCapturedError.handle_action_exception(data, is_action=False)
 
             if C.MODULE_STRICT_UTF8_RESPONSE and not data.pop('_ansible_trusted_utf8', None):
                 try:
@@ -1234,21 +1242,15 @@ class ActionBase(ABC):
                     )
 
             data['_ansible_parsed'] = True
-        except ValueError:
+        except ValueError as ex:
             # not valid json, lets try to capture error
             data = dict(failed=True, _ansible_parsed=False)
             data['module_stdout'] = res.get('stdout', u'')
             if 'stderr' in res:
                 data['module_stderr'] = res['stderr']
-                if res['stderr'].startswith(u'Traceback'):
-                    data['exception'] = res['stderr']
-
-            # in some cases a traceback will arrive on stdout instead of stderr, such as when using ssh with -tt
-            if 'exception' not in data and data['module_stdout'].startswith(u'Traceback'):
-                data['exception'] = data['module_stdout']
 
             # The default
-            data['msg'] = "MODULE FAILURE"
+            data['msg'] = f"Module result deserialization failed: {ex}"
 
             # try to figure out if we are missing interpreter
             if self._used_interpreter is not None:
@@ -1433,3 +1435,23 @@ class ActionBase(ABC):
 
         # if missing it will return a file not found exception
         return self._loader.path_dwim_relative_stack(path_stack, dirname, needle)
+
+    @staticmethod
+    def result_dict_from_exception(exception: BaseException) -> dict[str, t.Any]:
+        """Return a failed task result dict from the given exception."""
+        if ansible_remoted_error := _errors.AnsibleModuleCapturedError.find_first_remoted_error(exception):
+            result = ansible_remoted_error._result.copy()
+        else:
+            result = {}
+
+        error_detail = _create_error_detail(exception, _traceback.TracebackEvent.ERROR)
+
+        result.update(
+            failed=True,
+            exception=error_detail,
+        )
+
+        if 'msg' not in result:
+            result.update(msg=NotATemplate().tag(_dedupe_and_concat_message_chain([md.msg for md in error_detail.errors])))
+
+        return result

@@ -1,0 +1,183 @@
+"""
+Backwards compatibility profile for serialization other inventory (which should use legacy_inventory for backward-compatible trust behavior).
+Behavior is equivalent to pre 2.18 `AnsibleJSONEncoder` with vault_to_text=True.
+"""
+
+from __future__ import annotations as _annotations
+
+import datetime as _datetime
+import typing as _t
+
+from ansible.utils.datatag import tags as _tags
+from ansible._internal import _serialization
+from ansible.module_utils import datatag as _datatag
+from ansible.module_utils.common import json as _json
+from ansible.parsing import vault as _vault
+
+
+class _Untrusted:
+    """
+    Temporarily wraps strings which are not trusted for templating.
+    Used before serialization of strings not tagged TrustedAsTemplate when trust inversion is enabled and trust is allowed in the string's context.
+    Used during deserialization of `__ansible_unsafe` strings to indicate they should not be tagged TrustedAsTemplate.
+    """
+    __slots__ = ('value',)
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
+class _LegacyVariableVisitor(_serialization.AnsibleVariableVisitor):
+    """Variable visitor that supports optional trust inversion for legacy serialization."""
+
+    def __init__(
+        self,
+        *,
+        trusted_as_template: bool = False,
+        invert_trust: bool = False,
+        source_position: _tags.AnsibleSourcePosition | None = None,
+        allow_mapping: bool = False,
+    ):
+        super().__init__(
+            trusted_as_template=trusted_as_template,
+            source_position=source_position,
+            allow_mapping=allow_mapping,
+        )
+
+        self.invert_trust = invert_trust
+
+        if trusted_as_template and invert_trust:
+            raise ValueError('trusted_as_template is mutually exclusive with invert_trust')
+
+    @property
+    def _allow_trust(self) -> bool:
+        """
+        This profile supports trust application in all contexts.
+        Derived implementations can override this behavior for application-dependent/schema-aware trust.
+        """
+        return True
+
+    def _early_visit(self, value, value_type) -> _t.Any:
+        """Similar to base implementation, but supports an intermediate wrapper for trust inversion."""
+        if value_type in (str, _datatag._AnsibleTaggedStr):
+            # apply compatibility behavior
+            if self.trusted_as_template and self._allow_trust:
+                result = _tags.TrustedAsTemplate().tag(value)
+            elif self.invert_trust and not _tags.TrustedAsTemplate.is_tagged_on(value) and self._allow_trust:
+                result = _Untrusted(value)
+            else:
+                result = value
+        elif value_type is _Untrusted:
+            result = value.value
+        else:
+            result = _serialization._sentinel
+
+        return result
+
+
+class _Profile(_json._JSONSerializationProfile):
+    _visitor_type = _LegacyVariableVisitor
+
+    @classmethod
+    def serialize_untrusted(cls, value: _Untrusted) -> dict[str, str] | str:
+        return dict(
+            __ansible_unsafe=_datatag.AnsibleTagHelper.as_untagged_type(value.value),
+        )
+
+    @classmethod
+    def serialize_tagged_str(cls, value: _datatag.AnsibleTaggedObject) -> _t.Any:
+        if vault_tag := _tags.VaultedValue.get_tag(value):
+            return dict(
+                __ansible_vault=vault_tag.ciphertext,
+            )
+
+        return _datatag.AnsibleTagHelper.as_untagged_type(value)
+
+    @classmethod
+    def deserialize_unsafe(cls, value: dict[str, _t.Any]) -> _Untrusted:
+        ansible_unsafe = value['__ansible_unsafe']
+
+        if type(ansible_unsafe) is not str:  # pylint: disable=unidiomatic-typecheck
+            raise TypeError(f"__ansible_unsafe is {type(ansible_unsafe)} not {str}")
+
+        return _Untrusted(ansible_unsafe)
+
+    @classmethod
+    def deserialize_vault(cls, value: dict[str, _t.Any]) -> str:
+        ansible_vault = value['__ansible_vault']
+
+        if type(ansible_vault) is not str:  # pylint: disable=unidiomatic-typecheck
+            raise TypeError(f"__ansible_vault is {type(ansible_vault)} not {str}")
+
+        return _vault._maybe_decrypt_ciphertext(ansible_vault)
+
+    @classmethod
+    def serialize_as_untrusted_isoformat(cls, value: _datetime.date | _datetime.time | _datetime.datetime) -> _Untrusted:
+        """Untrust is applied to strings during pre_serialize, but strings created during serialization must have Untrust applied when created."""
+        return _Untrusted(super().serialize_as_isoformat(value))
+
+    @classmethod
+    def post_init(cls) -> None:
+        cls.serialize_map = {
+            set: cls.serialize_as_list,
+            tuple: cls.serialize_as_list,
+            _datetime.date: cls.serialize_as_untrusted_isoformat,  # existing devel behavior
+            _datetime.time: cls.serialize_as_untrusted_isoformat,  # always failed pre-2.18, so okay to include for consistency
+            _datetime.datetime: cls.serialize_as_untrusted_isoformat,  # existing devel behavior
+            _datatag._AnsibleTaggedDate: cls.discard_tags,
+            _datatag._AnsibleTaggedTime: cls.discard_tags,
+            _datatag._AnsibleTaggedDateTime: cls.discard_tags,
+            _datatag._AnsibleTaggedStr: cls.serialize_tagged_str,  # for VaultedValue tagged str
+            _datatag._AnsibleTaggedInt: cls.discard_tags,
+            _datatag._AnsibleTaggedFloat: cls.discard_tags,
+            _datatag._AnsibleTaggedList: cls.discard_tags,
+            _datatag._AnsibleTaggedSet: cls.discard_tags,
+            _datatag._AnsibleTaggedTuple: cls.discard_tags,
+            _datatag._AnsibleTaggedDict: cls.discard_tags,
+            _Untrusted: cls.serialize_untrusted,  # equivalent to AnsibleJSONEncoder(preprocess_unsafe=True) in devel
+        }
+
+        cls.deserialize_map = {
+            '__ansible_unsafe': cls.deserialize_unsafe,
+            '__ansible_vault': cls.deserialize_vault,
+        }
+
+    @classmethod
+    def pre_serialize(cls, o: _t.Any) -> _t.Any:
+        avv = cls._visitor_type(invert_trust=True, allow_mapping=True)
+
+        return avv.visit(o)
+
+    @classmethod
+    def post_deserialize(cls, o: _t.Any) -> _t.Any:
+        file_name = _json._DeserializationContext.current().file_name
+        source_position = _tags.AnsibleSourcePosition(src=file_name) if file_name else None
+        avv = cls._visitor_type(trusted_as_template=True, source_position=source_position)
+
+        return avv.visit(o)
+
+    @classmethod
+    def handle_key(cls, k: _t.Any) -> _t.Any:
+        if isinstance(k, str):
+            return k
+
+        # FIXME: decide if this is a deprecation warning, error, or what?
+        #  Non-string variable names have been disallowed by set_fact and other things since at least 2021.
+        return str(k)
+
+
+class Encoder(_json.AnsibleProfileJSONEncoder):
+    _profile = _Profile
+
+
+class Decoder(_json.AnsibleProfileJSONDecoder):
+    _profile = _Profile
+
+    def __init__(self, *args, vault_secrets: list[tuple[str, _vault.VaultSecret]] | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._vault_secrets = vault_secrets
+
+    def raw_decode(self, s: str, idx: int = 0) -> tuple[_t.Any, int]:
+        with _vault.VaultSecretsContext(self._vault_secrets):
+            return super().raw_decode(s, idx)

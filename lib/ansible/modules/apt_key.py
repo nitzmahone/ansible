@@ -170,9 +170,6 @@ short_id:
 
 import os
 
-# TEMPFIX: standardize into module_common
-from traceback import format_exc
-
 from ansible.module_utils.common.text.converters import to_native
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.common.locale import get_best_parsable_locale
@@ -310,7 +307,7 @@ def download_key(module, url):
 
         return rsp.read()
     except Exception:
-        module.fail_json(msg="error getting key id from url: %s" % url, traceback=format_exc())
+        module.fail_json(msg=f"Error getting key id from url: {url}")
 
 
 def get_key_id_from_file(module, filename, data=None):

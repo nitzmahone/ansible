@@ -8,8 +8,7 @@ from __future__ import annotations
 import os
 import platform
 import re
-
-import ansible.module_utils.compat.typing as t
+import typing as t
 
 from ansible.module_utils.common.sys_info import get_distribution, get_distribution_version, \
     get_distribution_codename

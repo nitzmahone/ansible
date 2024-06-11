@@ -179,6 +179,9 @@ class ConsoleCLI(CLI, cmd.Cmd):
                 else:
                     module_args = ''
 
+        from ansible.utils.datatag.tags import TrustedAsTemplate
+        module_args = TrustedAsTemplate().tag(module_args)
+
         if self.callback:
             cb = self.callback
         elif C.DEFAULT_LOAD_CALLBACK_PLUGINS and C.DEFAULT_STDOUT_CALLBACK != 'default':
@@ -237,11 +240,8 @@ class ConsoleCLI(CLI, cmd.Cmd):
         except KeyboardInterrupt:
             display.error('User interrupted execution')
             return False
-        except Exception as e:
-            if self.verbosity >= 3:
-                import traceback
-                display.v(traceback.format_exc())
-            display.error(to_text(e))
+        except Exception as ex:
+            display.error(ex)
             return False
 
     def emptyline(self):

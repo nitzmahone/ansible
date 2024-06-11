@@ -16,7 +16,6 @@ from ansible.utils.display import Display
 from ansible.utils.plugin_docs import get_versioned_doclink
 from ansible.module_utils.compat.version import LooseVersion
 from ansible.module_utils.facts.system.distribution import Distribution
-from traceback import format_exc
 
 OS_FAMILY_LOWER = {k.lower(): v.lower() for k, v in Distribution.OS_FAMILY.items()}
 
@@ -153,8 +152,8 @@ def discover_interpreter(action, interpreter_name, discovery_mode, task_vars):
         raise
     except Exception as ex:
         if not is_silent:
-            display.warning(msg=u'Unhandled error in Python interpreter discovery for host {0}: {1}'.format(host, to_text(ex)))
-            display.debug(msg=u'Interpreter discovery traceback:\n{0}'.format(to_text(format_exc())), host=host)
+            display.error_as_warning(f'Unhandled error in Python interpreter discovery for host {host!r}.', ex)
+
             if res and res.get('stderr'):
                 display.vvv(msg=u'Interpreter discovery remote stderr:\n{0}'.format(to_text(res.get('stderr'))), host=host)
 
