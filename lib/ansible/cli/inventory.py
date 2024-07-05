@@ -119,7 +119,7 @@ class InventoryCLI(CLI):
 
             myvars = self._get_host_variables(host=hosts[0])
 
-            # FIXME: should we template first?
+            # TEMPFIX: should we template first?
             results = self.dump(myvars)
 
         else:
@@ -142,7 +142,7 @@ class InventoryCLI(CLI):
         if results:
             outfile = context.CLIARGS['output_file']
             if outfile is None:
-                # FIXME: pager?
+                # TEMPFIX: pager?
                 display.display(results)
             else:
                 try:

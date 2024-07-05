@@ -59,7 +59,7 @@ class TestImports(ModuleTestCase):
         mod = builtins.__import__('ansible.module_utils.basic')
         self.assertFalse(mod.module_utils.basic.HAVE_SELINUX)
 
-    # FIXME: doesn't work yet
+    # TEMPFIX: doesn't work yet
     # @patch.object(builtins, 'bytes')
     # def test_module_utils_basic_bytes(self, mock_bytes):
     #     mock_bytes.side_effect = NameError()

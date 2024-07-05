@@ -32,7 +32,7 @@ Release:	25
 Codename:	TwentyFive
 '''  # noqa
 
-# FIXME: a
+# TEMPFIX: a
 etc_lsb_release_ubuntu14 = '''DISTRIB_ID=Ubuntu
 DISTRIB_RELEASE=14.04
 DISTRIB_CODENAME=trusty

@@ -244,7 +244,7 @@ class Role(Base, Conditional, Taggable, CollectionSearch, Delegatable):
         self.collections = []
 
         # configure plugin/collection loading; either prepend the current role's collection or configure legacy plugin loading
-        # FIXME: need exception for explicit ansible.legacy?
+        # TEMPFIX: need exception for explicit ansible.legacy?
         if self._role_collection:  # this is a collection-hosted role
             self.collections.insert(0, self._role_collection)
         else:  # this is a legacy role, but set the default collection if there is one

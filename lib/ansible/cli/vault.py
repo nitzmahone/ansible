@@ -242,7 +242,7 @@ class VaultCLI(CLI):
 
         loader.set_vault_secrets(vault_secrets)
 
-        # FIXME: do we need to create VaultEditor here? its not reused
+        # TEMPFIX: do we need to create VaultEditor here? its not reused
         vault = VaultLib(vault_secrets)
         self.editor = VaultEditor(vault)
 
@@ -258,7 +258,7 @@ class VaultCLI(CLI):
             display.display("Reading plaintext input from stdin", stderr=True)
 
         for f in context.CLIARGS['args'] or ['-']:
-            # Fixme: use the correct vau
+            # TEMPFIX: use the correct vau
             self.editor.encrypt_file(f, self.encrypt_secret,
                                      vault_id=self.encrypt_vault_id,
                                      output_file=context.CLIARGS['output_file'])
@@ -474,7 +474,7 @@ class VaultCLI(CLI):
     def execute_rekey(self):
         ''' re-encrypt a vaulted file with a new secret, the previous secret is required '''
         for f in context.CLIARGS['args']:
-            # FIXME: plumb in vault_id, use the default new_vault_secret for now
+            # TEMPFIX: plumb in vault_id, use the default new_vault_secret for now
             self.editor.rekey_file(f, self.new_encrypt_secret,
                                    self.new_encrypt_vault_id)
 

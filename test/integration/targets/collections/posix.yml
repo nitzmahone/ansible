@@ -335,7 +335,7 @@
     test_role_input: legacy playbook-adjacent
   roles:
   - testrole
-# FIXME: this should technically work to look up a playbook-adjacent role
+# TEMPFIX: this should technically work to look up a playbook-adjacent role
 #  - ansible.legacy.testrole
   tasks:
   - name: ensure role executed

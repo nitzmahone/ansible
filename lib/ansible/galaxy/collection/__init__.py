@@ -550,7 +550,7 @@ def download_collections(
             "Starting collection download process to '{path!s}'".
             format(path=output_path),
     ):
-        for fqcn, concrete_coll_pin in dep_map.copy().items():  # FIXME: move into the provider
+        for fqcn, concrete_coll_pin in dep_map.copy().items():  # TEMPFIX: move into the provider
             if concrete_coll_pin.is_virtual:
                 display.display(
                     '{coll!s} is not downloadable'.
@@ -587,12 +587,12 @@ def download_collections(
                 format(coll=concrete_coll_pin),
             )
             requirements.append({
-                # FIXME: Consider using a more specific upgraded format
-                # FIXME: having FQCN in the name field, with src field
-                # FIXME: pointing to the file path, and explicitly set
-                # FIXME: type. If version and name are set, it'd
-                # FIXME: perform validation against the actual metadata
-                # FIXME: in the artifact src points at.
+                # TEMPFIX: Consider using a more specific upgraded format
+                # TEMPFIX: having FQCN in the name field, with src field
+                # TEMPFIX: pointing to the file path, and explicitly set
+                # TEMPFIX: type. If version and name are set, it'd
+                # TEMPFIX: perform validation against the actual metadata
+                # TEMPFIX: in the artifact src points at.
                 'name': to_native(os.path.basename(b_dest_path)),
                 'version': concrete_coll_pin.ver,
             })
@@ -715,8 +715,8 @@ def install_collections(
         )
         return
 
-    # FIXME: This probably needs to be improved to
-    # FIXME: properly match differing src/type.
+    # TEMPFIX: This probably needs to be improved to
+    # TEMPFIX: properly match differing src/type.
     existing_non_requested_collections = {
         coll for coll in existing_collections
         if coll.fqcn not in requested_requirements_names
@@ -924,8 +924,8 @@ def verify_collections(
                             api_proxy.get_collection_version_metadata(
                                 remote_collection,
                             )
-                    except AnsibleError as e:  # FIXME: does this actually emit any errors?
-                        # FIXME: extract the actual message and adjust this:
+                    except AnsibleError as e:  # TEMPFIX: does this actually emit any errors?
+                        # TEMPFIX: extract the actual message and adjust this:
                         expected_error_msg = (
                             'Failed to find collection {coll.fqcn!s}:{coll.ver!s}'.
                             format(coll=collection)
@@ -1265,7 +1265,7 @@ def _build_files_manifest_walk(b_collection_path, namespace, name, ignore_patter
     return manifest
 
 
-# FIXME: accept a dict produced from `galaxy.yml` instead of separate args
+# TEMPFIX: accept a dict produced from `galaxy.yml` instead of separate args
 def _build_manifest(namespace, name, version, authors, readme, tags, description, license_file,
                     dependencies, repository, documentation, homepage, issues, **kwargs):
     manifest = {
@@ -1494,7 +1494,7 @@ def find_existing_collections(path_filter, artifacts_manager, namespace_filter=N
         yield req
 
 
-def install(collection, path, artifacts_manager):  # FIXME: mv to dataclasses?
+def install(collection, path, artifacts_manager):  # TEMPFIX: mv to dataclasses?
     # type: (Candidate, str, ConcreteArtifactsManager) -> None
     """Install a collection under a given path.
 
@@ -1657,7 +1657,7 @@ def install_src(collection, b_collection_path, b_collection_output_path, artifac
     collection_meta = artifacts_manager.get_direct_collection_meta(collection)
 
     if 'build_ignore' not in collection_meta:  # installed collection, not src
-        # FIXME: optimize this? use a different process? copy instead of build?
+        # TEMPFIX: optimize this? use a different process? copy instead of build?
         collection_meta['build_ignore'] = []
         collection_meta['manifest'] = Sentinel
     collection_manifest = _build_manifest(**collection_meta)

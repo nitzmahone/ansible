@@ -230,10 +230,10 @@ class CollectionDependencyProviderBase(AbstractProvider):
 
     def _find_matches(self, requirements):
         # type: (list[Requirement]) -> list[Candidate]
-        # FIXME: The first requirement may be a Git repo followed by
-        # FIXME: its cloned tmp dir. Using only the first one creates
-        # FIXME: loops that prevent any further dependency exploration.
-        # FIXME: We need to figure out how to prevent this.
+        # TEMPFIX: The first requirement may be a Git repo followed by
+        # TEMPFIX: its cloned tmp dir. Using only the first one creates
+        # TEMPFIX: loops that prevent any further dependency exploration.
+        # TEMPFIX: We need to figure out how to prevent this.
         first_req = requirements[0]
         fqcn = first_req.fqcn
         # The fqcn is guaranteed to be the same
@@ -261,8 +261,8 @@ class CollectionDependencyProviderBase(AbstractProvider):
             raise
 
         if first_req.is_concrete_artifact:
-            # FIXME: do we assume that all the following artifacts are also concrete?
-            # FIXME: does using fqcn==None cause us problems here?
+            # TEMPFIX: do we assume that all the following artifacts are also concrete?
+            # TEMPFIX: does using fqcn==None cause us problems here?
 
             # Ensure the version found in the concrete artifact is SemVer-compliant
             for version, req_src in coll_versions:
@@ -353,7 +353,7 @@ class CollectionDependencyProviderBase(AbstractProvider):
                 if should_disregard_pre_release_candidate:
                     break
 
-                # FIXME
+                # TEMPFIX
                 # candidate_is_from_requested_source = (
                 #    requirement.src is None  # if this is true for some candidates but not all it will break key param - Nonetype can't be compared to str
                 #    or requirement.src == candidate.src
@@ -432,11 +432,11 @@ class CollectionDependencyProviderBase(AbstractProvider):
         :returns: A collection of requirements that `candidate` \
                   specifies as its dependencies.
         """
-        # FIXME: If there's several galaxy servers set, there may be a
-        # FIXME: situation when the metadata of the same collection
-        # FIXME: differs. So how do we resolve this case? Priority?
-        # FIXME: Taking into account a pinned hash? Exploding on
-        # FIXME: any differences?
+        # TEMPFIX: If there's several galaxy servers set, there may be a
+        # TEMPFIX: situation when the metadata of the same collection
+        # TEMPFIX: differs. So how do we resolve this case? Priority?
+        # TEMPFIX: Taking into account a pinned hash? Exploding on
+        # TEMPFIX: any differences?
         # NOTE: The underlying implmentation currently uses first found
         req_map = self._api_proxy.get_collection_dependencies(candidate)
 

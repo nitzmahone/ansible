@@ -517,7 +517,7 @@ class ModuleDepFinder(ast.NodeVisitor):
         or ansible.collections
         """
 
-        # FIXME: These should all get skipped:
+        # TEMPFIX: These should all get skipped:
         # from ansible.executor import module_common
         # from ...executor import module_common
         # from ... import executor (Currently it gives a non-helpful error)
@@ -555,7 +555,7 @@ class ModuleDepFinder(ast.NodeVisitor):
             if node_module.endswith('plugins.module_utils') or '.plugins.module_utils.' in node_module:
                 # from ansible_collections.ns.coll.plugins.module_utils import MODULE [as aname] [,MODULE2] [as aname]
                 # from ansible_collections.ns.coll.plugins.module_utils.MODULE import IDENTIFIER [as aname]
-                # FIXME: Unhandled cornercase (needs to be ignored):
+                # TEMPFIX: Unhandled cornercase (needs to be ignored):
                 # from ansible_collections.ns.coll.plugins.[!module_utils].[FOO].plugins.module_utils import IDENTIFIER
                 py_mod = tuple(node_module.split('.'))
             else:
@@ -682,7 +682,7 @@ class ModuleUtilLocatorBase:
         routing_entry = _nested_dict_get(collection_metadata, ['plugin_routing', 'module_utils', '.'.join(module_utils_relative_parts)])
         if not routing_entry:
             return False
-        # FIXME: add deprecation warning support
+        # TEMPFIX: add deprecation warning support
 
         dep_or_ts = routing_entry.get('tombstone')
         removed = dep_or_ts is not None
@@ -768,7 +768,7 @@ import {1} as mod
 sys.modules['{0}'] = mod
 """.format(fq_source_module, fq_target_module)
 
-        # FIXME: add __repr__ impl
+        # TEMPFIX: add __repr__ impl
 
 
 class LegacyModuleUtilLocator(ModuleUtilLocatorBase):
@@ -779,7 +779,7 @@ class LegacyModuleUtilLocator(ModuleUtilLocatorBase):
             raise Exception('this class can only locate from ansible.module_utils, got {0}'.format(fq_name_parts))
 
         if fq_name_parts[2] == 'six':
-            # FIXME: handle the ansible.module_utils.six._six case with a redirect or an internal _six attr on six itself?
+            # TEMPFIX: handle the ansible.module_utils.six._six case with a redirect or an internal _six attr on six itself?
             # six creates its submodules at runtime; convert all these to just 'ansible.module_utils.six'
             fq_name_parts = ('ansible', 'module_utils', 'six')
             self.candidate_names = [fq_name_parts]
@@ -897,7 +897,7 @@ def recursive_finder(name, module_fqn, module_data, zf, date_time=None):
     # Here we pre-load it with modules which we create without bothering to
     # read from actual files (In some cases, these need to differ from what ansible
     # ships because they're namespace packages in the module)
-    # FIXME: do we actually want ns pkg behavior for these? Seems like they should just be forced to emptyish pkg stubs
+    # TEMPFIX: do we actually want ns pkg behavior for these? Seems like they should just be forced to emptyish pkg stubs
     py_module_cache = {
         ('ansible',): (
             b'from pkgutil import extend_path\n'
@@ -944,7 +944,7 @@ def recursive_finder(name, module_fqn, module_data, zf, date_time=None):
             module_info = CollectionModuleUtilLocator(py_module_name, is_ambiguous=is_ambiguous,
                                                       child_is_redirected=child_is_redirected, is_optional=is_optional)
         else:
-            # FIXME: dot-joined result
+            # TEMPFIX: dot-joined result
             display.warning('ModuleDepFinder improperly found a non-module_utils import %s'
                             % [py_module_name])
             continue
@@ -954,7 +954,7 @@ def recursive_finder(name, module_fqn, module_data, zf, date_time=None):
             if is_optional:
                 # this was a best-effort optional import that we couldn't find, oh well, move along...
                 continue
-            # FIXME: use dot-joined candidate names
+            # TEMPFIX: use dot-joined candidate names
             msg = 'Could not find imported module support code for {0}.  Looked for ({1})'.format(module_fqn, module_info.candidate_names_joined)
             raise AnsibleError(msg)
 
@@ -1191,7 +1191,7 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
                     # so that no one looking for the file reads a partially
                     # written file)
                     #
-                    # FIXME: Once split controller/remote is merged, this can be simplified to
+                    # TEMPFIX: Once split controller/remote is merged, this can be simplified to
                     #        os.makedirs(lookup_path, exist_ok=True)
                     if not os.path.exists(lookup_path):
                         try:

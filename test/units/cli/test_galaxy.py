@@ -628,7 +628,7 @@ def test_invalid_collection_name_init(name):
 def test_invalid_collection_name_install(name, expected, tmp_path_factory):
     install_path = to_text(tmp_path_factory.mktemp('test-ÅÑŚÌβŁÈ Collections'))
 
-    # FIXME: we should add the collection name in the error message
+    # TEMPFIX: we should add the collection name in the error message
     # Used to be: expected = "Invalid collection name '%s', name must be in the format <namespace>.<collection>" % expected
     expected = "Neither the collection requirement entry key 'name', nor 'source' point to a concrete resolvable collection artifact. "
     expected += r"Also 'name' is not an FQCN\. A valid collection name must be in the format <namespace>\.<collection>\. "

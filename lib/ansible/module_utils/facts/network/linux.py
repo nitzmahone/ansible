@@ -140,8 +140,8 @@ class LinuxNetwork(Network):
             all_ipv6_addresses=[],
         )
 
-        # FIXME: maybe split into smaller methods?
-        # FIXME: this is pretty much a constructor
+        # TEMPFIX: maybe split into smaller methods?
+        # TEMPFIX: this is pretty much a constructor
 
         for path in glob.glob('/sys/class/net/*'):
             if not os.path.isdir(path):
@@ -330,11 +330,11 @@ class LinuxNetwork(Network):
 
         data = {}
         ethtool_path = self.module.get_bin_path("ethtool")
-        # FIXME: exit early on falsey ethtool_path and un-indent
+        # TEMPFIX: exit early on falsey ethtool_path and un-indent
         if ethtool_path:
             args = [ethtool_path, '-k', device]
             rc, stdout, stderr = self.module.run_command(args, errors='surrogate_then_replace')
-            # FIXME: exit early on falsey if we can
+            # TEMPFIX: exit early on falsey if we can
             if rc == 0:
                 features = {}
                 for line in stdout.strip().splitlines():

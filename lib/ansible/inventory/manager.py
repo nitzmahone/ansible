@@ -65,7 +65,7 @@ PATTERN_WITH_SUBSCRIPT = re.compile(
 def order_patterns(patterns):
     ''' takes a list of patterns and reorders them by modifier to apply them consistently '''
 
-    # FIXME: this goes away if we apply patterns incrementally or by groups
+    # TEMPFIX: this goes away if we apply patterns incrementally or by groups
     pattern_regular = []
     pattern_intersection = []
     pattern_exclude = []
@@ -288,7 +288,7 @@ class InventoryManager(object):
 
                 if plugin_wants:
                     try:
-                        # FIXME in case plugin fails 1/2 way we have partial inventory
+                        # TEMPFIX in case plugin fails 1/2 way we have partial inventory
                         plugin.parse(self._inventory, self._loader, source, cache=cache)
                         try:
                             plugin.update_cache_if_changed()
@@ -595,7 +595,7 @@ class InventoryManager(object):
 
     def list_hosts(self, pattern="all"):
         """ return a list of hostnames for a pattern """
-        # FIXME: cache?
+        # TEMPFIX: cache?
         result = self.get_hosts(pattern)
 
         # allow implicit localhost if pattern matches and no other results
@@ -605,7 +605,7 @@ class InventoryManager(object):
         return result
 
     def list_groups(self):
-        # FIXME: cache?
+        # TEMPFIX: cache?
         return sorted(self._inventory.groups.keys())
 
     def restrict_to_hosts(self, restriction):

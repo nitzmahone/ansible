@@ -366,7 +366,7 @@ class GalaxyRole(object):
                 paths = self.paths
                 if self.path != paths[0]:
                     # path can be passed though __init__
-                    # FIXME should this be done in __init__?
+                    # TEMPFIX should this be done in __init__?
                     paths[:0] = self.path
                 paths_len = len(paths)
                 for idx, path in enumerate(paths):

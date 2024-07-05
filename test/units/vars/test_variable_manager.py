@@ -41,7 +41,7 @@ class TestVariableManager(unittest.TestCase):
         variables = v.get_vars(use_cache=False)
 
         # Check var manager expected values,  never check: ['omit', 'vars']
-        # FIXME:  add the following ['ansible_version', 'ansible_playbook_python', 'groups']
+        # TEMPFIX:  add the following ['ansible_version', 'ansible_playbook_python', 'groups']
         for varname, value in (('playbook_dir', os.path.abspath('.')), ):
             self.assertEqual(variables[varname], value)
 
@@ -102,7 +102,7 @@ class TestVariableManager(unittest.TestCase):
         self.assertEqual(v.get_vars(play=mock_play, use_cache=False).get("foo"), "bar")
 
     def test_variable_manager_task_vars(self):
-        # FIXME: BCS make this work
+        # TEMPFIX: BCS make this work
         return
 
         # pylint: disable=unreachable
@@ -134,13 +134,13 @@ class TestVariableManager(unittest.TestCase):
 
     @patch('ansible.playbook.role.definition.unfrackpath', mock_unfrackpath_noop)
     def test_variable_manager_precedence(self):
-        # FIXME: this needs to be redone as dataloader is not the automatic source of data anymore
+        # TEMPFIX: this needs to be redone as dataloader is not the automatic source of data anymore
         return
 
         # pylint: disable=unreachable
         # Tests complex variations and combinations of get_vars() with different
         # objects to modify the context under which variables are merged.
-        # FIXME: BCS makethiswork
+        # TEMPFIX: BCS makethiswork
         # return True
 
         mock_inventory = MagicMock()

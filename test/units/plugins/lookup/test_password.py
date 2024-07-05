@@ -431,7 +431,7 @@ class TestLookupModuleWithoutPasslib(BaseTestLookupModule):
 
         results = self.password_lookup.run([u'/path/to/somewhere'], None)
 
-        # FIXME: assert something useful
+        # TEMPFIX: assert something useful
         for result in results:
             assert len(result) == DEFAULT_LENGTH
             assert isinstance(result, str)

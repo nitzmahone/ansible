@@ -1547,7 +1547,7 @@ def main():
 
     # Enable/disable service startup at boot if requested
     if service.module.params['enabled'] is not None:
-        # FIXME: ideally this should detect if we need to toggle the enablement state, though
+        # TEMPFIX: ideally this should detect if we need to toggle the enablement state, though
         # it's unlikely the changed handler would need to fire in this case so it's a minor thing.
         service.service_enable()
         result['enabled'] = service.enable

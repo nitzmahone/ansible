@@ -1480,7 +1480,7 @@
       path: '{{ local_temp_dir }}/top_dir/subdir'
       state: directory
 
-  ### FIXME:  Also add a test for a relative symlink
+  ### TEMPFIX:  Also add a test for a relative symlink
   - name: Create a circular symlink
     file:
       path: '{{ local_temp_dir }}/top_dir/subdir/circle'

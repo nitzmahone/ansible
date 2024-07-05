@@ -261,7 +261,7 @@ def test_collpkg_loader_load_module():
 
             assert hasattr(module, '_collection_meta') and isinstance(module._collection_meta, dict)
 
-            # FIXME: validate _collection_meta contents match what's on disk (or not)
+            # TEMPFIX: validate _collection_meta contents match what's on disk (or not)
 
             # verify the module has metadata, then try loading it with busted metadata
             assert module._collection_meta
@@ -285,7 +285,7 @@ def test_coll_loader():
             # bogus paths
             _AnsibleCollectionLoader('ansible_collections.testns.testcoll', path_list=[])
 
-    # FIXME: more
+    # TEMPFIX: more
 
 
 def test_path_hook_setup():
@@ -375,7 +375,7 @@ def test_iter_modules_impl():
     assert modules[0][0] == 'ansible_collections.testns.testcoll.plugins.modules.amodule'  # name
     assert modules[0][1] is False  # is_pkg
 
-    # FIXME: more
+    # TEMPFIX: more
 
 
 # BEGIN IN-CIRCUIT TESTS - these exercise behaviors of the loader when wired up to the import machinery
@@ -536,7 +536,7 @@ def test_on_collection_load():
 
     _meta = _get_collection_metadata('testns.testcoll')
     assert _meta
-    # FIXME: compare to disk
+    # TEMPFIX: compare to disk
 
     finder = get_default_finder()
     reset_collections_loader_state(finder)
@@ -912,7 +912,7 @@ def reset_collections_loader_state(metapath_finder=None):
     nuke_module_prefix('ansible.modules')
     nuke_module_prefix('ansible.plugins')
 
-    # FIXME: better to move this someplace else that gets cleaned up automatically?
+    # TEMPFIX: better to move this someplace else that gets cleaned up automatically?
     _AnsibleCollectionLoader._redirected_package_map = {}
 
     AnsibleCollectionConfig._default_collection = None

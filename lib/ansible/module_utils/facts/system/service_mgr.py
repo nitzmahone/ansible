@@ -116,13 +116,13 @@ class ServiceMgrFactCollector(BaseFactCollector):
 
         # start with the easy ones
         elif collected_facts.get('ansible_distribution', None) == 'MacOSX':
-            # FIXME: find way to query executable, version matching is not ideal
+            # TEMPFIX: find way to query executable, version matching is not ideal
             if LooseVersion(platform.mac_ver()[0]) >= LooseVersion('10.4'):
                 service_mgr_name = 'launchd'
             else:
                 service_mgr_name = 'systemstarter'
         elif 'BSD' in collected_facts.get('ansible_system', '') or collected_facts.get('ansible_system') in ['Bitrig', 'DragonFly']:
-            # FIXME: we might want to break out to individual BSDs or 'rc'
+            # TEMPFIX: we might want to break out to individual BSDs or 'rc'
             service_mgr_name = 'bsdinit'
         elif collected_facts.get('ansible_system') == 'AIX':
             service_mgr_name = 'src'
@@ -133,7 +133,7 @@ class ServiceMgrFactCollector(BaseFactCollector):
         elif collected_facts.get('ansible_distribution') == 'SMGL':
             service_mgr_name = 'simpleinit_msb'
         elif collected_facts.get('ansible_system') == 'Linux':
-            # FIXME: mv is_systemd_managed
+            # TEMPFIX: mv is_systemd_managed
             if self.is_systemd_managed(module=module):
                 service_mgr_name = 'systemd'
             elif module.get_bin_path('initctl') and os.path.exists("/etc/init/"):

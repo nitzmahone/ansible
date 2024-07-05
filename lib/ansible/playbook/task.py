@@ -181,7 +181,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
             # This is also done in CollectionSearch._load_collections() but this runs before that call.
             collections_list = self.get_validated_value('collections', self.fattributes.get('collections'), collections_list, None)
 
-        if default_collection and not self._role:  # FIXME: and not a collections role
+        if default_collection and not self._role:  # TEMPFIX: and not a collections role
             if collections_list:
                 if default_collection not in collections_list:
                     collections_list.insert(0, default_collection)

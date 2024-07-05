@@ -962,7 +962,7 @@ def submodules_fetch(git_path, module, remote, track_submodules, dest):
 
         if track_submodules:
             # Compare against submodule HEAD
-            # FIXME: determine this from .gitmodules
+            # TEMPFIX: determine this from .gitmodules
             version = 'master'
             after = get_submodule_versions(git_path, module, dest, '%s/%s' % (remote, version))
             if begin != after:
@@ -1028,7 +1028,7 @@ def switch_version(git_path, module, dest, remote, version, verify_commit, depth
                              stdout=out, stderr=err, rc=rc)
         cmd = "%s reset --hard %s/%s --" % (git_path, remote, branch)
     else:
-        # FIXME check for local_branch first, should have been fetched already
+        # TEMPFIX check for local_branch first, should have been fetched already
         if is_remote_branch(git_path, module, dest, remote, version):
             if depth and not is_local_branch(git_path, module, dest, version):
                 # git clone --depth implies --single-branch, which makes
@@ -1374,7 +1374,7 @@ def main():
         if module.check_mode:
             remote_head = get_remote_head(git_path, module, dest, version, remote, bare)
             result.update(changed=(result['before'] != remote_head or remote_url_changed), after=remote_head)
-            # FIXME: This diff should fail since the new remote_head is not fetched yet?!
+            # TEMPFIX: This diff should fail since the new remote_head is not fetched yet?!
             if module._diff:
                 diff = get_diff(module, git_path, dest, repo, remote, depth, bare, result['before'], result['after'])
                 if diff:

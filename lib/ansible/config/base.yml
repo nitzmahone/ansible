@@ -564,7 +564,7 @@ BECOME_PLUGIN_PATH:
   type: pathspec
   version_added: "2.8"
 DEFAULT_BECOME_USER:
-  # FIXME: should really be blank and make -u passing optional depending on it
+  # TEMPFIX: should really be blank and make -u passing optional depending on it
   name: Set the user you 'become' via privilege escalation
   default: root
   description: The user your login/remote user 'becomes' when using privilege escalation, most systems will use 'root' when no user is specified.

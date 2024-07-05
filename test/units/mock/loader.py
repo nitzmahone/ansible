@@ -69,7 +69,7 @@ class DictDataLoader(DataLoader):
         return ret
 
     def is_executable(self, path):
-        # FIXME: figure out a way to make paths return true for this
+        # TEMPFIX: figure out a way to make paths return true for this
         return False
 
     def _add_known_directory(self, directory):

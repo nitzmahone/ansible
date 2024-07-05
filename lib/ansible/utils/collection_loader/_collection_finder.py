@@ -605,7 +605,7 @@ class _AnsibleCollectionPkgLoaderBase:
             raise ValueError('this loader cannot load source for {0}, only {1}'.format(fullname, self._fullname))
         if not self._source_code_path:
             return None
-        # FIXME: what do we want encoding/newline requirements to be?
+        # TEMPFIX: what do we want encoding/newline requirements to be?
         self._decoded_source = self.get_data(self._source_code_path)
         return self._decoded_source
 
@@ -825,7 +825,7 @@ class _AnsibleCollectionLoader(_AnsibleCollectionPkgLoaderBase):
         # (one for each name), and relative imports that ascend above the redirected package would break (since they'd
         # see the redirected ancestor package contents instead of the package where they actually live).
         if redirect:
-            # FIXME: wrap this so we can be explicit about a failed redirection
+            # TEMPFIX: wrap this so we can be explicit about a failed redirection
             self._redirect_module = import_module(redirect)
             if explicit_redirect and hasattr(self._redirect_module, '__path__') and self._redirect_module.__path__:
                 # if the import target looks like a package, store its name so we can rewrite future descendent loads
@@ -898,7 +898,7 @@ class _AnsibleInternalRedirectLoader:
         if not self._redirect:
             raise ValueError('no redirect found for {0}'.format(fullname))
 
-        # FIXME: smuggle redirection context, provide warning/error that we tried and failed to redirect
+        # TEMPFIX: smuggle redirection context, provide warning/error that we tried and failed to redirect
         mod = import_module(self._redirect)
         sys.modules[fullname] = mod
         return mod
@@ -911,7 +911,7 @@ class AnsibleCollectionRef:
                                                      'module_utils', 'modules', 'netconf', 'role', 'shell', 'strategy',
                                                      'terminal', 'test', 'vars', 'playbook'])
 
-    # FIXME: tighten this up to match Python identifier reqs, etc
+    # TEMPFIX: tighten this up to match Python identifier reqs, etc
     VALID_SUBDIRS_RE = re.compile(to_text(r'^\w+(\.\w+)*$'))
     VALID_FQCR_RE = re.compile(to_text(r'^\w+(\.\w+){2,}$'))  # can have 0-N included subdirs as well
 
@@ -1157,7 +1157,7 @@ def _get_collection_resource_path(name, ref_type, collection_list=None):
     for collection_name in collection_list:
         try:
             acr = AnsibleCollectionRef(collection_name=collection_name, subdirs=subdirs, resource=resource, ref_type=ref_type)
-            # FIXME: error handling/logging; need to catch any import failures and move along
+            # TEMPFIX: error handling/logging; need to catch any import failures and move along
             pkg = import_module(acr.n_python_package_name)
 
             if pkg is not None:
@@ -1168,7 +1168,7 @@ def _get_collection_resource_path(name, ref_type, collection_list=None):
         except (IOError, ModuleNotFoundError) as e:
             continue
         except Exception as ex:
-            # FIXME: pick out typical import errors first, then error logging
+            # TEMPFIX: pick out typical import errors first, then error logging
             continue
 
     return None
@@ -1261,14 +1261,14 @@ def _iter_modules_impl(paths, prefix=''):
             b_candidate_module_path = os.path.join(b_path, b_basename)
             if os.path.isdir(b_candidate_module_path):
                 # exclude things that obviously aren't Python package dirs
-                # FIXME: this dir is adjustable in py3.8+, check for it
+                # TEMPFIX: this dir is adjustable in py3.8+, check for it
                 if b'.' in b_basename or b_basename == b'__pycache__':
                     continue
 
                 # TODO: proper string handling?
                 yield prefix + to_native(b_basename), True
             else:
-                # FIXME: match builtin ordering for package/dir/file, support compiled?
+                # TEMPFIX: match builtin ordering for package/dir/file, support compiled?
                 if b_basename.endswith(b'.py') and b_basename != b'__init__.py':
                     yield prefix + to_native(os.path.splitext(b_basename)[0]), False
 

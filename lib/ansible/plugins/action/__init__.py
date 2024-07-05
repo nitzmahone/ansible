@@ -237,7 +237,7 @@ class ActionBase(ABC):
             # Check to determine if PowerShell modules are supported, and apply
             # some fixes (hacks) to module name + args.
             if mod_type == '.ps1':
-                # FIXME: This should be temporary and moved to an exec subsystem plugin where we can define the mapping
+                # TEMPFIX: This should be temporary and moved to an exec subsystem plugin where we can define the mapping
                 # for each subsystem.
                 win_collection = 'ansible.windows'
                 rewrite_collection_names = ['ansible.builtin', 'ansible.legacy', '']
@@ -1177,7 +1177,7 @@ class ActionBase(ABC):
             # forget about it now
             self._connection._shell.tmpdir = None
 
-            # FIXME: for backwards compat, figure out if still makes sense
+            # TEMPFIX: for backwards compat, figure out if still makes sense
             data['changed'] = True
 
         # pre-split stdout/stderr into lines if needed
@@ -1264,7 +1264,7 @@ class ActionBase(ABC):
                 data['rc'] = res['rc']
         return data
 
-    # FIXME: move to connection base
+    # TEMPFIX: move to connection base
     def _low_level_execute_command(self, cmd, sudoable=True, in_data=None, executable=None, encoding_errors='surrogate_then_replace', chdir=None):
         '''
         This is the function which executes the low level shell command, which

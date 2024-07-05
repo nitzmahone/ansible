@@ -5,7 +5,7 @@ import json
 import sys
 
 from ansible_collections.testns.testcoll.plugins.module_utils import leaf, secondary
-# FIXME: this one needs pkginit synthesis to work
+# TEMPFIX: this one needs pkginit synthesis to work
 # from ansible_collections.testns.testcoll.plugins.module_utils.subpkg import submod
 from ansible_collections.testns.testcoll.plugins.module_utils.subpkg_with_init import (thingtocall as spwi_thingtocall,
                                                                                        submod_thingtocall as spwi_submod_thingtocall,
@@ -15,7 +15,7 @@ from ansible_collections.testns.testcoll.plugins.module_utils.subpkg_with_init i
 def main():
     mu_result = leaf.thingtocall()
     mu2_result = secondary.thingtocall()
-    mu3_result = "thingtocall in subpkg.submod"  # FIXME: this one needs pkginit synthesis to work
+    mu3_result = "thingtocall in subpkg.submod"  # TEMPFIX: this one needs pkginit synthesis to work
     # mu3_result = submod.thingtocall()
     mu4_result = spwi_thingtocall()
     mu5_result = spwi_submod_thingtocall()

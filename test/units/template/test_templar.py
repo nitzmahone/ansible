@@ -251,7 +251,7 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         templar.available_variables = dict(foo="bam")
         self.assertEqual(templar.template("{{foo}}"), "bam")
         # variables must be a dict() for available_variables setter
-        # FIXME Use assertRaises() as a context manager (added in 2.7) once we do not run tests on Python 2.6 anymore.
+        # TEMPFIX Use assertRaises() as a context manager (added in 2.7) once we do not run tests on Python 2.6 anymore.
         try:
             templar.available_variables = "foo=bam"
         except AssertionError:

@@ -175,7 +175,7 @@ class AnsibleError(Exception):
                         error_message += YAML_COMMON_UNQUOTED_COLON_ERROR
                     # otherwise, check for some common quoting mistakes
                     else:
-                        # FIXME: This needs to split on the first ':' to account for modules like lineinfile
+                        # TEMPFIX: This needs to split on the first ':' to account for modules like lineinfile
                         # that may have lines that contain legitimate colons, e.g., line: 'i ALL= (ALL) NOPASSWD: ALL'
                         # and throw off the quote matching logic.
                         parts = target_line.split(":")

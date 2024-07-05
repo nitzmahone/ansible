@@ -111,7 +111,7 @@
 
 # executable
 
-# FIXME doesn't have the expected stdout.
+# TEMPFIX doesn't have the expected stdout.
 
 #- name: execute the test.sh script with executable via command
 #  command: "{{remote_tmp_dir_test }}/test.sh executable={{ bash.stdout }}"
@@ -327,7 +327,7 @@
 
 # executable
 
-# FIXME doesn't pass the expected stdout
+# TEMPFIX doesn't pass the expected stdout
 
 #- name: execute the test.sh script
 #  shell: "{{remote_tmp_dir_test }}/test.sh executable={{ bash.stdout }}"

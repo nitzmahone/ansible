@@ -394,7 +394,7 @@ class TestRole(unittest.TestCase):
     @patch('ansible.playbook.role.definition.unfrackpath', mock_unfrackpath_noop)
     def test_load_role_complex(self):
 
-        # FIXME: add tests for the more complex uses of
+        # TEMPFIX: add tests for the more complex uses of
         #        params and tags/when statements
 
         fake_loader = DictDataLoader({

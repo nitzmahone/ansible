@@ -266,7 +266,7 @@ class VaultSecret:
     '''Opaque/abstract objects for a single vault secret. ie, a password or a key.'''
 
     def __init__(self, _bytes=None):
-        # FIXME: ? that seems wrong... Unset etc?
+        # TEMPFIX: ? that seems wrong... Unset etc?
         self._bytes = _bytes
 
     @property
@@ -328,7 +328,7 @@ class PromptVaultSecret(VaultSecret):
         # enforce no newline chars at the end of passwords
 
         if b_vault_pass_1 != b_vault_pass_2:
-            # FIXME: more specific exception
+            # TEMPFIX: more specific exception
             raise AnsibleError("Passwords do not match")
 
 
@@ -798,7 +798,7 @@ class VaultEditor:
                         fh.write(data)
                     fh.write(data[:file_len % chunk_len])
 
-                    # FIXME remove this assert once we have unittests to check its accuracy
+                    # TEMPFIX remove this assert once we have unittests to check its accuracy
                     if fh.tell() != file_len:
                         raise AnsibleAssertionError()
 
@@ -927,7 +927,7 @@ class VaultEditor:
             display.warning(u"%s does not exist, creating..." % to_text(dirname))
             makedirs_safe(dirname)
 
-        # FIXME: If we can raise an error here, we can probably just make it
+        # TEMPFIX: If we can raise an error here, we can probably just make it
         # behave like edit instead.
         if os.path.isfile(filename):
             raise AnsibleError("%s exists, please use 'edit' instead" % filename)
@@ -977,7 +977,7 @@ class VaultEditor:
         except AnsibleError as e:
             raise AnsibleVaultError("%s for %s" % (to_native(e), to_native(filename)))
 
-    # FIXME/TODO: make this use VaultSecret
+    # TEMPFIX/TODO: make this use VaultSecret
     def rekey_file(self, filename, new_vault_secret, new_vault_id=None):
 
         # follow the symlink
@@ -998,7 +998,7 @@ class VaultEditor:
         if new_vault_secret is None:
             raise AnsibleError('The value for the new_password to rekey %s with is not valid' % filename)
 
-        # FIXME: VaultContext...?  could rekey to a different vault_id in the same VaultSecrets
+        # TEMPFIX: VaultContext...?  could rekey to a different vault_id in the same VaultSecrets
 
         # Need a new VaultLib because the new vault data can be a different
         # vault lib format or cipher (for ex, when we migrate 1.0 style vault data to
@@ -1056,7 +1056,7 @@ class VaultEditor:
         :arg shred: if shred==True, make sure that the original data is first shredded so that is cannot be recovered.
         :returns: None
         """
-        # FIXME: do we need this now? data_bytes should always be a utf-8 byte string
+        # TEMPFIX: do we need this now? data_bytes should always be a utf-8 byte string
         b_file_data = to_bytes(data, errors='strict')
 
         # check if we have a file descriptor instead of a path

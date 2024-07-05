@@ -242,7 +242,7 @@ class TestLoadListOfTasks(unittest.TestCase, MixinForMocks):
         # default for Handler
         self.assertEqual(res[0].listen, [])
 
-    # TODO/FIXME: this doesn't seen right
+    # TEMPFIX: this doesn't seem right
     #  figure out how to get the non-static errors to be raised, this seems to just ignore everything
     def test_one_include_not_static(self):
         ds = [{
@@ -259,7 +259,7 @@ class TestLoadListOfTasks(unittest.TestCase, MixinForMocks):
         self.assertIsInstance(res[0], Task)
         self.assertEqual(res[0].args['_raw_params'], '/dev/null/includes/static_test_include.yml')
 
-    # TODO/FIXME: This two get stuck trying to make a mock_block into a TaskInclude
+    # TEMPFIX: This two get stuck trying to make a mock_block into a TaskInclude
 #    def test_one_include(self):
 #        ds = [{'include': 'other_test_include.yml'}]
 #        res = helpers.load_list_of_tasks(ds, play=self.mock_play,

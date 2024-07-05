@@ -388,7 +388,7 @@ def mock_run_env(request, mocker):
 
 @pytest.mark.usefixtures('mock_run_env')
 class TestSSHConnectionRun(object):
-    # FIXME:
+    # TEMPFIX:
     # These tests are little more than a smoketest.  Need to enhance them
     # a bit to check that they're calling the relevant functions and making
     # complete coverage of the code paths

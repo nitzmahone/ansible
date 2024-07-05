@@ -850,7 +850,7 @@ class AnsibleModule(object):
 
             if self.check_mode:
                 return True
-            # FIXME: comparison against string above will cause this to be executed
+            # TEMPFIX: comparison against string above will cause this to be executed
             # every time
             try:
                 if hasattr(os, 'lchmod'):

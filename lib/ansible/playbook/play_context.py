@@ -88,7 +88,7 @@ class PlayContext(Base):
     # networking modules
     network_os = FieldAttribute(isa='string')
 
-    # docker FIXME: remove these
+    # TEMPFIX: docker - remove these
     docker_extra_args = FieldAttribute(isa='string')
 
     # ???

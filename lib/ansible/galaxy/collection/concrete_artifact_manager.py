@@ -296,7 +296,7 @@ class ConcreteArtifactsManager:
     def get_direct_collection_meta(self, collection):
         # type: (Collection) -> dict[str, t.Union[str, dict[str, str], list[str], None, t.Type[Sentinel]]]
         """Extract meta from the given on-disk collection artifact."""
-        try:  # FIXME: use unique collection identifier as a cache key?
+        try:  # TEMPFIX: use unique collection identifier as a cache key?
             return self._artifact_meta_cache[collection.src]
         except KeyError:
             b_artifact_path = self.get_artifact_path(collection)
@@ -304,7 +304,7 @@ class ConcreteArtifactsManager:
         if collection.is_url or collection.is_file:
             collection_meta = _get_meta_from_tar(b_artifact_path)
         elif collection.is_dir:  # should we just build a coll instead?
-            # FIXME: what if there's subdirs?
+            # TEMPFIX: what if there's subdirs?
             try:
                 collection_meta = _get_meta_from_dir(b_artifact_path, self.require_build_metadata)
             except LookupError as lookup_err:
@@ -428,7 +428,7 @@ def _extract_collection_from_git(repo_url, coll_ver, b_path):
         git_clone_cmd = git_executable, 'clone', '--depth=1', git_url, to_text(b_checkout_path)
     else:
         git_clone_cmd = git_executable, 'clone', git_url, to_text(b_checkout_path)
-    # FIXME: '--branch', version
+    # TEMPFIX: '--branch', version
 
     try:
         subprocess.check_call(git_clone_cmd)
@@ -457,7 +457,7 @@ def _extract_collection_from_git(repo_url, coll_ver, b_path):
     )
 
 
-# FIXME: use random subdirs while preserving the file names
+# TEMPFIX: use random subdirs while preserving the file names
 @retry_with_delays_and_condition(
     backoff_iterator=generate_jittered_backoff(retries=6, delay_base=2, delay_threshold=40),
     should_retry_error=should_retry_error
@@ -529,8 +529,8 @@ def _normalize_galaxy_yml_manifest(
     # type: (...) -> dict[str, t.Union[str, list[str], dict[str, str], None, t.Type[Sentinel]]]
     galaxy_yml_schema = (
         get_collections_galaxy_meta_info()
-    )  # type: list[dict[str, t.Any]]  # FIXME: <--
-    # FIXME: 👆maybe precise type: list[dict[str, t.Union[bool, str, list[str]]]]
+    )  # type: list[dict[str, t.Any]]  # TEMPFIX: <--
+    # TEMPFIX: 👆maybe precise type: list[dict[str, t.Union[bool, str, list[str]]]]
 
     mandatory_keys = set()
     string_keys = set()  # type: set[str]

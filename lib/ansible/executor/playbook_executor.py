@@ -107,7 +107,7 @@ class PlaybookExecutor:
                     AnsibleCollectionConfig.default_collection = None
 
                 pb = Playbook.load(playbook_path, variable_manager=self._variable_manager, loader=self._loader)
-                # FIXME: move out of inventory self._inventory.set_playbook_basedir(os.path.realpath(os.path.dirname(playbook_path)))
+                # TEMPFIX: move out of inventory self._inventory.set_playbook_basedir(os.path.realpath(os.path.dirname(playbook_path)))
 
                 if self._tqm is None:  # we are doing a listing
                     entry = {'playbook': playbook_path}
@@ -135,7 +135,7 @@ class PlaybookExecutor:
                     templar = Templar(loader=self._loader, variables=all_vars)
                     setattr(play, 'vars_prompt', templar.template(play.vars_prompt))
 
-                    # FIXME: this should be a play 'sub object' like loop_control
+                    # TEMPFIX: this should be a play 'sub object' like loop_control
                     if play.vars_prompt:
                         for var in play.vars_prompt:
                             vname = var['name']

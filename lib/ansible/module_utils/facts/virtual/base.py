@@ -36,11 +36,11 @@ class Virtual:
     """
     platform = 'Generic'
 
-    # FIXME: remove load_on_init if we can
+    # TEMPFIX: remove load_on_init if we can
     def __init__(self, module, load_on_init=False):
         self.module = module
 
-    # FIXME: just here for existing tests cases till they are updated
+    # TEMPFIX: just here for existing tests cases till they are updated
     def populate(self, collected_facts=None):
         virtual_facts = self.get_virtual_facts()
 

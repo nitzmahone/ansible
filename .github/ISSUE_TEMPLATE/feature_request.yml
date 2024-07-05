@@ -117,7 +117,7 @@ body:
         supports dropdown defaults. Promise!_
 
       </details>
-    # FIXME: Once GitHub allows defining the default choice, update this
+    # TEMPFIX: Once GitHub allows defining the default choice, update this
     options:
     - Feature Idea
   validations:

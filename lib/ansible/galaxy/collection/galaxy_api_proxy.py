@@ -162,7 +162,7 @@ class MultiGalaxyAPIProxy:
 
     def get_collection_dependencies(self, collection_candidate):
         # type: (Candidate) -> dict[str, str]
-        # FIXME: return Requirement instances instead?
+        # TEMPFIX: return Requirement instances instead?
         """Retrieve collection dependencies of a given candidate."""
         if collection_candidate.is_concrete_artifact:
             return (

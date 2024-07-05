@@ -562,7 +562,7 @@ class CallbackBase(AnsiblePlugin):
     def v2_runner_on_async_poll(self, result):
         host = result._host.get_name()
         jid = result._result.get('ansible_job_id')
-        # FIXME, get real clock
+        # TEMPFIX, get real clock
         clock = 0
         self.runner_on_async_poll(host, result._result, jid, clock)
 
@@ -595,7 +595,7 @@ class CallbackBase(AnsiblePlugin):
     def v2_playbook_on_task_start(self, task, is_conditional):
         self.playbook_on_task_start(task.name, is_conditional)
 
-    # FIXME: not called
+    # TEMPFIX: not called
     def v2_playbook_on_cleanup_task_start(self, task):
         pass  # no v1 correspondence
 
@@ -605,12 +605,12 @@ class CallbackBase(AnsiblePlugin):
     def v2_playbook_on_vars_prompt(self, varname, private=True, prompt=None, encrypt=None, confirm=False, salt_size=None, salt=None, default=None, unsafe=None):
         self.playbook_on_vars_prompt(varname, private, prompt, encrypt, confirm, salt_size, salt, default, unsafe)
 
-    # FIXME: not called
+    # TEMPFIX: not called
     def v2_playbook_on_import_for_host(self, result, imported_file):
         host = result._host.get_name()
         self.playbook_on_import_for_host(host, imported_file)
 
-    # FIXME: not called
+    # TEMPFIX: not called
     def v2_playbook_on_not_import_for_host(self, result, missing_file):
         host = result._host.get_name()
         self.playbook_on_not_import_for_host(host, missing_file)

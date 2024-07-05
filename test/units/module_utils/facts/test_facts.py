@@ -528,7 +528,7 @@ with open(os.path.join(os.path.dirname(__file__), 'fixtures/findmount_output.txt
 
 class TestFactsLinuxHardwareGetMountFacts(unittest.TestCase):
 
-    # FIXME: mock.patch instead
+    # TEMPFIX: mock.patch instead
     def setUp(self):
         # The @timeout tracebacks if there isn't a GATHER_TIMEOUT is None (the default until get_all_facts sets it via global)
         facts.GATHER_TIMEOUT = 10

@@ -30,7 +30,7 @@ class HurdPfinetNetwork(Network):
 
     def assign_network_facts(self, network_facts, fsysopts_path, socket_path):
         rc, out, err = self.module.run_command([fsysopts_path, '-L', socket_path])
-        # FIXME: build up a interfaces datastructure, then assign into network_facts
+        # TEMPFIX: build up a interfaces datastructure, then assign into network_facts
         network_facts['interfaces'] = []
         for i in out.split():
             if '=' in i and i.startswith('--'):

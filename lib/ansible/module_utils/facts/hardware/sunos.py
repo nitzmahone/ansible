@@ -36,7 +36,7 @@ class SunOSHardware(Hardware):
     def populate(self, collected_facts=None):
         hardware_facts = {}
 
-        # FIXME: could pass to run_command(environ_update), but it also tweaks the env
+        # TEMPFIX: could pass to run_command(environ_update), but it also tweaks the env
         #        of the parent process instead of altering an env provided to Popen()
         # Use C locale for hardware collection helpers to avoid locale specific number formatting (#24542)
         locale = get_best_parsable_locale(self.module)
@@ -91,7 +91,7 @@ class SunOSHardware(Hardware):
             elif key == 'implementation':
                 processor = brand or data[1].strip()
                 # Add clock speed to description for SPARC CPU
-                # FIXME
+                # TEMPFIX
                 if collected_facts.get('ansible_machine') != 'i86pc':
                     processor += " @ " + clock_mhz + "MHz"
                 if 'ansible_processor' not in collected_facts:

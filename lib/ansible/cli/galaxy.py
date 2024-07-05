@@ -78,7 +78,7 @@ def with_collection_artifacts_manager(wrapped_method):
         if 'artifacts_manager' in kwargs:
             return wrapped_method(*args, **kwargs)
 
-        # FIXME: use validate_certs context from Galaxy servers when downloading collections
+        # TEMPFIX: use validate_certs context from Galaxy servers when downloading collections
         # .get used here for when this is used in a non-CLI context
         artifacts_manager_kwargs = {'validate_certs': context.CLIARGS.get('resolved_validate_certs', True)}
 

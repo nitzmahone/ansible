@@ -32,7 +32,7 @@ def _module_setup():
 
             return strvalue
 
-    # FIXME: swap restype to errcheck
+    # TEMPFIX: swap restype to errcheck
 
     _funcmap = dict(
         is_selinux_enabled={},

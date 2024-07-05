@@ -65,7 +65,7 @@ ALL_COLLECTOR_CLASSES = \
      EnvFactCollector,
      DnsFactCollector,
      PythonFactCollector,
-     # FIXME: re-enable when hardware doesnt Hardware() doesnt munge self.facts
+     # TEMPFIX: re-enable when hardware doesnt Hardware() doesnt munge self.facts
      #                         HardwareCollector
      NetworkCollector,
      VirtualCollector,
@@ -118,7 +118,7 @@ def _collectors(module,
 ns = namespace.PrefixFactNamespace('ansible_facts', 'ansible_')
 
 
-# FIXME: this is brute force, but hopefully enough to get some refactoring to make facts testable
+# TEMPFIX: this is brute force, but hopefully enough to get some refactoring to make facts testable
 class TestInPlace(unittest.TestCase):
     def _mock_module(self, gather_subset=None):
         return mock_module(gather_subset=gather_subset)
@@ -185,7 +185,7 @@ class TestInPlace(unittest.TestCase):
 #    def test_facts_class_load_on_init_false(self):
 #        mock_module = self._mock_module()
 #        Facts(mock_module, load_on_init=False)
-#        # FIXME: assert something
+#        # TEMPFIX: assert something
 
 
 class TestCollectedFacts(unittest.TestCase):
@@ -243,7 +243,7 @@ class TestCollectedFacts(unittest.TestCase):
     # everything starts with ansible_ namespace
     def _assert_ansible_namespace(self, facts):
 
-        # FIXME: kluge for non-namespace fact
+        # TEMPFIX: kluge for non-namespace fact
         facts.pop('module_setup', None)
         facts.pop('gather_subset', None)
 

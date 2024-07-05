@@ -30,7 +30,7 @@
     path: '{{ subversion_test_dir }}/svn'
   register: subverted_result
 
-# FIXME: the before/after logic here should be fixed to make them hashes, see GitHub 6078
+# TEMPFIX: the before/after logic here should be fixed to make them hashes, see GitHub 6078
 # looks like this: {
 #        "after": [
 #            "Revision: 9",

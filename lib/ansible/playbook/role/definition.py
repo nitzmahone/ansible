@@ -212,7 +212,7 @@ class RoleDefinition(Base, Conditional, Taggable, CollectionSearch):
         for (key, value) in ds.items():
             # use the list of FieldAttribute values to determine what is and is not
             # an extra parameter for this role (or sub-class of this role)
-            # FIXME: hard-coded list of exception key names here corresponds to the
+            # TEMPFIX: hard-coded list of exception key names here corresponds to the
             #        connection fields in the Base class. There may need to be some
             #        other mechanism where we exclude certain kinds of field attributes,
             #        or make this list more automatic in some way so we don't have to

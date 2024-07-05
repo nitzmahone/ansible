@@ -426,7 +426,7 @@ def check_option_elements(v):
     if v_type == 'list' and v_elements is None:
         raise _add_ansible_error_code(
             Invalid('Argument defines type as list but elements is not defined'),
-            error_code='parameter-list-no-elements')  # FIXME: adjust error code?
+            error_code='parameter-list-no-elements')  # TEMPFIX: adjust error code?
     if v_type != 'list' and v_elements is not None:
         raise _add_ansible_error_code(
             Invalid('Argument defines parameter elements as %s but it is valid only when value of parameter type is list' % (v_elements, )),
@@ -534,7 +534,7 @@ def check_option_default(v):
             Invalid(
                 'Argument is marked as required but specifies a default.'
                 ' Arguments with a default should not be marked as required'),
-            error_code='no-default-for-required-parameter')  # FIXME: adjust error code?
+            error_code='no-default-for-required-parameter')  # TEMPFIX: adjust error code?
 
     if v_default is None:
         return v

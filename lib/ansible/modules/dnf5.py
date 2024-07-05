@@ -362,7 +362,7 @@ def is_installed(base, spec):
     installed_query.filter_installed()
     match, nevra = installed_query.resolve_pkg_spec(spec, settings, True)
 
-    # FIXME use `is_glob_pattern` function when available:
+    # TEMPFIX use `is_glob_pattern` function when available:
     # https://github.com/rpm-software-management/dnf5/issues/1563
     glob_patterns = set("*[?")
     if any(set(char) & glob_patterns for char in spec):
@@ -378,7 +378,7 @@ def is_installed(base, spec):
 
 
 def is_newer_version_installed(base, spec):
-    # FIXME investigate whether this function can be replaced by dnf5's allow_downgrade option
+    # TEMPFIX investigate whether this function can be replaced by dnf5's allow_downgrade option
     if "/" in spec:
         spec = spec.split("/")[-1]
         if spec.endswith(".rpm"):
@@ -417,7 +417,7 @@ def is_newer_version_installed(base, spec):
     except IndexError:
         return False
 
-    # FIXME https://github.com/rpm-software-management/dnf5/issues/1104
+    # TEMPFIX https://github.com/rpm-software-management/dnf5/issues/1104
     return libdnf5.rpm.rpmvercmp(installed_package.get_evr(), target_package.get_evr()) == 1
 
 
@@ -574,7 +574,7 @@ class Dnf5Module(YumDnf):
         log_router = base.get_logger()
         global_logger = libdnf5.logger.GlobalLogger()
         global_logger.set(log_router.get(), libdnf5.logger.Logger.Level_DEBUG)
-        # FIXME hardcoding the filename does not seem right, should libdnf5 expose the default file name?
+        # TEMPFIX hardcoding the filename does not seem right, should libdnf5 expose the default file name?
         logger = libdnf5.logger.create_file_logger(base, "dnf5.log")
         log_router.add_logger(logger)
 

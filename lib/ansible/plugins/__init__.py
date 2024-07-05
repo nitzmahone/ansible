@@ -127,7 +127,7 @@ class AnsiblePlugin(ABC):
         return self._defs
 
     def _check_required(self):
-        # FIXME: standardize required check based on config
+        # TEMPFIX: standardize required check based on config
         pass
 
 

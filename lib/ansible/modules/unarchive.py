@@ -883,7 +883,7 @@ class TgzArchive(object):
         # Only way to be sure is to check request with what is on disk (as we do for zip)
         # Leave this up to set_fs_attributes_if_different() instead of inducing a (false) change
         for line in old_out.splitlines() + err.splitlines():
-            # FIXME: Remove the bogus lines from error-output as well !
+            # TEMPFIX: Remove the bogus lines from error-output as well !
             # Ignore bogus errors on empty filenames (when using --split-component)
             if EMPTY_FILE_RE.search(line):
                 continue

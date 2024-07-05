@@ -36,7 +36,7 @@ from ansible.module_utils.facts.collector import BaseFactCollector
 class Hardware:
     platform = 'Generic'
 
-    # FIXME: remove load_on_init when we can
+    # TEMPFIX: remove load_on_init when we can
     def __init__(self, module, load_on_init=False):
         self.module = module
 

@@ -2,7 +2,7 @@
 # Copyright: (c) 2020-2021, Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 """Dependency structs."""
-# FIXME: add caching all over the place
+# TEMPFIX: add caching all over the place
 
 from __future__ import annotations
 
@@ -324,7 +324,7 @@ class _ComputedReqKindsMixin:
             req_signature_sources = frozenset(req_signature_sources)
 
         if req_type is None:
-            if (  # FIXME: decide on the future behavior:
+            if (  # TEMPFIX: decide on the future behavior:
                     _ALLOW_CONCRETE_POINTER_IN_SOURCE
                     and req_source is not None
                     and _is_concrete_artifact_pointer(req_source)
@@ -497,7 +497,7 @@ class _ComputedReqKindsMixin:
         # collections/ansible_collections/ns.coll-1.0.0.info/GALAXY.yml
         return os.path.join(b_metadata_dir, b_dir_name, _SOURCE_METADATA_FILE)
 
-    def _get_separate_ns_n_name(self):  # FIXME: use LRU cache
+    def _get_separate_ns_n_name(self):  # TEMPFIX: use LRU cache
         return self.fqcn.split('.')
 
     @property

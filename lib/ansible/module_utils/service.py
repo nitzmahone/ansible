@@ -99,7 +99,7 @@ def get_ps(module, pattern):
     if rc == 0:
         for line in psout.splitlines():
             if pattern in line:
-                # FIXME: should add logic to prevent matching 'self', though that should be extremely rare
+                # TEMPFIX: should add logic to prevent matching 'self', though that should be extremely rare
                 found = True
                 break
     return found
@@ -174,7 +174,7 @@ def daemonize(module, cmd):
     '''
 
     # init some vars
-    chunk = 4096  # FIXME: pass in as arg?
+    chunk = 4096  # TEMPFIX: pass in as arg?
     errors = 'surrogate_or_strict'
 
     # start it!

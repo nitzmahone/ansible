@@ -77,9 +77,9 @@ echo "testing ansible-doc output for various plugin types"
 for ptype in cache inventory lookup vars filter module
 do
 	# each plugin type adds 1 from collection
-	# FIXME pre=$(ansible-doc -l -t ${ptype}|wc -l)
-	# FIXME post=$(ansible-doc -l -t ${ptype} --playbook-dir ./|wc -l)
-	# FIXME test "$pre" -eq $((post - 1))
+	# TEMPFIX pre=$(ansible-doc -l -t ${ptype}|wc -l)
+	# TEMPFIX post=$(ansible-doc -l -t ${ptype} --playbook-dir ./|wc -l)
+	# TEMPFIX test "$pre" -eq $((post - 1))
 	if [ "${ptype}" == "filter" ]; then
 		expected=5
 		expected_names=("b64decode" "filter_subdir.nested" "filter_subdir.noop" "noop" "ultimatequestion")

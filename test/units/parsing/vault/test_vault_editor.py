@@ -220,13 +220,13 @@ class TestVaultEditor(unittest.TestCase):
         ve = self._vault_editor()
         ve.encrypt_file(src_file_path, self.vault_secret)
 
-        # FIXME: update to just set self._secrets or just a new vault secret id
+        # TEMPFIX: update to just set self._secrets or just a new vault secret id
         new_password = 'password2:electricbugaloo'
         new_vault_secret = TextVaultSecret(new_password)
         new_vault_secrets = [('default', new_vault_secret)]
         ve.rekey_file(src_file_path, vault.match_encrypt_secret(new_vault_secrets)[1])
 
-        # FIXME: can just update self._secrets here
+        # TEMPFIX: can just update self._secrets here
         new_ve = vault.VaultEditor(VaultLib(new_vault_secrets))
         self._assert_file_is_encrypted(new_ve, src_file_path, src_file_contents)
 

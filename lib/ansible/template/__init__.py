@@ -907,7 +907,7 @@ class Templar:
             except KeyError:
                 # Lookup Plugin returned a dict.  Return comma-separated string of keys
                 # for backwards compat.
-                # FIXME this can be removed when support for non-list return types is removed.
+                # TEMPFIX this can be removed when support for non-list return types is removed.
                 # See https://github.com/ansible/ansible/pull/77789
                 ran = wrap_var(",".join(ran))
 

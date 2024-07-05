@@ -360,7 +360,7 @@ def check_missing_parameters(parameters, required_parameters=None):
     return missing_params
 
 
-# FIXME: The param and prefix parameters here are coming from AnsibleModule._check_type_string()
+# TEMPFIX: The param and prefix parameters here are coming from AnsibleModule._check_type_string()
 #        which is using those for the warning messaged based on string conversion warning settings.
 #        Not sure how to deal with that here since we don't have config state to query.
 def check_type_str(value, allow_conversion=True, param=None, prefix=''):

@@ -38,7 +38,7 @@ def mock_get_mount_size(mountpoint):
 
 class TestFactsLinuxHardwareGetMountFacts(unittest.TestCase):
 
-    # FIXME: mock.patch instead
+    # TEMPFIX: mock.patch instead
     def setUp(self):
         timeout.GATHER_TIMEOUT = 10
 

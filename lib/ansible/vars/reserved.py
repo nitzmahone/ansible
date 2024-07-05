@@ -33,7 +33,7 @@ def get_reserved_names(include_private=True):
     private = set()
     result = set()
 
-    # FIXME: find a way to 'not hardcode', possibly need role deps/includes
+    # TEMPFIX: find a way to 'not hardcode', possibly need role deps/includes
     class_list = [Play, Role, Block, Task]
 
     for aclass in class_list:
@@ -49,7 +49,7 @@ def get_reserved_names(include_private=True):
         public.add('local_action')
 
     # loop implies with_
-    # FIXME: remove after with_ is not only deprecated but removed
+    # TEMPFIX: remove after with_ is not only deprecated but removed
     if 'loop' in private or 'loop' in public:
         public.add('with_')
 

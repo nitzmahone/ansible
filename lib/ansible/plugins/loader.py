@@ -213,7 +213,7 @@ class PluginLoader:
         self.package = package
         self.subdir = subdir
 
-        # FIXME: remove alias dict in favor of alias by symlink?
+        # TEMPFIX: remove alias dict in favor of alias by symlink?
         self.aliases = aliases
 
         if config and not isinstance(config, list):
@@ -342,7 +342,7 @@ class PluginLoader:
     def _get_paths_with_context(self, subdirs=True):
         ''' Return a list of PluginPathContext objects to search for plugins in '''
 
-        # FIXME: This is potentially buggy if subdirs is sometimes True and sometimes False.
+        # TEMPFIX: This is potentially buggy if subdirs is sometimes True and sometimes False.
         # In current usage, everything calls this with subdirs=True except for module_utils_loader and ansible-doc
         # which always calls it with subdirs=False. So there currently isn't a problem with this caching.
         if self._paths is not None:
@@ -440,7 +440,7 @@ class PluginLoader:
         if not collection_pkg:
             return None
 
-        # FIXME: shouldn't need this...
+        # TEMPFIX: shouldn't need this...
         try:
             # force any type-specific metadata postprocessing to occur
             import_module(acr.n_python_collection_package_name + '.plugins.{0}'.format(plugin_type))
@@ -491,7 +491,7 @@ class PluginLoader:
 
             tombstone = routing_metadata.get('tombstone', None)
 
-            # FIXME: clean up text gen
+            # TEMPFIX: clean up text gen
             if tombstone:
                 removal_date = tombstone.get('removal_date')
                 removal_version = tombstone.get('removal_version')
@@ -516,7 +516,7 @@ class PluginLoader:
                         "Redirects must use fully qualified collection names."
                     )
 
-                # FIXME: remove once this is covered in debug or whatever
+                # TEMPFIX: remove once this is covered in debug or whatever
                 display.vv("redirecting (type: {0}) {1} to {2}".format(plugin_type, fq_name, redirect))
 
                 # The name doing the redirection is added at the beginning of _resolve_plugin_step,
@@ -539,7 +539,7 @@ class PluginLoader:
 
         pkg = sys.modules.get(acr.n_python_package_name)
         if not pkg:
-            # FIXME: there must be cheaper/safer way to do this
+            # TEMPFIX: there must be cheaper/safer way to do this
             try:
                 pkg = import_module(acr.n_python_package_name)
             except ImportError:
@@ -549,7 +549,7 @@ class PluginLoader:
 
         n_resource_path = os.path.join(pkg_path, n_resource)
 
-        # FIXME: and is file or file link or ...
+        # TEMPFIX: and is file or file link or ...
         if os.path.exists(n_resource_path):
             return plugin_load_context.resolve(
                 full_name, to_text(n_resource_path), acr.collection, 'found exact match for {0} in {1}'.format(full_name, acr.collection), action_plugin)
@@ -604,7 +604,7 @@ class PluginLoader:
 
         # TODO: display/return import_error_list? Only useful for forensics...
 
-        # FIXME: store structured deprecation data in PluginLoadContext and use display.deprecate
+        # TEMPFIX: store structured deprecation data in PluginLoadContext and use display.deprecate
         # if plugin_load_context.deprecated and C.config.get_config_value('DEPRECATION_WARNINGS'):
         #     for dw in plugin_load_context.deprecation_warnings:
         #         # TODO: need to smuggle these to the controller if we're in a worker context
@@ -612,7 +612,7 @@ class PluginLoader:
 
         return plugin_load_context
 
-    # FIXME: name bikeshed
+    # TEMPFIX: name bikeshed
     def _resolve_plugin_step(self, name, mod_type='', ignore_deprecated=False,
                              check_aliases=False, collection_list=None, plugin_load_context=PluginLoadContext()):
         if not plugin_load_context:
@@ -635,7 +635,7 @@ class PluginLoader:
             # they can have any suffix
             suffix = ''
 
-        # FIXME: need this right now so we can still load shipped PS module_utils- come up with a more robust solution
+        # TEMPFIX: need this right now so we can still load shipped PS module_utils- come up with a more robust solution
         if (AnsibleCollectionRef.is_valid_fqcr(name) or collection_list) and not name.startswith('Ansible'):
             if '.' in name or not collection_list:
                 candidates = [name]
@@ -672,7 +672,7 @@ class PluginLoader:
                 except ImportError as ie:
                     plugin_load_context.import_error_list.append(ie)
                 except Exception as ex:
-                    # FIXME: keep actual errors, not just assembled messages
+                    # TEMPFIX: keep actual errors, not just assembled messages
                     plugin_load_context.error_list.append(to_native(ex))
 
             if plugin_load_context.error_list:
@@ -730,7 +730,7 @@ class PluginLoader:
                 full_name = os.path.basename(full_path)
 
                 # HACK: We have no way of executing python byte compiled files as ansible modules so specifically exclude them
-                # FIXME: I believe this is only correct for modules and module_utils.
+                # TEMPFIX: I believe this is only correct for modules and module_utils.
                 # For all other plugins we want .pyc and .pyo should be valid
                 if any(full_path.endswith(x) for x in C.MODULE_IGNORE_EXTS):
                     continue
@@ -776,7 +776,7 @@ class PluginLoader:
             if alias_name in pull_cache:
                 path_with_context = pull_cache[alias_name]
                 if not ignore_deprecated and not os.path.islink(path_with_context.path):
-                    # FIXME: this is not always the case, some are just aliases
+                    # TEMPFIX: this is not always the case, some are just aliases
                     display.deprecated('%s is kept for backwards compatibility but usage is discouraged. '  # pylint: disable=ansible-deprecated-no-version
                                        'The module documentation details page may explain more about this rationale.' % name.lstrip('_'))
                 plugin_load_context.plugin_resolved_path = path_with_context.path
@@ -819,7 +819,7 @@ class PluginLoader:
             return sys.modules[full_name]
 
         with warnings.catch_warnings():
-            # FIXME: this still has issues if the module was previously imported but not "cached",
+            # TEMPFIX: this still has issues if the module was previously imported but not "cached",
             #  we should bypass this entire codepath for things that are directly importable
             warnings.simplefilter("ignore", RuntimeWarning)
             spec = importlib.util.spec_from_file_location(to_native(full_name), to_native(path))
@@ -877,7 +877,7 @@ class PluginLoader:
 
         plugin_load_context = self.find_plugin_with_context(name, collection_list=collection_list)
         if not plugin_load_context.resolved or not plugin_load_context.plugin_resolved_path:
-            # FIXME: this is probably an error (eg removed plugin)
+            # TEMPFIX: this is probably an error (eg removed plugin)
             return get_with_context_result(None, plugin_load_context)
 
         fq_name = plugin_load_context.resolved_fqcn
@@ -911,7 +911,7 @@ class PluginLoader:
             if not issubclass(obj, plugin_class):
                 return get_with_context_result(None, plugin_load_context)
 
-        # FIXME: update this to use the load context
+        # TEMPFIX: update this to use the load context
         self._display_plugin_load(self.class_name, resolved_type_name, self._searched_paths, path, found_in_cache=found_in_cache, class_only=class_only)
 
         if not class_only:
@@ -1288,7 +1288,7 @@ class Jinja2Loader(PluginLoader):
                             self._update_object(plugin, src_name, plugin_impl.object._original_path, resolved=fq_name)
                             # context will have filename, which for tests/filters might not be correct
                             context._resolved_fqcn = plugin.ansible_name
-                            # FIXME: once we start caching these results, we'll be missing functions that would have loaded later
+                            # TEMPFIX: once we start caching these results, we'll be missing functions that would have loaded later
                             break  # go to next file as it can override if dupe (dont break both loops)
 
         except AnsiblePluginRemovedError as apre:

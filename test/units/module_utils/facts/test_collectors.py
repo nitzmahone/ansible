@@ -148,7 +148,7 @@ class TestCmdLineFacts(BaseFactsTest):
     def test_parse_proc_cmdline_dup_console(self):
         example = r'BOOT_IMAGE=/boot/vmlinuz-4.4.0-72-generic root=UUID=e12e46d9-06c9-4a64-a7b3-60e24b062d90 ro console=tty1 console=ttyS0'
 
-        # FIXME: Two 'console' keywords? Using a dict for the fact value here loses info. Currently the 'last' one wins
+        # TEMPFIX: Two 'console' keywords? Using a dict for the fact value here loses info. Currently the 'last' one wins
         expected = {'BOOT_IMAGE': '/boot/vmlinuz-4.4.0-72-generic',
                     'root': 'UUID=e12e46d9-06c9-4a64-a7b3-60e24b062d90',
                     'ro': True,

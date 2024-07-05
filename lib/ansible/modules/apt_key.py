@@ -170,7 +170,7 @@ short_id:
 
 import os
 
-# FIXME: standardize into module_common
+# TEMPFIX: standardize into module_common
 from traceback import format_exc
 
 from ansible.module_utils.common.text.converters import to_native

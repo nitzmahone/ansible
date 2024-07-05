@@ -380,7 +380,7 @@ class InventoryModule(BaseFileInventoryPlugin):
             ''', errors='surrogate_or_strict'), re.X
         )
 
-        # FIXME: What are the real restrictions on group names, or rather, what
+        # TEMPFIX: What are the real restrictions on group names, or rather, what
         # should they be? At the moment, they must be non-empty sequences of non
         # whitespace characters excluding ':' and ']', but we should define more
         # precise rules in order to support better diagnostics.

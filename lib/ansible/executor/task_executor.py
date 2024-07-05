@@ -863,7 +863,7 @@ class TaskExecutor:
             environment=self._task.environment,
         ))
 
-        # FIXME: this is no longer the case, normal takes care of all, see if this can just be generalized
+        # TEMPFIX: this is no longer the case, normal takes care of all, see if this can just be generalized
         # Because this is an async task, the action handler is async. However,
         # we need the 'normal' action handler for the status check, so get it
         # now via the action_loader
@@ -1089,7 +1089,7 @@ class TaskExecutor:
 
         if self._connection.become is not None:
             if self._play_context.become_pass:
-                # FIXME: eventually remove from task and play_context, here for backwards compat
+                # TEMPFIX: eventually remove from task and play_context, here for backwards compat
                 # keep out of play objects to avoid accidental disclosure, only become plugin should have
                 # The become pass is already in the play_context if given on
                 # the CLI (-K). Make the plugin aware of it in this case.

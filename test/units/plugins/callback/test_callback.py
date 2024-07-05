@@ -35,7 +35,7 @@ mock_task.delegate_to = None
 
 
 class TestCallback(unittest.TestCase):
-    # FIXME: This doesn't really test anything...
+    # TEMPFIX: This doesn't really test anything...
     def test_init(self):
         CallbackBase()
 

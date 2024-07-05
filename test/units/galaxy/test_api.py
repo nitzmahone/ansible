@@ -723,7 +723,7 @@ def test_wait_import_task_timeout(server_url, api_version, token_type, token_ins
     # expected_wait_msg = 'Galaxy import process has a status of waiting, wait {0} seconds before trying again'
     assert mock_vvv.call_count > 9  # 1st is opening Galaxy token file.
 
-    # FIXME:
+    # TEMPFIX:
     # assert mock_vvv.mock_calls[1][1][0] == expected_wait_msg.format(2)
     # assert mock_vvv.mock_calls[2][1][0] == expected_wait_msg.format(3)
     # assert mock_vvv.mock_calls[3][1][0] == expected_wait_msg.format(4)

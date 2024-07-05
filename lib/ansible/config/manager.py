@@ -61,7 +61,7 @@ def _get_entry(plugin_type, plugin_name, config):
     return entry
 
 
-# FIXME: see if we can unify in module_utils with similar function used by argspec
+# TEMPFIX: see if we can unify in module_utils with similar function used by argspec
 def ensure_type(value, value_type, origin=None, origin_ftype=None):
     ''' return a configuration variable with casting
     :arg value: The value to ensure correct typing of
@@ -178,7 +178,7 @@ def ensure_type(value, value_type, origin=None, origin_ftype=None):
     return to_text(value, errors='surrogate_or_strict', nonstring='passthru')
 
 
-# FIXME: see if this can live in utils/path
+# TEMPFIX: see if this can live in utils/path
 def resolve_path(path, basedir=None):
     ''' resolve relative or 'variable' paths '''
     if '{{CWD}}' in path:  # allow users to force CWD using 'magic' {{CWD}}
@@ -187,7 +187,7 @@ def resolve_path(path, basedir=None):
     return unfrackpath(path, follow=False, basedir=basedir)
 
 
-# FIXME: generic file type?
+# TEMPFIX: generic file type?
 def get_config_type(cfile):
 
     ftype = None
@@ -203,21 +203,21 @@ def get_config_type(cfile):
     return ftype
 
 
-# FIXME: can move to module_utils for use for ini plugins also?
+# TEMPFIX: can move to module_utils for use for ini plugins also?
 def get_ini_config_value(p, entry):
     ''' returns the value of last ini entry found '''
     value = None
     if p is not None:
         try:
             value = p.get(entry.get('section', 'defaults'), entry.get('key', ''), raw=True)
-        except Exception:  # FIXME: actually report issues here
+        except Exception:  # TEMPFIX: actually report issues here
             pass
     return value
 
 
 def find_ini_config_file(warnings=None):
     ''' Load INI Config File order(first found is used): ENV, CWD, HOME, /etc/ansible '''
-    # FIXME: eventually deprecate ini configs
+    # TEMPFIX: eventually deprecate ini configs
 
     if warnings is None:
         # Note: In this case, warnings does nothing
@@ -399,7 +399,7 @@ class ConfigManager(object):
                     self._parsers[cfile].read_string(cfg_text)
                 except configparser.Error as e:
                     raise AnsibleOptionsError("Error reading config file (%s): %s" % (cfile, to_native(e)))
-            # FIXME: this should eventually handle yaml config files
+            # TEMPFIX: this should eventually handle yaml config files
             # elif ftype == 'yaml':
             #     with open(cfile, 'rb') as config_stream:
             #         self._parsers[cfile] = yaml_load(config_stream)

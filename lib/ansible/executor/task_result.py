@@ -108,7 +108,7 @@ class TaskResult:
 
         ''' returns 'clean' taskresult object '''
 
-        # FIXME: clean task_fields, _task and _host copies
+        # TEMPFIX: clean task_fields, _task and _host copies
         result = TaskResult(self._host, self._task, {}, self._task_fields)
 
         # statuses are already reflected on the event type

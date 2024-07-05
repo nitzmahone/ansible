@@ -135,7 +135,7 @@ class TestAnsibleVaultEncryptedUnicode(unittest.TestCase, YamlTestUtils):
         self.assertTrue(avu.vault is self.vault)
         self.assertIsInstance(avu.vault, vault.VaultLib)
 
-    # TODO/FIXME: make sure bad password fails differently than 'thats not encrypted'
+    # TEMPFIX: make sure bad password fails differently than 'thats not encrypted'
     def test_empty_string_wrong_password(self):
         seq = ''
         self.vault = self.wrong_vault

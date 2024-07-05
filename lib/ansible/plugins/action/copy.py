@@ -310,7 +310,7 @@ class ActionModule(ActionBase):
             self._remove_tempfile_if_content_defined(content, content_tempfile)
             self._loader.cleanup_tmp_file(source_full)
 
-            # FIXME: I don't think this is needed when PIPELINING=0 because the source is created
+            # TEMPFIX: I don't think this is needed when PIPELINING=0 because the source is created
             # world readable.  Access to the directory itself is controlled via fixup_perms2() as
             # part of executing the module. Check that umask with scp/sftp/piped doesn't cause
             # a problem before acting on this idea. (This idea would save a round-trip)
@@ -492,7 +492,7 @@ class ActionModule(ActionBase):
             # explicitly mark it so (note - copy module relies on this).
             if not self._connection._shell.path_has_trailing_slash(dest):
                 dest = self._connection._shell.join_path(dest, '')
-            # FIXME: Can we optimize cases where there's only one file, no
+            # TEMPFIX: Can we optimize cases where there's only one file, no
             # symlinks and any number of directories?  In the original code,
             # empty directories are not copied....
         else:

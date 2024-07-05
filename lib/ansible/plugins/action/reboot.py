@@ -134,7 +134,7 @@ class ActionModule(ActionBase):
             return args.format(delay_sec=self.pre_reboot_delay, delay_min=delay_min, message=reboot_message)
 
     def get_distribution(self, task_vars):
-        # FIXME: only execute the module if we don't already have the facts we need
+        # TEMPFIX: only execute the module if we don't already have the facts we need
         distribution = {}
         display.debug('{action}: running setup module to get distribution'.format(action=self._task.action))
         module_output = self._execute_module(

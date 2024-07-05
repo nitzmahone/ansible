@@ -444,7 +444,7 @@ class TaskQueueManager:
             is_implicit_task = False
 
             for arg in args:
-                # FIXME: add play/task cleaners
+                # TEMPFIX: add play/task cleaners
                 if isinstance(arg, TaskResult):
                     new_args.append(arg.clean_copy())
                 # elif isinstance(arg, Play):

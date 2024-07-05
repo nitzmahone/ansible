@@ -133,7 +133,7 @@ class DistributionFiles:
         # call a dedicated function for parsing the file content
         # TODO: replace with a map or a class
         try:
-            # FIXME: most of these dont actually look at the dist file contents, but random other stuff
+            # TEMPFIX: most of these dont actually look at the dist file contents, but random other stuff
             distfunc_name = 'parse_distribution_file_' + name
             distfunc = getattr(self, distfunc_name)
             parsed, dist_file_dict = distfunc(name, dist_file_content, path, collected_facts)
@@ -208,7 +208,7 @@ class DistributionFiles:
 
         return dist_file_facts
 
-    # TODO: FIXME: split distro file parsing into its own module or class
+    # TEMPFIX: split distro file parsing into its own module or class
     def parse_distribution_file_Slackware(self, name, data, path, collected_facts):
         slackware_facts = {}
         if 'Slackware' not in data:
@@ -432,7 +432,7 @@ class DistributionFiles:
 
     def parse_distribution_file_Coreos(self, name, data, path, collected_facts):
         coreos_facts = {}
-        # FIXME: pass in ro copy of facts for this kind of thing
+        # TEMPFIX: pass in ro copy of facts for this kind of thing
         distro = get_distribution()
 
         if distro.lower() == 'coreos':

@@ -55,7 +55,7 @@ class TestVaultCli(unittest.TestCase):
         self.assertRaises(SystemExit,
                           cli.parse)
 
-    # FIXME: something weird seems to be afoot when parsing actions
+    # TEMPFIX: something weird seems to be afoot when parsing actions
     # cli = VaultCLI(args=['view', '/dev/null/foo', 'mysecret3'])
     # will skip '/dev/null/foo'. something in cli.CLI.set_action() ?
     #   maybe we self.args gets modified in a loop?

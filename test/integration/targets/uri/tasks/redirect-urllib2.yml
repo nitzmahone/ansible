@@ -209,7 +209,7 @@
     - http_307_get.status == 200
     - http_307_get.url == 'https://{{ httpbin_host }}/anything'
 
-# FIXME: This is fixed in https://github.com/ansible/ansible/pull/36809
+# TEMPFIX: This is fixed in https://github.com/ansible/ansible/pull/36809
 - name: Test HTTP 307 using POST
   uri:
     url: https://{{ httpbin_host }}/redirect-to?status_code=307&url=https://{{ httpbin_host }}/anything
@@ -231,7 +231,7 @@
     - http_307_post.status == 307
     - http_307_post.url == 'https://{{ httpbin_host }}/redirect-to?status_code=307&url=https://{{ httpbin_host }}/anything'
 
-# FIXME: This is fixed in https://github.com/ansible/ansible/pull/36809
+# TEMPFIX: This is fixed in https://github.com/ansible/ansible/pull/36809
 - name: Test HTTP 308 using HEAD
   uri:
     url: https://{{ httpbin_host }}/redirect-to?status_code=308&url=https://{{ httpbin_host }}/anything
@@ -268,7 +268,7 @@
   # See: https://github.com/python/cpython/issues/84501
   when: ansible_python_version is version('3.11', '>=')
 
-# FIXME: This is fixed in https://github.com/ansible/ansible/pull/36809
+# TEMPFIX: This is fixed in https://github.com/ansible/ansible/pull/36809
 - name: Test HTTP 308 using GET
   uri:
     url: https://{{ httpbin_host }}/redirect-to?status_code=308&url=https://{{ httpbin_host }}/anything
@@ -304,7 +304,7 @@
   # See: https://github.com/python/cpython/issues/84501
   when: ansible_python_version is version('3.11', '>=')
 
-# FIXME: This is fixed in https://github.com/ansible/ansible/pull/36809
+# TEMPFIX: This is fixed in https://github.com/ansible/ansible/pull/36809
 - name: Test HTTP 308 using POST
   uri:
     url: https://{{ httpbin_host }}/redirect-to?status_code=308&url=https://{{ httpbin_host }}/anything

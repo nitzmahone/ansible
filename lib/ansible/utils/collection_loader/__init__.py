@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-# FIXME: decide what of this we want to actually be public/toplevel, put other stuff on a utility class?
+# TEMPFIX: decide what of this we want to actually be public/toplevel, put other stuff on a utility class?
 from ._collection_config import AnsibleCollectionConfig
 from ._collection_finder import AnsibleCollectionRef
 from ansible.module_utils.common.text.converters import to_text

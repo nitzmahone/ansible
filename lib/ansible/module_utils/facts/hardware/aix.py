@@ -59,7 +59,7 @@ class AIXHardware(Hardware):
         cpu_facts = {}
         cpu_facts['processor'] = []
 
-        # FIXME: not clear how to detect multi-sockets
+        # TEMPFIX: not clear how to detect multi-sockets
         cpu_facts['processor_count'] = 1
         rc, out, err = self.module.run_command(
             "/usr/sbin/lsdev -Cc processor"

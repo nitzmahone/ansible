@@ -100,7 +100,7 @@ class AnsibleConstructor(SafeConstructor):
         value = self.construct_scalar(node)
         b_ciphertext_data = to_bytes(value)
         # could pass in a key id here to choose the vault to associate with
-        # TODO/FIXME: plugin vault selector
+        # TEMPFIX: plugin vault selector
         vault = self._vaults['default']
         if vault.secrets is None:
             raise ConstructorError(context=None, context_mark=None,

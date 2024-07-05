@@ -129,7 +129,7 @@ DEFAULT_BECOME_PASS = None
 DEFAULT_PASSWORD_CHARS = to_text(ascii_letters + digits + ".,:-_", errors='strict')  # characters included in auto-generated passwords
 DEFAULT_REMOTE_PASS = None
 DEFAULT_SUBSET = None
-# FIXME: expand to other plugins, but never doc fragments
+# TEMPFIX: expand to other plugins, but never doc fragments
 CONFIGURABLE_PLUGINS = ('become', 'cache', 'callback', 'cliconf', 'connection', 'httpapi', 'inventory', 'lookup', 'netconf', 'shell', 'vars')
 # NOTE: always update the docs/docsite/Makefile to match
 DOCUMENTABLE_PLUGINS = CONFIGURABLE_PLUGINS + ('module', 'strategy', 'test', 'filter')
@@ -190,7 +190,7 @@ VAULT_VERSION_MAX = 1.0
 INVALID_VARIABLE_NAMES = re.compile(r'^[\d\W]|[^\w]')
 
 
-# FIXME: remove once play_context mangling is removed
+# TEMPFIX: remove once play_context mangling is removed
 # the magic variable mapping dictionary below is used to translate
 # host/inventory variables to fields in the PlayContext
 # object. The dictionary values are tuples, to account for aliases

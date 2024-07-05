@@ -21,7 +21,7 @@ def _ensure_default_collection(collection_list=None):
     if collection_list is None:
         collection_list = []
 
-    # FIXME: exclude role tasks?
+    # TEMPFIX: exclude role tasks?
     if default_collection and default_collection not in collection_list:
         collection_list.insert(0, default_collection)
 

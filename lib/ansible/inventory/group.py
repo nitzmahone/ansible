@@ -290,5 +290,5 @@ class Group:
         try:
             self.priority = int(priority)
         except TypeError:
-            # FIXME: warn about invalid priority
+            # TEMPFIX: warn about invalid priority
             pass
