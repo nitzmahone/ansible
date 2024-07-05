@@ -6,15 +6,12 @@
 
 from __future__ import annotations
 
-try:
-    from collections.abc import Mapping
-except ImportError:
-    from collections import Mapping  # type: ignore[no-redef,attr-defined]  # pylint: disable=ansible-bad-import-from
+from collections.abc import Mapping
 
 from ansible.module_utils.common.yaml import yaml_load
 
 
-def _meta_yml_to_dict(yaml_string_data, content_id):
+def _meta_yml_to_dict(yaml_string_data: bytes | str, content_id):
     """
     Converts string YAML dictionary to a Python dictionary. This function may be monkeypatched to another implementation
     by some tools (eg the import sanity test).

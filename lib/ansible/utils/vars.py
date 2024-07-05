@@ -20,6 +20,7 @@ from __future__ import annotations
 import keyword
 import random
 import uuid
+import typing as t
 
 from collections.abc import MutableMapping, MutableSequence
 from json import dumps
@@ -29,8 +30,10 @@ from ansible import context
 from ansible.errors import AnsibleError, AnsibleOptionsError
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text
+from ansible.module_utils.datatag import AnsibleTagHelper
+from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
 from ansible.parsing.splitter import parse_kv
-
+from ansible.parsing.dataloader import DataLoader
 
 ADDITIONAL_PY2_KEYWORDS = frozenset(("True", "False", "None"))
 
@@ -180,34 +183,33 @@ def merge_hash(x, y, recursive=True, list_merge='replace'):
     return x
 
 
-def load_extra_vars(loader):
+def load_extra_vars(loader: DataLoader) -> dict[str, t.Any]:
 
     if not getattr(load_extra_vars, 'extra_vars', None):
-        extra_vars = {}
+        extra_vars: dict[str, t.Any] = {}
         for extra_vars_opt in context.CLIARGS.get('extra_vars', tuple()):
-            data = None
             extra_vars_opt = to_text(extra_vars_opt, errors='surrogate_or_strict')
             if extra_vars_opt is None or not extra_vars_opt:
                 continue
 
             if extra_vars_opt.startswith(u"@"):
                 # Argument is a YAML file (JSON is a subset of YAML)
-                data = loader.load_from_file(extra_vars_opt[1:])
+                data = loader.load_from_file(extra_vars_opt[1:], trusted_as_template=True)
             elif extra_vars_opt[0] in [u'/', u'.']:
                 raise AnsibleOptionsError("Please prepend extra_vars filename '%s' with '@'" % extra_vars_opt)
             elif extra_vars_opt[0] in [u'[', u'{']:
                 # Arguments as YAML
-                data = loader.load(extra_vars_opt)
+                data = loader.load(extra_vars_opt, trusted_as_template=True)
             else:
                 # Arguments as Key-value
-                data = parse_kv(extra_vars_opt)
+                data = parse_kv(AnsibleTagHelper.tag(extra_vars_opt, [TrustedAsTemplate(), AnsibleSourcePosition(src='<CLI:extra-vars>')]))
 
             if isinstance(data, MutableMapping):
                 extra_vars = combine_vars(extra_vars, data)
             else:
                 raise AnsibleOptionsError("Invalid extra vars data supplied. '%s' could not be made into a dictionary" % extra_vars_opt)
 
-        setattr(load_extra_vars, 'extra_vars', extra_vars)
+        load_extra_vars.extra_vars = extra_vars
 
     return load_extra_vars.extra_vars
 

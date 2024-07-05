@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 from ansible.playbook.conditional import Conditional
-from ansible.template import Templar
+from ansible.template.templar import Templar
+from ansible.utils.datatag.tags import TrustedAsTemplate
 
 from units.mock.loader import DictDataLoader
 
@@ -17,7 +18,6 @@ def test_cond_eval():
     variables = {"foo": True}
     templar = Templar(loader=fake_loader, variables=variables)
     cond = Conditional(loader=fake_loader)
-    cond.when = ["foo"]
+    cond.when = [TrustedAsTemplate().tag("foo")]
 
-    with templar.set_temporary_context(jinja2_native=True):
-        assert cond.evaluate_conditional(templar, variables)
+    assert cond.evaluate_conditional(templar, variables)

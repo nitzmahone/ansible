@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import datetime
 import os
+import typing as t
 
 from collections import deque
 from itertools import chain
 
 from ansible.module_utils.common.collections import is_iterable
+from ansible.module_utils.datatag import AnsibleSerializable, AnsibleTagHelper
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
 from ansible.module_utils.common.warnings import warn
 from ansible.module_utils.errors import (
@@ -83,7 +85,7 @@ _ADDITIONAL_CHECKS = (
 # if adding boolean attribute, also add to PASS_BOOL
 # some of this dupes defaults from controller config
 # keep in sync with copy in lib/ansible/module_utils/csharp/Ansible.Basic.cs
-PASS_VARS = {
+PASS_VARS: dict[str, t.Any] = {
     'check_mode': ('check_mode', False),
     'debug': ('_debug', False),
     'diff': ('_diff', False),
@@ -99,6 +101,7 @@ PASS_VARS = {
     'string_conversion_action': ('_string_conversion_action', 'warn'),
     'syslog_facility': ('_syslog_facility', 'INFO'),
     'tmpdir': ('_tmpdir', None),
+    'tracebacks_for': ('_tracebacks_for', frozenset()),
     'verbosity': ('_verbosity', 0),
     'version': ('ansible_version', '0.0'),
 }
@@ -408,6 +411,8 @@ def _remove_values_conditions(value, no_log_strings, deferred_removals):
         dictionary for ``level1``, then the dict for ``level2``, and finally
         the list for ``level3``.
     """
+    original_value = value
+
     if isinstance(value, (text_type, binary_type)):
         # Need native str type
         native_str_value = value
@@ -432,31 +437,25 @@ def _remove_values_conditions(value, no_log_strings, deferred_removals):
         else:
             value = native_str_value
 
+    elif value is True or value is False or value is None:
+        return value
+
     elif isinstance(value, Sequence):
-        if isinstance(value, MutableSequence):
-            new_value = type(value)()
-        else:
-            new_value = []  # Need a mutable value
+        new_value = AnsibleTagHelper.tag_copy(original_value, [])
         deferred_removals.append((value, new_value))
-        value = new_value
+        return new_value
 
     elif isinstance(value, Set):
-        if isinstance(value, MutableSet):
-            new_value = type(value)()
-        else:
-            new_value = set()  # Need a mutable value
+        new_value = AnsibleTagHelper.tag_copy(original_value, set())
         deferred_removals.append((value, new_value))
-        value = new_value
+        return new_value
 
     elif isinstance(value, Mapping):
-        if isinstance(value, MutableMapping):
-            new_value = type(value)()
-        else:
-            new_value = {}  # Need a mutable value
+        new_value = AnsibleTagHelper.tag_copy(original_value, {})
         deferred_removals.append((value, new_value))
-        value = new_value
+        return new_value
 
-    elif isinstance(value, tuple(chain(integer_types, (float, bool, NoneType)))):
+    elif isinstance(value, (int, float)):
         stringy_value = to_native(value, encoding='utf-8', errors='surrogate_or_strict')
         if stringy_value in no_log_strings:
             return 'VALUE_SPECIFIED_IN_NO_LOG_PARAMETER'
@@ -464,10 +463,16 @@ def _remove_values_conditions(value, no_log_strings, deferred_removals):
             if omit_me in stringy_value:
                 return 'VALUE_SPECIFIED_IN_NO_LOG_PARAMETER'
 
-    elif isinstance(value, (datetime.datetime, datetime.date)):
-        value = value.isoformat()
+    elif isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        return value
+        # value = value.isoformat()  # DTFIX-MERGE: how long has this been here? what's the downside to killing it? the new serializer handles it
+    # DTFIX-MERGE: is this the right thing?
+    elif isinstance(value, AnsibleSerializable):
+        return value
     else:
         raise TypeError('Value of unknown type: %s, %s' % (type(value), value))
+
+    value = AnsibleTagHelper.tag_copy(original_value, value)
 
     return value
 
@@ -541,7 +546,7 @@ def _sanitize_keys_conditions(value, no_log_strings, ignore_keys, deferred_remov
     if isinstance(value, tuple(chain(integer_types, (float, bool, NoneType)))):
         return value
 
-    if isinstance(value, (datetime.datetime, datetime.date)):
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
         return value
 
     raise TypeError('Value of unknown type: %s, %s' % (type(value), value))
@@ -629,7 +634,7 @@ def _validate_argument_types(argument_spec, parameters, prefix='', options_conte
             elements_wanted_type = spec.get('elements', None)
             if elements_wanted_type:
                 elements = parameters[param]
-                if wanted_type != 'list' or not isinstance(elements, list):
+                if not isinstance(parameters[param], list) or not isinstance(elements, list):
                     msg = "Invalid type %s for option '%s'" % (wanted_name, elements)
                     if options_context:
                         msg += " found in '%s'." % " -> ".join(options_context)

@@ -212,8 +212,7 @@ def test_process_include_tasks_simulate_free(mock_iterator, mock_variable_manage
     assert res[1]._vars == {}
 
 
-def test_process_include_simulate_free_block_role_tasks(mock_iterator,
-                                                        mock_variable_manager):
+def test_process_include_simulate_free_block_role_tasks(mock_iterator, mock_variable_manager, collection_loader):
     """Test loading the same role returns different included files
 
     In the case of free, we may end up with included files from roles that

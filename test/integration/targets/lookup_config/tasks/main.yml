@@ -53,14 +53,17 @@
   vars:
     ansible_remote_tmp: yolo
 
+- debug:
+    var: ssh_user_and_port_and_origin
+
 - name: Verify lookup_config
   assert:
     that:
       - '"meow" in lookup("config", "ANSIBLE_COW_ACCEPTLIST")'
       - lookup_config_1 is failed
-      - '"Unable to find setting" in lookup_config_1.msg'
+      - lookup_config_1.msg is contains "Setting 'THIS_DOES_NOT_EXIST' does not exist."
       - lookup_config_2 is failed
-      - '"Unable to find setting" in lookup_config_2.msg'
+      - lookup_config_2.msg is contains "Setting 'THIS_DOES_NOT_EXIST' does not exist."
       - lookup_config_3 is success
       - 'lookup3|length == 0'
       - lookup_config_4 is success

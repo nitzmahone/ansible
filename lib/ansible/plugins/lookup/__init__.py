@@ -29,6 +29,8 @@ __all__ = ['LookupBase']
 
 
 class LookupBase(AnsiblePlugin):
+    accept_undefined_args = False
+    """Declare support for undefined top-level arguments. Plugins with `False` here will never be invoked with undefined top-level arguments."""
 
     def __init__(self, loader=None, templar=None, **kwargs):
 

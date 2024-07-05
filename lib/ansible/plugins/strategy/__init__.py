@@ -30,11 +30,9 @@ import typing as t
 from collections import deque
 from multiprocessing import Lock
 
-from jinja2.exceptions import UndefinedError
-
 from ansible import constants as C
 from ansible import context
-from ansible.errors import AnsibleError, AnsibleFileNotFound, AnsibleUndefinedVariable, AnsibleParserError
+from ansible.errors import AnsibleError, AnsibleFileNotFound, AnsibleParserError, AnsibleTemplateError
 from ansible.executor import action_write_locks
 from ansible.executor.play_iterator import IteratingStates, PlayIterator
 from ansible.executor.process.worker import WorkerProcess
@@ -49,10 +47,9 @@ from ansible.playbook.helpers import load_list_of_blocks
 from ansible.playbook.task import Task
 from ansible.playbook.task_include import TaskInclude
 from ansible.plugins import loader as plugin_loader
-from ansible.template import Templar
+from ansible.template.templar import Templar
 from ansible.utils.display import Display
 from ansible.utils.fqcn import add_internal_fqcns
-from ansible.utils.unsafe_proxy import wrap_var
 from ansible.utils.sentinel import Sentinel
 from ansible.utils.vars import combine_vars, isidentifier
 from ansible.vars.clean import strip_internal_keys, module_response_deepcopy
@@ -288,7 +285,7 @@ class StrategyBase:
         if not refresh and all((self._hosts_cache, self._hosts_cache_all)):
             return
 
-        if not play.finalized and Templar(None).is_template(play.hosts):
+        if not play.finalized and Templar().is_template(play.hosts):
             _pattern = 'all'
         else:
             _pattern = play.hosts or 'all'
@@ -372,8 +369,8 @@ class StrategyBase:
 
         try:
             throttle = int(templar.template(task.throttle))
-        except Exception as e:
-            raise AnsibleError("Failed to convert the throttle value to an integer.", obj=task._ds, orig_exc=e)
+        except Exception as ex:
+            raise AnsibleError("Failed to convert the throttle value to an integer.", obj=task.throttle) from ex
 
         # and then queue the new task
         try:
@@ -507,34 +504,38 @@ class StrategyBase:
         return task_result
 
     def search_handlers_by_notification(self, notification: str, iterator: PlayIterator) -> t.Generator[Handler, None, None]:
-        templar = Templar(None)
         handlers = [h for b in reversed(iterator._play.handlers) for h in b.block]
         # iterate in reversed order since last handler loaded with the same name wins
         for handler in handlers:
             if not handler.name:
                 continue
+
             if not handler.cached_name:
-                if templar.is_template(handler.name):
-                    templar.available_variables = self._variable_manager.get_vars(
+                def variables_factory() -> dict[str, t.Any]:
+                    return self._variable_manager.get_vars(
                         play=iterator._play,
                         task=handler,
                         _hosts=self._hosts_cache,
                         _hosts_all=self._hosts_cache_all
                     )
-                    try:
-                        handler.name = templar.template(handler.name)
-                    except (UndefinedError, AnsibleUndefinedVariable) as e:
-                        # We skip this handler due to the fact that it may be using
-                        # a variable in the name that was conditionally included via
-                        # set_fact or some other method, and we don't want to error
-                        # out unnecessarily
-                        if not handler.listen:
-                            display.warning(
-                                "Handler '%s' is unusable because it has no listen topics and "
-                                "the name could not be templated (host-specific variables are "
-                                "not supported in handler names). The error: %s" % (handler.name, to_text(e))
-                            )
-                        continue
+
+                templar = Templar(variables_factory=variables_factory)
+
+                try:
+                    handler.name = templar.template(handler.name)
+                except AnsibleTemplateError as e:
+                    # We skip this handler due to the fact that it may be using
+                    # a variable in the name that was conditionally included via
+                    # set_fact or some other method, and we don't want to error
+                    # out unnecessarily
+                    if not handler.listen:
+                        display.warning(
+                            "Handler '%s' is unusable because it has no listen topics and "
+                            "the name could not be templated (host-specific variables are "
+                            "not supported in handler names). The error: %s" % (handler.name, to_text(e))
+                        )
+                    continue
+
                 handler.cached_name = True
 
             # first we check with the full result of get_name(), which may
@@ -608,7 +609,7 @@ class StrategyBase:
                         self._variable_manager.set_nonpersistent_facts(
                             original_host.name,
                             dict(
-                                ansible_failed_task=wrap_var(original_task.serialize()),
+                                ansible_failed_task=original_task.serialize(),
                                 ansible_failed_result=task_result._result,
                             ),
                         )
@@ -691,7 +692,7 @@ class StrategyBase:
                             all_task_vars = combine_vars(found_task_vars, item_vars)
                         else:
                             all_task_vars = found_task_vars
-                        all_task_vars[original_task.register] = wrap_var(result_item)
+                        all_task_vars[original_task.register] = result_item
                         post_process_whens(result_item, original_task, Templar(self._loader), all_task_vars)
                         if original_task.loop or original_task.loop_with:
                             new_item_result = TaskResult(
@@ -768,7 +769,8 @@ class StrategyBase:
             if original_task.register:
 
                 if not isidentifier(original_task.register):
-                    raise AnsibleError("Invalid variable name in 'register' specified: '%s'" % original_task.register)
+                    # FIXME: this is duplicated in task_executor
+                    raise AnsibleError("Invalid variable name in 'register' specified.", obj=original_task.register)
 
                 host_list = self.get_task_hosts(iterator, original_host, original_task)
 
@@ -855,7 +857,7 @@ class StrategyBase:
             )
         display.debug("loading included file: %s" % included_file._filename)
         try:
-            data = self._loader.load_from_file(included_file._filename)
+            data = self._loader.load_from_file(included_file._filename, trusted_as_template=True)
             if data is None:
                 return []
             elif not isinstance(data, list):
@@ -1185,7 +1187,7 @@ class Debugger(cmd.Cmd):
 
     def do_update_task(self, args):
         """Recreate the task from ``task._ds``, and template with updated ``task_vars``"""
-        templar = Templar(None, variables=self.scope['task_vars'])
+        templar = Templar(variables=self.scope['task_vars'])
         task = self.scope['task']
         task = task.load_data(task._ds)
         task.post_validate(templar)

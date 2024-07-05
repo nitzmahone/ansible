@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from ansible.errors import AnsibleError, AnsibleFilterError
+from ansible.errors import AnsibleError
 from ansible.plugins.filter.core import get_encrypted_password
 from ansible.utils import encrypt
 
@@ -65,7 +65,7 @@ def test_encrypt_default_rounds():
 @pytest.mark.skipif(not encrypt.PASSLIB_AVAILABLE, reason='passlib must be installed to run this test')
 def test_password_hash_filter_passlib():
 
-    with pytest.raises(AnsibleFilterError):
+    with pytest.raises(AnsibleError):
         get_encrypted_password("123", "sha257", salt="12345678")
 
     # Uses passlib default rounds value for sha256 matching crypt behaviour

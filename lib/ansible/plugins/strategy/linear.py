@@ -30,14 +30,14 @@ DOCUMENTATION = '''
 '''
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleAssertionError, AnsibleParserError
-from ansible.module_utils.common.text.converters import to_text
+from ansible.errors import AnsibleError, AnsibleAssertionError, AnsibleParserError, AnsibleTemplateError, AnsibleValueOmittedError
 from ansible.playbook.handler import Handler
 from ansible.playbook.included_file import IncludedFile
 from ansible.playbook.task import Task
 from ansible.plugins.loader import action_loader
 from ansible.plugins.strategy import StrategyBase
-from ansible.template import Templar
+from ansible.template.templar import Templar, TemplateOptions, as_non_templatable_text
+from ansible.template.undefined_behaviors import ReplaceUndefined
 from ansible.utils.display import Display
 
 display = Display()
@@ -142,6 +142,8 @@ class StrategyModule(StrategyBase):
                     run_once = False
                     work_to_do = True
 
+                    host_name = host.get_name()
+
                     # check to see if this task should be skipped, due to it being a member of a
                     # role which has already run (and whether that role allows duplicate execution)
                     if not isinstance(task, Handler) and task._role:
@@ -161,7 +163,10 @@ class StrategyModule(StrategyBase):
                     # sets BYPASS_HOST_LOOP to true, or if it has run_once enabled. If so, we
                     # will only send this task to the first host in the list.
 
-                    task_action = templar.template(task.action)
+                    try:
+                        task_action = templar.template(task.action)
+                    except AnsibleValueOmittedError:
+                        raise AnsibleParserError("Omit is not valid for the `action` keyword.", obj=task.action) from None
 
                     try:
                         action = action_loader.get(task_action, class_only=True, collection_list=task.collections)
@@ -188,22 +193,26 @@ class StrategyModule(StrategyBase):
                                 break
 
                         run_once = action and getattr(action, 'BYPASS_HOST_LOOP', False) or templar.template(task.run_once)
-                        try:
-                            task.name = to_text(templar.template(task.name, fail_on_undefined=False), nonstring='empty')
-                        except Exception as e:
-                            display.debug(f"Failed to templalte task name ({task.name}), ignoring error and continuing: {e}")
 
                         if (task.any_errors_fatal or run_once) and not task.ignore_errors:
                             any_errors_fatal = True
 
                         if not callback_sent:
+                            try:
+                                with ReplaceUndefined.warning_context() as replace_undefined:
+                                    task.name = as_non_templatable_text(
+                                        templar.template(task.name, options=TemplateOptions(undefined_behavior=replace_undefined)))
+                            except AnsibleTemplateError as ex:
+                                display.warning(f'Templating task name {task.name!r} failed: {ex}')
+                                display.debug(f'Templating task name {task.name!r} failed: {ex}', host=host_name)
+
                             if isinstance(task, Handler):
                                 self._tqm.send_callback('v2_playbook_on_handler_task_start', task)
                             else:
                                 self._tqm.send_callback('v2_playbook_on_task_start', task, is_conditional=False)
                             callback_sent = True
 
-                        self._blocked_hosts[host.get_name()] = True
+                        self._blocked_hosts[host_name] = True
                         self._queue_task(host, task, task_vars, play_context)
                         del task_vars
 
@@ -295,11 +304,12 @@ class StrategyModule(StrategyBase):
                             display.debug("done iterating over new_blocks loaded from include file")
                         except AnsibleParserError:
                             raise
-                        except AnsibleError as e:
-                            display.error(to_text(e), wrap_text=False)
+                        except AnsibleError as ex:
+                            # FIXME: send the error to the callback; don't directly write to display here
+                            display.error(ex)
                             for r in included_file._results:
                                 r._result['failed'] = True
-                                r._result['reason'] = str(e)
+                                r._result['reason'] = str(ex)
                                 self._tqm._stats.increment('failures', r._host.name)
                                 self._tqm.send_callback('v2_runner_on_failed', r)
                                 failed_includes_hosts.add(r._host)

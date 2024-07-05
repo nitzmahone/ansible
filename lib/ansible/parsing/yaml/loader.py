@@ -19,14 +19,16 @@ from __future__ import annotations
 
 from yaml.resolver import Resolver
 
+from ansible.module_utils.datatag import AnsibleTagHelper
 from ansible.parsing.yaml.constructor import AnsibleConstructor
 from ansible.module_utils.common.yaml import HAS_LIBYAML, Parser
 
 if HAS_LIBYAML:
     class AnsibleLoader(Parser, AnsibleConstructor, Resolver):  # type: ignore[misc] # pylint: disable=inconsistent-mro
-        def __init__(self, stream, file_name=None, vault_secrets=None):
+        def __init__(self, stream, file_name=None, vault_secrets=None, trusted_as_template=False):
+            stream = AnsibleTagHelper.as_untagged_type(stream)  # PyYAML + libyaml barfs on str subclasses
             Parser.__init__(self, stream)
-            AnsibleConstructor.__init__(self, file_name=file_name, vault_secrets=vault_secrets)
+            AnsibleConstructor.__init__(self, file_name=file_name, vault_secrets=vault_secrets, trusted_as_template=trusted_as_template)
             Resolver.__init__(self)
 else:
     from yaml.composer import Composer
@@ -34,10 +36,10 @@ else:
     from yaml.scanner import Scanner
 
     class AnsibleLoader(Reader, Scanner, Parser, Composer, AnsibleConstructor, Resolver):  # type: ignore[misc,no-redef]  # pylint: disable=inconsistent-mro
-        def __init__(self, stream, file_name=None, vault_secrets=None):
+        def __init__(self, stream, file_name=None, vault_secrets=None, trusted_as_template=False):
             Reader.__init__(self, stream)
             Scanner.__init__(self)
             Parser.__init__(self)
             Composer.__init__(self)
-            AnsibleConstructor.__init__(self, file_name=file_name, vault_secrets=vault_secrets)
+            AnsibleConstructor.__init__(self, file_name=file_name, vault_secrets=vault_secrets, trusted_as_template=trusted_as_template)
             Resolver.__init__(self)

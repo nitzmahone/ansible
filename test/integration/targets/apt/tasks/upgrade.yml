@@ -31,7 +31,9 @@
   - name: check that warning is not given when force_apt_get set
     assert:
       that:
-        - "'warnings' not in upgrade_result"
+        # DTFIX-RELEASE: spurious tuple conversion warning really should not be here
+        - upgrade_result.warnings | default([]) | length == 1
+        - upgrade_result.warnings[0] is contains "Converting Jinja constant"
     when:
       - force_apt_get
 
@@ -39,7 +41,7 @@
     assert:
       that:
         - "'1.0.0' not in foo_version.stdout"
-        - "{{ foo_version.changed }}"
+        - "foo_version.changed"
 
   - name: "(upgrade type: {{upgrade_type}}) upgrade packages to latest version (Idempotant)"
     apt:

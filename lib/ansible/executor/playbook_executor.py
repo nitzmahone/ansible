@@ -26,7 +26,7 @@ from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.plugins.loader import become_loader, connection_loader, shell_loader
 from ansible.playbook import Playbook
-from ansible.template import Templar
+from ansible.template.templar import Templar
 from ansible.utils.helpers import pct_to_int
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.collection_loader._collection_finder import _get_collection_name_from_path, _get_collection_playbook_path
@@ -133,6 +133,8 @@ class PlaybookExecutor:
                     # Allow variables to be used in vars_prompt fields.
                     all_vars = self._variable_manager.get_vars(play=play)
                     templar = Templar(loader=self._loader, variables=all_vars)
+                    # DTFIX-MERGE: this does not properly handle omit, undefined, or dynamic structure from templated `vars_prompt` ;
+                    #        templating should be done earlier
                     setattr(play, 'vars_prompt', templar.template(play.vars_prompt))
 
                     # FIXME: this should be a play 'sub object' like loop_control

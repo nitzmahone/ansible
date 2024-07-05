@@ -10,10 +10,11 @@ import datetime
 
 import pytest
 
-from ansible.module_utils.common import warnings
 
 EMPTY_INVOCATION = {u'module_args': {}}
 DATETIME = datetime.datetime.strptime('2020-07-13 12:50:00', '%Y-%m-%d %H:%M:%S')
+
+pytestmark = pytest.mark.usefixtures("module_env_mocker")
 
 
 class TestAnsibleModuleExitJson:
@@ -34,9 +35,7 @@ class TestAnsibleModuleExitJson:
     )
 
     @pytest.mark.parametrize('args, expected, stdin', ((a, e, {}) for a, e in DATA), indirect=['stdin'])
-    def test_exit_json_exits(self, am, capfd, args, expected, monkeypatch):
-        monkeypatch.setattr(warnings, '_global_deprecations', [])
-
+    def test_exit_json_exits(self, am, capfd, args, expected):
         with pytest.raises(SystemExit) as ctx:
             am.exit_json(**args)
         assert ctx.value.code == 0
@@ -48,9 +47,7 @@ class TestAnsibleModuleExitJson:
     @pytest.mark.parametrize('args, expected, stdin',
                              ((a, e, {}) for a, e in DATA if 'msg' in a),
                              indirect=['stdin'])
-    def test_fail_json_exits(self, am, capfd, args, expected, monkeypatch):
-        monkeypatch.setattr(warnings, '_global_deprecations', [])
-
+    def test_fail_json_exits(self, am, capfd, args, expected):
         with pytest.raises(SystemExit) as ctx:
             am.fail_json(**args)
         assert ctx.value.code == 1
@@ -62,9 +59,7 @@ class TestAnsibleModuleExitJson:
         assert return_val == expected
 
     @pytest.mark.parametrize('stdin', [{}], indirect=['stdin'])
-    def test_fail_json_msg_positional(self, am, capfd, monkeypatch):
-        monkeypatch.setattr(warnings, '_global_deprecations', [])
-
+    def test_fail_json_msg_positional(self, am, capfd):
         with pytest.raises(SystemExit) as ctx:
             am.fail_json('This is the msg')
         assert ctx.value.code == 1
@@ -76,10 +71,8 @@ class TestAnsibleModuleExitJson:
                               'invocation': EMPTY_INVOCATION}
 
     @pytest.mark.parametrize('stdin', [{}], indirect=['stdin'])
-    def test_fail_json_msg_as_kwarg_after(self, am, capfd, monkeypatch):
+    def test_fail_json_msg_as_kwarg_after(self, am, capfd):
         """Test that msg as a kwarg after other kwargs works"""
-        monkeypatch.setattr(warnings, '_global_deprecations', [])
-
         with pytest.raises(SystemExit) as ctx:
             am.fail_json(arbitrary=42, msg='This is the msg')
         assert ctx.value.code == 1
@@ -141,8 +134,7 @@ class TestAnsibleModuleExitValuesRemoved:
                              (({'username': {}, 'password': {'no_log': True}, 'token': {'no_log': True}}, s, r, e)
                               for s, r, e in DATA),
                              indirect=['am', 'stdin'])
-    def test_exit_json_removes_values(self, am, capfd, return_val, expected, monkeypatch):
-        monkeypatch.setattr(warnings, '_global_deprecations', [])
+    def test_exit_json_removes_values(self, am, capfd, return_val, expected):
         with pytest.raises(SystemExit):
             am.exit_json(**return_val)
         out, err = capfd.readouterr()
@@ -153,8 +145,7 @@ class TestAnsibleModuleExitValuesRemoved:
                              (({'username': {}, 'password': {'no_log': True}, 'token': {'no_log': True}}, s, r, e)
                               for s, r, e in DATA),
                              indirect=['am', 'stdin'])
-    def test_fail_json_removes_values(self, am, capfd, return_val, expected, monkeypatch):
-        monkeypatch.setattr(warnings, '_global_deprecations', [])
+    def test_fail_json_removes_values(self, am, capfd, return_val, expected):
         expected['failed'] = True
         with pytest.raises(SystemExit):
             am.fail_json(**return_val) == expected

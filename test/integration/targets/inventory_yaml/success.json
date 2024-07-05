@@ -28,14 +28,15 @@
                 "in_trouble": true, 
                 "popular": false
             }
-        }
-    }, 
+        },
+        "profile": "legacy_inventory"
+    },
     "all": {
         "children": [
-            "cousins", 
-            "kids", 
-            "the-maid", 
-            "ungrouped"
+            "ungrouped",
+            "kids",
+            "cousins",
+            "the-maid"
         ]
     }, 
     "cousins": {
@@ -45,12 +46,12 @@
     }, 
     "kids": {
         "hosts": [
-            "bobby", 
-            "cindy", 
-            "greg", 
-            "jan", 
-            "marcia", 
-            "peter"
+            "marcia",
+            "jan",
+            "cindy",
+            "greg",
+            "peter",
+            "bobby"
         ]
     }, 
     "the-maid": {

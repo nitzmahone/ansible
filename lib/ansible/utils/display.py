@@ -17,6 +17,9 @@
 
 from __future__ import annotations
 
+import datetime
+
+
 try:
     import curses
 except ImportError:
@@ -47,13 +50,17 @@ from functools import wraps
 from struct import unpack, pack
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleAssertionError, AnsiblePromptInterrupt, AnsiblePromptNoninteractive
+from ansible.errors import AnsibleAssertionError, AnsiblePromptInterrupt, AnsiblePromptNoninteractive
+from ansible.errors.utils import SourceContext, _collapse_error_chain, _create_error_detail, _dedupe_and_concat_message_chain
+from ansible.module_utils._internal import _ambient_context
 from ansible.module_utils.common.text.converters import to_bytes, to_text
+from ansible.utils.datatag.tags import TrustedAsTemplate, NotATemplate
+from ansible.module_utils.common.messages import DeprecationMessageDetail, WarningMessageDetail, ErrorDetail, MessageBase, ErrorMessage
 from ansible.module_utils.six import text_type
+from ansible.module_utils._internal import _traceback
 from ansible.utils.color import stringc
 from ansible.utils.multiprocessing import context as multiprocessing_context
 from ansible.utils.singleton import Singleton
-from ansible.utils.unsafe_proxy import wrap_var
 
 if t.TYPE_CHECKING:
     # avoid circular import at runtime
@@ -71,6 +78,22 @@ _MAX_INT = 2 ** (ctypes.sizeof(ctypes.c_int) * 8 - 1) - 1
 
 MOVE_TO_BOL = b'\r'
 CLEAR_TO_EOL = b'\x1b[K'
+
+
+def _is_controller_traceback_enabled(event: _traceback.TracebackEvent) -> bool:
+    """Controller utility function to determine if traceback collection is enabled for the specified event."""
+    flag_values = set(value for value in C.config.get_config_value('DISPLAY_TRACEBACK'))
+
+    if 'always' in flag_values:
+        return True
+
+    if 'never' in flag_values:
+        return False
+
+    return event.name.lower() in flag_values
+
+
+_traceback._is_traceback_enabled = _is_controller_traceback_enabled
 
 
 def get_text_width(text: str) -> int:
@@ -277,14 +300,15 @@ class Display(metaclass=Singleton):
             self.log_verbosity = max(verbosity, C.LOG_VERBOSITY)
 
         # list of all deprecation messages to prevent duplicate display
-        self._deprecations: dict[str, int] = {}
-        self._warns: dict[str, int] = {}
-        self._errors: dict[str, int] = {}
+        self._deprecations: set[str] = set()
+        self._warns: set[str] = set()
+        self._errors: set[str] = set()
 
         self.b_cowsay: bytes | None = None
         self.noncow = C.ANSIBLE_COW_SELECTION
 
         self.set_cowsay_info()
+        self._wrap_stderr = C.WRAP_STDERR
 
         if self.b_cowsay:
             try:
@@ -318,12 +342,9 @@ class Display(metaclass=Singleton):
         self.setup_curses = False
 
     def _replacing_warning_handler(self, exception: UnicodeError) -> tuple[str | bytes, int]:
-        # TODO: This should probably be deferred until after the current display is completed
-        #       this will require some amount of new functionality
-        self.deprecated(
-            'Non UTF-8 encoded data replaced with "?" while displaying text to stdout/stderr, this is temporary and will become an error',
-            version='2.18',
-        )
+        # This can't be removed as long as we have the possibility of encountering un-renderable strings
+        # created with `surrogateescape`; the alternative of having display methods hard fail is untenable.
+        self.warning('Non UTF-8 encoded data replaced with "?" while displaying text to stdout/stderr.')
         return '?', exception.end
 
     def set_queue(self, queue: FinalQueue) -> None:
@@ -514,16 +535,17 @@ class Display(metaclass=Singleton):
         else:
             self.display("%6d %0.5f [%s]: %s" % (os.getpid(), time.time(), host, msg), color=C.COLOR_DEBUG)
 
+    @staticmethod
     def get_deprecation_message(
-        self,
         msg: str,
         version: str | None = None,
         removed: bool = False,
-        date: str | None = None,
+        date: str | datetime.date | None = None,
         collection_name: str | None = None,
     ) -> str:
-        ''' used to print out a deprecation message.'''
+        """Return a deprecation message and help text for display."""
         msg = msg.strip()
+
         if msg and msg[-1] not in ['!', '?', '.']:
             msg += '.'
 
@@ -537,8 +559,7 @@ class Display(metaclass=Singleton):
         else:
             header = '[DEPRECATION WARNING]: {0}'.format(msg)
             removal_fragment = 'This feature will be removed'
-            # FUTURE: make this a standalone warning so it only shows up once?
-            help_text = 'Deprecation warnings can be disabled by setting deprecation_warnings=False in ansible.cfg.'
+            help_text = ''
 
         if collection_name:
             from_fragment = 'from {0}'.format(collection_name)
@@ -556,43 +577,137 @@ class Display(metaclass=Singleton):
 
         return message_text
 
-    @_proxy
+    def _wrap_message(self, msg: str, wrap_text: bool) -> str:
+        if wrap_text and self._wrap_stderr:
+            wrapped = textwrap.wrap(msg, self.columns, drop_whitespace=False)
+            msg = "\n".join(wrapped) + "\n"
+
+        return msg
+
+    @staticmethod
+    def _deduplicate(msg: str, messages: set[str]) -> bool:
+        """
+        Return True if the given message was previously seen, otherwise record the message as seen and return False.
+        This is done very late (at display-time) to avoid loss of attribution of messages to individual tasks.
+        Duplicates included in task results will always be visible to registered variables and callbacks.
+        """
+
+        if msg in messages:
+            return True
+
+        messages.add(msg)
+
+        return False
+
     def deprecated(
         self,
         msg: str,
         version: str | None = None,
-        removed: bool = False,
-        date: str | None = None,
+        date: str | datetime.date | None = None,
         collection_name: str | None = None,
+        *,
+        help_text: str | None = None,
+        obj: t.Any = None,
     ) -> None:
-        if not removed and not C.DEPRECATION_WARNINGS:
+        """Display a deprecation warning message, if enabled."""
+
+        msg = NotATemplate().tag(msg)  # avoid templates in deprecation messages triggering untrusted template warnings
+
+        # This is the pre-proxy half of the `deprecated` implementation.
+        # Any logic that must occur on workers needs to be implemented here.
+
+        if not _DeferredWarningContext.deprecation_warnings_enabled():
             return
 
-        message_text = self.get_deprecation_message(msg, version=version, removed=removed, date=date, collection_name=collection_name)
+        self.warning('Deprecation warnings can be disabled by setting `deprecation_warnings=False` in ansible.cfg.')
 
-        if removed:
-            raise AnsibleError(message_text)
+        if source_context := SourceContext.from_value(obj):
+            formatted_source_context = str(source_context)
+        else:
+            formatted_source_context = None
 
-        wrapped = textwrap.wrap(message_text, self.columns, drop_whitespace=False)
-        message_text = "\n".join(wrapped) + "\n"
+        deprecation = DeprecationMessageDetail(
+            msg=msg,
+            help_text=help_text,
+            version=version,
+            date=str(date) if isinstance(date, datetime.date) else date,
+            collection_name=collection_name,
+            formatted_source_context=formatted_source_context,
+            formatted_traceback=_traceback.maybe_capture_traceback(_traceback.TracebackEvent.DEPRECATED),
+        )
 
-        if message_text not in self._deprecations:
-            self.display(message_text.strip(), color=C.COLOR_DEPRECATE, stderr=True)
-            self._deprecations[message_text] = 1
+        if warning_ctx := _DeferredWarningContext.current(optional=True):
+            warning_ctx.capture(deprecation)
+            return
+
+        self._deprecated(deprecation)
 
     @_proxy
-    def warning(self, msg: str, formatted: bool = False) -> None:
+    def _deprecated(self, warning: DeprecationMessageDetail) -> None:
+        """Internal implementation detail, use `deprecated` instead."""
 
-        if not formatted:
-            new_msg = "[WARNING]: %s" % msg
-            wrapped = textwrap.wrap(new_msg, self.columns)
-            new_msg = "\n".join(wrapped) + "\n"
+        # This is the post-proxy half of the `deprecated` implementation.
+        # Any logic that must occur in the primary controller process needs to be implemented here.
+
+        msg = format_message(warning)  # we're not prefixing `[DEPRECATION...` since get_deprecation_message does
+
+        # DTFIX-MERGE: ?
+        msg = self._wrap_message(msg=msg, wrap_text=True)
+
+        if self._deduplicate(msg, self._deprecations):
+            return
+
+        self.display(msg, color=C.config.get_config_value('COLOR_DEPRECATE'), stderr=True)
+
+    def warning(
+        self,
+        msg: str,
+        formatted: bool = False,
+        *,
+        help_text: str | None = None,
+        obj: t.Any = None
+    ) -> None:
+        """Display a warning message."""
+
+        # This is the pre-proxy half of the `warning` implementation.
+        # Any logic that must occur on workers needs to be implemented here.
+
+        if source_context := SourceContext.from_value(obj):
+            formatted_source_context = str(source_context)
         else:
-            new_msg = "\n[WARNING]: \n%s" % msg
+            formatted_source_context = None
 
-        if new_msg not in self._warns:
-            self.display(new_msg, color=C.COLOR_WARN, stderr=True)
-            self._warns[new_msg] = 1
+        warning = WarningMessageDetail(
+            msg=msg,
+            help_text=help_text,
+            formatted_source_context=formatted_source_context,
+            formatted_traceback=_traceback.maybe_capture_traceback(_traceback.TracebackEvent.WARNING),
+        )
+
+        if warning_ctx := _DeferredWarningContext.current(optional=True):
+            warning_ctx.capture(warning)
+            # DTFIX-MERGE: what to do about propagating wrap_text?
+            return
+
+        self._warning(warning, wrap_text=not formatted)
+
+    @_proxy
+    def _warning(self, warning: WarningMessageDetail | ErrorDetail, wrap_text: bool) -> None:
+        """Internal implementation detail, use `warning` instead."""
+
+        # This is the post-proxy half of the `warning` implementation.
+        # Any logic that must occur in the primary controller process needs to be implemented here.
+
+        msg = format_message(warning)
+        msg = f"[WARNING]: {msg}"
+
+        if self._deduplicate(msg, self._warns):
+            return
+
+        # DTFIX-MERGE: errr?
+        msg = self._wrap_message(msg=msg, wrap_text=wrap_text)
+
+        self.display(msg, color=C.config.get_config_value('COLOR_WARN'), stderr=True)
 
     @_proxy
     def system_warning(self, msg: str) -> None:
@@ -641,17 +756,45 @@ class Display(metaclass=Singleton):
         (out, err) = cmd.communicate()
         self.display(u"%s\n" % to_text(out), color=color)
 
-    @_proxy
-    def error(self, msg: str, wrap_text: bool = True) -> None:
-        if wrap_text:
-            new_msg = u"\n[ERROR]: %s" % msg
-            wrapped = textwrap.wrap(new_msg, self.columns)
-            new_msg = u"\n".join(wrapped) + u"\n"
+    def error_as_warning(self, msg: str, exception: BaseException) -> None:
+        """Display an exception as a warning."""
+
+        warning = _create_error_detail(exception, _traceback.TracebackEvent.WARNING)
+        warning.errors.insert(0, ErrorMessage(msg=msg))
+
+        self._warning(warning, wrap_text=False)
+
+    def error(self, msg: str | BaseException, wrap_text: bool = True, stderr: bool = True) -> None:
+        """Display an error message."""
+
+        # This is the pre-proxy half of the `error` implementation.
+        # Any logic that must occur on workers needs to be implemented here.
+
+        if isinstance(msg, BaseException):
+            error = _create_error_detail(msg, _traceback.TracebackEvent.ERROR)
+            wrap_text = False
         else:
-            new_msg = u"ERROR! %s" % msg
-        if new_msg not in self._errors:
-            self.display(new_msg, color=C.COLOR_ERROR, stderr=True)
-            self._errors[new_msg] = 1
+            error = ErrorDetail(errors=[ErrorMessage(msg=msg)], formatted_traceback=_traceback.maybe_capture_traceback(_traceback.TracebackEvent.ERROR))
+
+        self._error(error, wrap_text=wrap_text, stderr=stderr)
+
+    @_proxy
+    def _error(self, error: ErrorDetail, wrap_text: bool, stderr: bool) -> None:
+        """Internal implementation detail, use `error` instead."""
+
+        # This is the post-proxy half of the `error` implementation.
+        # Any logic that must occur in the primary controller process needs to be implemented here.
+
+        msg = format_message(error)
+        msg = f'[ERROR]: {msg}'
+
+        if self._deduplicate(msg, self._errors):
+            return
+
+        # DTFIX-MERGE: errr?
+        msg = self._wrap_message(msg=msg, wrap_text=wrap_text)
+
+        self.display(msg, color=C.config.get_config_value('COLOR_ERROR'), stderr=stderr)
 
     @staticmethod
     def prompt(msg: str, private: bool = False) -> str:
@@ -710,7 +853,10 @@ class Display(metaclass=Singleton):
         result = to_text(result, errors='surrogate_or_strict')
 
         if unsafe:
-            result = wrap_var(result)
+            result = NotATemplate().tag(result)
+        else:
+            # to maintain backward compatibility, assume these values are safe to template
+            result = TrustedAsTemplate().tag(result)
         return result
 
     def _set_column_width(self) -> None:
@@ -859,3 +1005,141 @@ class Display(metaclass=Singleton):
             return self._stdout.fileno()
         except (ValueError, AttributeError):
             return None
+
+
+_display = Display()
+
+
+class _DeferredWarningContext(_ambient_context.AmbientContextBase):
+    """
+    Calls to `Display.warning()` and `Display.deprecated()` within this context will cause the resulting warnings to be captured and not displayed.
+    The intended use is for task-initiated warnings to be recorded with the task result, which makes them visible to registered results, callbacks, etc.
+    The active display callback is responsible for communicating any warnings to the user.
+    """
+
+    # DTFIX-FUTURE: once we start implementing nested scoped contexts for our own bookkeeping, this should be an interface facade that forwards to the nearest
+    #               context that actually implements the warnings collection capability
+
+    def __init__(self, *, variables: dict[str, object]) -> None:
+        self._variables = variables  # DTFIX-FUTURE: move this to an AmbientContext-derived TaskContext (once it exists)
+        self._deprecation_warnings: list[DeprecationMessageDetail] = []
+        self._warnings: list[WarningMessageDetail] = []
+        self._seen: set[WarningMessageDetail] = set()
+
+    @classmethod
+    def deprecation_warnings_enabled(cls) -> bool:
+        """Return True if deprecation warnings are enabled for the current calling context, otherwise False."""
+        # DTFIX-FUTURE: move this capability into config using an AmbientContext-derived TaskContext (once it exists)
+        if warning_ctx := cls.current(optional=True):
+            variables = warning_ctx._variables
+        else:
+            variables = None
+
+        return C.config.get_config_value('DEPRECATION_WARNINGS', variables=variables)
+
+    def capture(self, warning_detail: WarningMessageDetail):
+        """Add the warning/deprecation to the context if it has not already been seen by this context."""
+        if warning_detail in self._seen:
+            return
+
+        self._seen.add(warning_detail)
+
+        if isinstance(warning_detail, DeprecationMessageDetail):
+            self._deprecation_warnings.append(warning_detail)
+        else:
+            self._warnings.append(warning_detail)
+
+    def get_warnings(self) -> list[WarningMessageDetail]:
+        """Return a list of the captured non-deprecation warnings."""
+        # DTFIX-FUTURE: return a read-only list proxy instead
+        return self._warnings
+
+    def get_deprecation_warnings(self) -> list[DeprecationMessageDetail]:
+        """Return a list of the captured deprecation warnings."""
+        # DTFIX-FUTURE: return a read-only list proxy instead
+        return self._deprecation_warnings
+
+
+def _format_error_chain(error_chain: t.Sequence[MessageBase], formatted_tb: str | None = None) -> str:
+
+    error_chain = _collapse_error_chain(error_chain)
+
+    message_lines: list[str] = []
+
+    if len(error_chain) > 1:
+        message_lines.append(_dedupe_and_concat_message_chain([md.msg for md in error_chain]))
+        message_lines.append('')
+
+    for idx, edc in enumerate(error_chain):
+        if idx:
+            message_lines.extend((
+                '',
+                '<<< caused by >>>',
+                '',
+            ))
+
+        message_lines.extend(_get_message_lines(edc.msg, edc.help_text, edc.formatted_source_context))
+
+    message_lines = [f'{line}\n' for line in message_lines]
+
+    if formatted_tb:
+        message_lines.append('\n')
+        message_lines.append(formatted_tb)
+
+    msg = "".join(message_lines).strip()
+
+    if '\n' in msg:
+        msg += '\n\n'
+    else:
+        msg += '\n'
+
+    return msg
+
+
+def _get_message_lines(message: str, help_text: str | None, formatted_source_context: str | None) -> list[str]:
+    """Return a list of error/warning message lines constructed from the given message, help text and source context."""
+
+    # DTFIX-MERGE: do we want to collapse these cases?
+    # if help_text and not formatted_source_context and '\n' not in message and '\n' not in help_text:
+    #     return [f'{message} {help_text}']  # prefer a single-line message with help text when there is no source context
+
+    message_lines = [message]
+
+    if formatted_source_context:
+        message_lines.append(formatted_source_context)
+
+    if help_text:
+        message_lines.append('')
+        message_lines.append(help_text)
+
+    return message_lines
+
+
+def format_message(message_detail: WarningMessageDetail | DeprecationMessageDetail | ErrorDetail) -> str:
+    details: t.Sequence[MessageBase]
+    formatted_traceback: str
+
+    match message_detail:
+        case DeprecationMessageDetail():
+            message_detail = WarningMessageDetail(
+                msg=_display.get_deprecation_message(
+                    msg=message_detail.msg,
+                    version=message_detail.version,
+                    date=message_detail.date,
+                    collection_name=message_detail.collection_name),
+                formatted_source_context=message_detail.formatted_source_context,
+                help_text=message_detail.help_text,
+                formatted_traceback=message_detail.formatted_traceback,
+            )
+
+    match message_detail:
+        case WarningMessageDetail():
+            details = [message_detail]
+            formatted_traceback = message_detail.formatted_traceback
+        case ErrorDetail():
+            details = message_detail.errors
+            formatted_traceback = message_detail.formatted_traceback
+        case _:
+            raise TypeError(f"Unsupported message detail type {type(message_detail)}.")
+
+    return _format_error_chain(details, formatted_traceback)

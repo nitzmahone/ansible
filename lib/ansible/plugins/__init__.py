@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import abc
 from abc import ABC
 
 import types
@@ -48,7 +49,7 @@ def get_plugin_class(obj):
         return obj.__class__.__name__.lower().replace('module', '')
 
 
-class AnsiblePlugin(ABC):
+class AnsiblePlugin(metaclass=abc.ABCMeta):
 
     # allow extra passthrough parameters
     allow_extras = False
@@ -130,23 +131,43 @@ class AnsiblePlugin(ABC):
         # FIXME: standardize required check based on config
         pass
 
+    def __repr__(self):
+        load_name = getattr(self, '_load_name', '(unknown)')
+        return f'{type(self).__name__}(plugin_type={self.plugin_type!r}, {load_name=!r})'
 
-class AnsibleJinja2Plugin(AnsiblePlugin):
 
-    def __init__(self, function):
-
+class AnsibleJinja2Plugin(AnsiblePlugin, metaclass=abc.ABCMeta):
+    def __init__(self, function: t.Callable) -> None:
         super(AnsibleJinja2Plugin, self).__init__()
         self._function = function
 
-    @property
-    def plugin_type(self):
-        return self.__class__.__name__.lower().replace('ansiblejinja2', '')
+        # DTFIX-MERGE: should this come from sidecar config or another more user/doc-friendly mechanism?
+        # Declare support for undefined top-level arguments. Plugins with `False` here will never be invoked with undefined top-level arguments.
+        self.accept_undefined_args = getattr(self._function, '_accept_undefined_args', False)
 
-    def _no_options(self, *args, **kwargs):
+    @property
+    @abc.abstractmethod
+    def plugin_type(self) -> str:
+        ...
+
+    def _no_options(self, *args, **kwargs) -> t.NoReturn:
         raise NotImplementedError()
 
     has_option = get_option = get_options = option_definitions = set_option = set_options = _no_options
 
     @property
-    def j2_function(self):
+    def j2_function(self) -> t.Callable:
         return self._function
+
+
+_C = t.TypeVar('_C', bound=t.Callable)
+
+
+def accept_undefined_args(func: _C) -> _C:
+    """
+    A decorator to mark a Jinja filter or test plugin function as capable of accepting `Undefined` args.
+    Functions not marked will be bypassed if any top-level argument is undefined, with first undefined value substituted for its return value.
+    """
+    func._accept_undefined_args = True
+
+    return func

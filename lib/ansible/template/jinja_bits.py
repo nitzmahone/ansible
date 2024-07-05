@@ -1,0 +1,803 @@
+from __future__ import annotations
+
+import ast
+import collections.abc as c
+import dataclasses
+import enum
+import os
+import tempfile
+import typing as t
+
+from collections import ChainMap
+
+from jinja2 import pass_context, defaults
+from jinja2.environment import Environment, Template, TemplateModule, TemplateExpression
+from jinja2.runtime import Undefined
+from jinja2.compiler import Frame
+from jinja2.lexer import TOKEN_VARIABLE_BEGIN, TOKEN_VARIABLE_END, TOKEN_STRING, Lexer
+from jinja2.nativetypes import NativeCodeGenerator
+from jinja2.nodes import Const, Tuple, List
+from jinja2.runtime import Context
+from jinja2.sandbox import ImmutableSandboxedEnvironment
+from jinja2.utils import missing, LRUCache
+
+from ansible.utils.display import Display
+from ansible.errors import AnsibleVariableTypeError
+from ansible.module_utils.common.text.converters import to_text
+from ansible.module_utils.datatag import (
+    AnsibleDatatagBase,
+    _AnsibleTaggedDict,
+    _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES,
+    _AnsibleTaggedList,
+    AnsibleTagHelper,
+)
+from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
+
+from .datatag import _JinjaConstTemplate
+from .jinja_common import AnsibleUndefinedError, AnsibleUndefined, _TemplateConfig
+from .utils import Omit, TemplateContext
+from .lazy_containers import (
+    _AnsibleLazyTemplateMixin,
+    _AnsibleLazyTemplateDict,
+    _AnsibleLazyTemplateList,
+    proxy_args,
+    proxy_kwargs,
+    proxy_jinja_constant_container,
+)
+from .vault import _AnsibleTaggedVaultBomb
+from .jinja_plugins import JinjaPluginIntercept, _query, _lookup, _now, _wrap_plugin_output, get_first_undefined_arg, JinjaCallContext, _invoke_lookup
+from ..module_utils._internal import _ambient_context, _dataclass_validation
+from ..module_utils.datatag.access import AnsibleAccessContext
+from ..plugins.loader import filter_loader, test_loader
+
+
+JINJA2_OVERRIDE = '#jinja2:'
+
+display = Display()
+
+
+@dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
+class TemplateOverrides:
+    DEFAULT: t.ClassVar[t.Self]
+
+    block_start_string: str = defaults.BLOCK_START_STRING
+    block_end_string: str = defaults.BLOCK_END_STRING
+    variable_start_string: str = defaults.VARIABLE_START_STRING
+    variable_end_string: str = defaults.VARIABLE_END_STRING
+    comment_start_string: str = defaults.COMMENT_START_STRING
+    comment_end_string: str = defaults.COMMENT_END_STRING
+    line_statement_prefix: str | None = defaults.LINE_STATEMENT_PREFIX
+    line_comment_prefix: str | None = defaults.LINE_COMMENT_PREFIX
+    trim_blocks: bool = True  # AnsibleEnvironment overrides this default, so don't use the Jinja default here
+    lstrip_blocks: bool = defaults.LSTRIP_BLOCKS
+    newline_sequence: t.Literal['\n', '\r\n', '\r'] = defaults.NEWLINE_SEQUENCE
+    keep_trailing_newline: bool = defaults.KEEP_TRAILING_NEWLINE
+
+    def __post_init__(self) -> None:
+        pass  # overridden by _dataclass_validation._inject_post_init_validation
+
+    def _post_validate(self) -> None:
+        if not (self.block_start_string != self.variable_start_string != self.comment_start_string != self.block_start_string):
+            raise ValueError('Block, variable and comment start strings must be different.')
+
+    def overlay_kwargs(self) -> dict[str, t.Any]:
+        """
+        Return a dictionary of arguments for passing to Environment.overlay.
+        The dictionary will be empty if all fields have their default value.
+        """
+        # DTFIX-FUTURE: calculate default/non-default during __post_init__
+        fields = [(field, getattr(self, field.name)) for field in dataclasses.fields(self)]
+        kwargs = {field.name: value for field, value in fields if value != field.default}
+
+        return kwargs
+
+    def _contains_start_string(self, value: str) -> bool:
+        """Returns True if the given value contains a variable, block or comment start string."""
+        # DTFIX-FUTURE: this is inefficient, use a compiled regex instead
+
+        for marker in (self.block_start_string, self.variable_start_string, self.comment_start_string):
+            if marker in value:
+                return True
+
+        return False
+
+    def _starts_and_ends_with_jinja_delimiters(self, value: str) -> bool:
+        """Returns True if the given value starts and ends with Jinja variable, block or comment delimiters."""
+        # DTFIX-FUTURE: this is inefficient, use a compiled regex instead
+
+        for marker in (self.block_start_string, self.variable_start_string, self.comment_start_string):
+            if value.startswith(marker):
+                break
+        else:
+            return False
+
+        for marker in (self.block_end_string, self.variable_end_string, self.comment_end_string):
+            if value.endswith(marker):
+                return True
+
+        return False
+
+    def extract_template_overrides(self, template: str) -> tuple[str, TemplateOverrides]:
+        if template.startswith(JINJA2_OVERRIDE):
+            eol = template.find('\n')
+
+            if eol == -1:
+                raise ValueError(f"Missing newline after {JINJA2_OVERRIDE!r} override.")
+
+            line = template[len(JINJA2_OVERRIDE):eol]
+            template = template[eol + 1:]
+            override_kwargs = {}
+
+            for pair in line.split(','):
+                if not pair.strip():
+                    raise ValueError(f"Empty {JINJA2_OVERRIDE!r} override pair not allowed.")
+
+                if ':' not in pair:
+                    raise ValueError(f"Missing key-value separator `:` in {JINJA2_OVERRIDE!r} override pair {pair!r}.")
+
+                key, val = pair.split(':', 1)
+                key = key.strip()
+
+                if key not in _TEMPLATE_OVERRIDE_FIELD_NAMES:
+                    raise ValueError(f"Invalid {JINJA2_OVERRIDE!r} override key {key!r}.")
+
+                override_kwargs[key] = ast.literal_eval(val)
+
+            overrides = dataclasses.replace(self, **override_kwargs)
+        else:
+            overrides = self
+
+        return template, overrides
+
+
+_dataclass_validation.inject_post_init_validation(TemplateOverrides, allow_subclasses=True)
+
+TemplateOverrides.DEFAULT = TemplateOverrides()
+
+_TEMPLATE_OVERRIDE_FIELD_NAMES: t.Final[tuple[str, ...]] = tuple(sorted(field.name for field in dataclasses.fields(TemplateOverrides)))
+
+
+class AnsibleContext(Context):
+    """
+    A custom context which intercepts resolve_or_missing() calls and
+    runs them through AnsibleAccessContext. This allows usage of variables
+    to be tracked. If needed, values can also be modified before being returned.
+    """
+    def __init__(self, *args, **kwargs):
+        super(AnsibleContext, self).__init__(*args, **kwargs)
+
+    __repr__ = object.__repr__  # prevent Jinja from dumping vars in case this gets repr'd
+
+    def resolve_or_missing(self, key):
+        val = super(AnsibleContext, self).resolve_or_missing(key)
+        return AnsibleAccessContext.current().access(val)
+
+    def get_all(self):
+        """
+        Override Jinja's default get_all to return all vars in the context as a ChainMap with a mutable layer at the bottom.
+        This provides some isolation against accidental changes to inherited variable contexts without requiring copies.
+        """
+        layers = []
+
+        if self.vars:
+            layers.append(self.vars)
+        if self.parent:
+            layers.append(self.parent)
+
+        # HACK: always include a sacrificial plain-dict on the bottom layer, since Jinja's debug and stacktrace rewrite code invokes
+        # `__setitem__` outside a call context; this will ensure that it always occurs on a plain dict instead of a lazy one.
+        return ChainMap({}, *layers)
+
+    # noinspection PyShadowingBuiltins
+    def derived(self, locals: t.Optional[t.Dict[str, t.Any]] = None) -> Context:
+        # this is a clone of Jinja's impl of derived, but using our lazy-aware _new_context
+
+        context = _new_context(
+            environment=self.environment,
+            template_name=self.name,
+            blocks={},
+            shared=True,
+            jinja_locals=locals,
+            jinja_vars=self.get_all(),
+        )
+        context.eval_ctx = self.eval_ctx
+        context.blocks.update((k, list(v)) for k, v in self.blocks.items())
+        return context
+
+    def keys(self, *args, **kwargs):
+        """Base Context delegates to `dict.keys` against `get_all`, which would fail since we return a ChainMap. No known usage."""
+        raise NotImplementedError()
+
+    def values(self, *args, **kwargs):
+        """Base Context delegates to `dict.values` against `get_all`, which would fail since we return a ChainMap. No known usage."""
+        raise NotImplementedError()
+
+    def items(self, *args, **kwargs):
+        """Base Context delegates to built-in `dict.items` against `get_all`, which would fail since we return a ChainMap. No known usage."""
+        raise NotImplementedError()
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
+class ArgSmuggler:
+    """
+    Utility wrapper to wrap/unwrap args passed to Jinja Template.render and TemplateExpression.__call__.
+    e.g., see https://github.com/pallets/jinja/blob/3.1.3/src/jinja2/environment.py#L1296 and
+    https://github.com/pallets/jinja/blob/3.1.3/src/jinja2/environment.py#L1566.
+    """
+    jinja_vars: c.Mapping[str, t.Any] | None
+
+    @classmethod
+    def package_jinja_vars(cls, jinja_vars: c.Mapping[str, t.Any]) -> dict[str, ArgSmuggler]:
+        """Wrap the supplied vars dict in an ArgSmuggler to prevent premature templating from Jinja's internal dict copy."""
+        return dict(_smuggled_vars=ArgSmuggler(jinja_vars=jinja_vars))
+
+    @classmethod
+    def extract_jinja_vars(cls, maybe_smuggled_vars: c.Mapping[str, t.Any] | None) -> c.Mapping[str, t.Any]:
+        """
+        If the supplied vars dict contains an ArgSmuggler instance with the expected key, unwrap it and return the smuggled value.
+        Otherwise, return the supplied dict as-is.
+        """
+        if maybe_smuggled_vars and ((smuggler := maybe_smuggled_vars.get('_smuggled_vars')) and isinstance(smuggler, ArgSmuggler)):
+            return smuggler.jinja_vars
+
+        return maybe_smuggled_vars
+
+
+class AnsibleTemplateExpression:
+    """
+    Wrapper around Jinja's TemplateExpression for converting AnsibleUndefinedError back into AnsibleUndefined.
+    This is needed to make expression error handling consistent with templates, since Jinja does not support a custom type for Environment.compile_expression.
+    """
+    def __init__(self, template_expression: TemplateExpression) -> None:
+        self._template_expression = template_expression
+
+    def __call__(self, jinja_vars: c.Mapping[str, t.Any]) -> t.Any:
+        try:
+            return self._template_expression(ArgSmuggler.package_jinja_vars(jinja_vars))
+        except AnsibleUndefinedError as ex:
+            return ex.source
+
+
+class AnsibleTemplate(Template):
+    """
+    A helper class, which prevents Jinja2 from running lazy containers through dict().
+    """
+
+    _source_tempfile = None
+
+    def __del__(self):
+        # DTFIX-MERGE: this still isn't working reliably; something else must be keeping the template object alive
+        if self._source_tempfile:
+            os.unlink(self._source_tempfile.name)
+
+    def __call__(self, jinja_vars: c.Mapping[str, t.Any]) -> t.Any:
+        return self.render(ArgSmuggler.package_jinja_vars(jinja_vars))
+
+    # noinspection PyShadowingBuiltins
+    def new_context(
+        self,
+        vars: c.Mapping[str, t.Any] | None = None,
+        shared: bool = False,
+        locals: c.Mapping[str, t.Any] | None = None,
+    ) -> Context:
+        return _new_context(
+            environment=self.environment,
+            template_name=self.name,
+            blocks=self.blocks,
+            shared=shared,
+            jinja_locals=locals,
+            jinja_vars=ArgSmuggler.extract_jinja_vars(vars),
+            jinja_globals=self.globals,
+        )
+
+
+class AnsibleCodeGenerator(NativeCodeGenerator):
+    """
+    Custom code generation behavior to support deprecated Ansible features and fill in gaps in Jinja native.
+    This can be removed once the deprecated Ansible features are removed and the native fixes are upstreamed in Jinja.
+    """
+
+    def _output_const_repr(self, group: t.Iterable[t.Any]) -> str:
+        """
+        Prevent Jinja's code generation from stringifying single nodes before generating its repr.
+        This complements the behavioral change in AnsibleEnvironment.concat which returns single nodes without stringifying them.
+        """
+        # DTFIX-FUTURE: contribute this upstream as a fix to Jinja's native support
+        group_list = list(group)
+
+        if len(group_list) == 1:
+            return repr(group_list[0])
+
+        # NB: This is slightly more efficient than Jinja's _output_const_repr, which generates a throw-away list instance to pass to join.
+        #     Before removing this, ensure that upstream Jinja has this change.
+        return repr("".join(map(str, group_list)))
+
+    def visit_Const(self, node: Const, frame: Frame) -> None:
+        """
+        Override Jinja's visit_Const to inject a runtime call to AnsibleEnvironment._access_const for constant strings that are possibly templates, which
+        may require special handling at runtime. See that method for details. An example that hits this path:
+        {{ lookup("file", "{{ output_dir }}/bla") }}
+        """
+        value = node.as_const(frame.eval_ctx)
+
+        if (
+            _TemplateConfig.allow_embedded_templates and
+            type(value) is str and  # pylint: disable=unidiomatic-typecheck
+            is_possibly_template(value)
+        ):
+            # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
+            self.write(f'environment._access_const({value!r})')
+        else:
+            # NB: This is actually more efficient than Jinja's visit_Const, which contains obsolete (as of Py2.7/3.1) float conversion instance checks. Before
+            #     removing this override entirely, ensure that upstream Jinja has removed the obsolete code.
+            #     See https://docs.python.org/release/2.7/whatsnew/2.7.html#python-3-1-features for more details.
+            self.write(repr(value))
+
+    def visit_Tuple(self, node: Tuple, frame: Frame) -> None:
+        """
+        Override Jinja's visit_Tuple, so we can convert them to a list immediately.
+        Without this, a constant tuple on the left-hand side of an add operation with a lazy list will bypass lazy type conversion,
+        which will result in an unsupported type (tuple) leaking into the template result and ultimately raising an AnsibleVariableTypeError.
+        """
+        display.warning(f'Converting Jinja constant {tuple!r} to {list!r}.', obj=TemplateContext.current().template_value)
+
+        super().visit_List(t.cast(List, node), frame)
+
+
+@pass_context
+def _ansible_finalize(_ctx: AnsibleContext, value: t.Any) -> t.Any:
+    """
+    This function is called by Jinja with the result of each variable template block (e.g., {{ }}) encountered in a template.
+    The pass_context decorator prevents finalize from being called on constants at template compile time.
+    The passed in AnsibleContext is unused -- it is the result of using the pass_context decorator.
+    The important part for us is that this blocks constant folding, which ensures our custom visit_Const is used.
+    It also ensures that template results are wrapped in lazy containers.
+    """
+    return proxy_jinja_constant_container(value)
+
+
+@dataclasses.dataclass(kw_only=True, slots=True)
+class _TemplateCompileContext(_ambient_context.AmbientContextBase):
+    """
+    This context is active during Ansible's explicit compilation of templates/expressions, but not during Jinja's runtime compilation.
+    Historically, Ansible-specific pre-processing like `escape_backslashes` was not applied to imported/included templates.
+    """
+    escape_backslashes: bool
+
+
+class _CompileStateSmugglingCtx(_ambient_context.AmbientContextBase):
+    template_source: str | None = None
+    python_source: str | None = None
+    filename: str | None = None
+    tempfile: t.Any = None  # DTFIX-MERGE: what should this type hint be?
+
+
+class AnsibleLexer(Lexer):
+    """
+    Lexer override to escape backslashes in string constants within Jinja expressions; prevents Jinja from double-escaping them.
+
+    NOTE: This behavior is only applied to string constants within Jinja expressions (eg {{ "c:\newfile" }}), *not* statements ("{% set foo="c:\\newfile" %}").
+
+    This is useful when templates are sourced from YAML double-quoted strings, as it avoids having backslashes processed twice: first by the
+    YAML parser, and then again by the Jinja parser. Instead, backslashes are only processed by YAML.
+
+    Example YAML:
+
+    - debug:
+        msg: "Test Case 1\\3; {{ test1_name | regex_replace('^(.*)_name$', '\\1')}}"
+
+    Since the outermost YAML string is double-quoted, the YAML parser converts the double backslashes to single backslashes. Without escaping, Jinja
+    would see only a single backslash ('\1') while processing the embedded template expression, interpret it as an escape sequence, and convert it
+    to '\x01' (ASCII "SOH"). This is clearly not the intended `\1` backreference argument to the `regex_replace` filter (which would require the
+    double-escaped string '\\\\1' to yield the intended result).
+
+    Since the "\\3" in the input YAML was not part of a template expression, the YAML-parsed "\3" remains after Jinja rendering. This would be
+    confusing for playbook authors, as different escaping rules would be needed inside and outside the template expression.
+
+    When templates are not sourced from YAML, escaping backslashes will prevent use of backslash escape sequences such as "\n" and "\t".
+
+    See relevant Jinja lexer impl at e.g.: https://github.com/pallets/jinja/blob/3.1.2/src/jinja2/lexer.py#L646-L653.
+    """
+
+    def tokeniter(self, *args, **kwargs) -> t.Iterator[t.Tuple[int, str, str]]:
+        """Pre-escape backslashes in expression ({{ }}) raw string constants before Jinja's Lexer.wrap() can interpret them as ASCII escape sequences."""
+        token_stream = super().tokeniter(*args, **kwargs)
+
+        # if we have no context, Jinja's doing a nested compile at runtime (eg, import/include); historically, no backslash escaping is performed
+        if not (tcc := _TemplateCompileContext.current(optional=True)) or not tcc.escape_backslashes:
+            yield from token_stream
+            return
+
+        in_variable = False
+
+        for token in token_stream:
+            token_type = token[1]
+
+            if token_type == TOKEN_VARIABLE_BEGIN:
+                in_variable = True
+            elif token_type == TOKEN_VARIABLE_END:
+                in_variable = False
+            elif in_variable and token_type == TOKEN_STRING:
+                token = token[0], token_type, token[2].replace('\\', '\\\\')
+
+            yield token
+
+
+class AnsibleEnvironment(ImmutableSandboxedEnvironment):
+    """
+    Our custom environment, which simply allows us to override the class-level
+    values for the Template and Context classes used by jinja2 internally.
+    """
+    context_class = AnsibleContext
+    template_class = AnsibleTemplate
+    code_generator_class = AnsibleCodeGenerator
+    intercepted_binops = frozenset({'eq', })
+    _lexer_cache = LRUCache(50)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.filters = JinjaPluginIntercept(self.filters, filter_loader)
+        self.tests = JinjaPluginIntercept(self.tests, test_loader)
+
+        # future Jinja releases may default-enable autoescape; force-disable to prevent the problems it could cause
+        # see https://github.com/pallets/jinja/blob/3.1.2/docs/api.rst?plain=1#L69
+        self.autoescape = False
+
+        self.trim_blocks = True
+
+        self.undefined = AnsibleUndefined
+        self.finalize = _ansible_finalize
+
+        self.globals.update(
+            range=range,  # the sandboxed environment limits range in ways that may cause us problems; use the real Python one
+            now=_now,
+            undef=_undef,
+            omit=Omit,
+            lookup=_lookup,
+            query=_query,
+            q=_query,
+        )
+
+        # Disabling the optimizer prevents compile-time constant expression folding, which prevents our
+        # visit_Const recursive inline template expansion tricks from working in many cases where Jinja's
+        # ignorance of our embedded templates are optimized away as fully-constant expressions,
+        # eg {{ "{{'hi'}}" == "hi" }}. As of Jinja ~3.1, this specifically avoids cases where the @optimizeconst
+        # visitor decorator performs constant folding, which bypasses our visit_Const impl and causes embedded
+        # templates to be lost.
+        # See also optimizeconst impl: https://github.com/pallets/jinja/blob/3.1.0/src/jinja2/compiler.py#L48-L49
+        self.optimized = False
+
+        self.template_class.environment_class = AnsibleEnvironment  # DTFIX-MERGE: why is this here? it was moved from Templar.__init__ (environment creation)
+
+    @property
+    def lexer(self):
+        """Return/cache an AnsibleLexer with settings from the current AnsibleEnvironment"""
+        # DTFIX-MERGE: we should pre-generate the default cached lexer before forking, not leave it to chance (e.g. simple playbooks)
+        key = tuple(getattr(self, name) for name in _TEMPLATE_OVERRIDE_FIELD_NAMES)
+
+        lex = self._lexer_cache.get(key)
+
+        if lex is None:
+            self._lexer_cache[key] = lex = AnsibleLexer(self)
+
+        return lex
+
+    _DEBUGGABLE_TEMPLATE_SOURCE = False  # DTFIX-PR: bikeshed a name/mechanism to control template debugging
+
+    def from_string(self, *args, **kwargs):
+        with _CompileStateSmugglingCtx.maybe(create=self._DEBUGGABLE_TEMPLATE_SOURCE) as ctx:
+            template_obj = super().from_string(*args, **kwargs)
+
+            if isinstance(ctx, _CompileStateSmugglingCtx):
+                template_obj._source_tempfile = ctx.tempfile
+
+        return template_obj
+
+    def _parse(self, source, *args, **kwargs):
+        if csc := _CompileStateSmugglingCtx.current(optional=True):
+            csc.template_source = source
+        return super()._parse(source, *args, **kwargs)
+
+    def _compile(self, source, filename):
+        if csc := _CompileStateSmugglingCtx.current(optional=True):
+            if src_pos := AnsibleSourcePosition.get_tag(csc.template_source):
+                template_src = repr(str(src_pos))
+            else:
+                template_src = 'unknown location'
+
+            source = '\n'.join((
+                "import sys; breakpoint() if type(sys.breakpointhook) is not type(breakpoint) else None",
+                f"# original template source from {template_src}: ",
+                '\n'.join(f'# {line}' for line in (csc.template_source or '').splitlines()),
+                source
+            ))
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', prefix='j2_src_', delete=False) as source_file:
+                filename = source_file.name
+                source_file.write(source)
+
+            csc.python_source = source
+            csc.filename = filename
+            csc.tempfile = source_file
+        res = super()._compile(source, filename)
+        return res
+
+    @staticmethod
+    def concat(nodes: t.Iterable[t.Any]) -> t.Any:  # type: ignore[override]
+        node_list = list(_flatten_nodes(nodes))
+
+        if not node_list:
+            return None
+
+        # this code is complemented by our tweaked CodeGenerator _output_const_repr that ensures that literal constants
+        # in templates aren't double-repr'd in the generated code
+        if len(node_list) == 1:
+            # DTFIX-MERGE: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
+            return node_list[0]
+
+        # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc.), do a recursive finalize before we repr (otherwise we can end up
+        # repr'ing Undefineds etc.) Yes, this requires two passes, but means we don't need to have a parallel reimplementation of all reprs
+        try:
+            node_list = _finalize_template_result(node_list, mode=FinalizeMode.CONCAT)
+        except AnsibleUndefinedError as ex:
+            return ex.source  # return the first AnsibleUndefined encountered (FailOnUndefined behavior)
+
+        return ''.join([to_text(v) for v in node_list])
+
+    @staticmethod
+    def _access_const(const_template: t.LiteralString) -> t.Any:
+        """
+        Called during template rendering on template-looking string constants embedded in the template. Propagates source position from the
+        containing template, and performs a managed access on it. This allows custom behavior on constants for backward-compatibility (eg,
+        application of trust or inline template rendering).
+        """
+        tags: list[AnsibleDatatagBase] = [_JinjaConstTemplate()]
+
+        if (tv := TemplateContext.current().template_value) and (source_pos := AnsibleSourcePosition.get_tag(tv)):
+            tags.append(source_pos)
+
+        const_template = AnsibleTagHelper.tag(const_template, tags)
+
+        # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
+        # NOTE: This will fire on Jinja string constants that look like templates, whether templating is applied or not.
+        #       Unfortunately, deferring this warning until templating occurs would allow infrequently used values to go unreported.
+        #       As a result, we're erring on the side of more warnings here over fewer, until this backwards compatibility feature is removed.
+        display.deprecated(msg="Jinja constant strings should not contain embedded templates.", obj=const_template, version="2.21")
+
+        return AnsibleAccessContext.current().access(const_template)
+
+    @staticmethod
+    def _render_const_template(const_template: t.LiteralString) -> t.Any:
+        """
+        This method is for exclusive use by the template compiler to render embedded constant templates.
+        Since these values may be stored in locals that will receive no further processing before use, they must be trusted and templated, not just trusted.
+        """
+        # example: "{{ '{{ "hi" }}' }}" -- const_template is '{{ "hi" }}'
+        # access on const_template should not be necessary
+        return TemplateContext.current().templar.proxy_or_render_template(TrustedAsTemplate().tag(const_template))
+
+    def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
+        # DTFIX-MERGE: do we actually need to managed-access both sides of templates/strings here?
+        # example: "{{ some['thing'] }}" -- obj is the "some" dict, argument is "thing"
+        # access on the result of super().getitem is necessary
+        return TemplateContext.current().templar.proxy_or_render_template(super().getitem(obj, argument))
+
+    def getattr(self, obj: t.Any, attribute: str) -> t.Any:
+        """
+        Get `attribute` from the attributes of `obj`, falling back to items in `obj`.
+        If no item was found, return a sandbox-specific undefined if `attribute` is protected by the sandbox, otherwise return a normal undefined.
+        This differs from the built-in Jinja behavior which will not fall back to items if `attribute` is protected by the sandbox.
+        """
+        # example template that uses this: "{{ some.thing }}" -- obj is the "some" dict, attribute is "thing"
+
+        is_safe = True
+
+        try:
+            value = getattr(obj, attribute)
+        except AttributeError:
+            value = _sentinel
+        else:
+            if not (is_safe := self.is_safe_attribute(obj, attribute, value)):
+                value = _sentinel
+
+        if value is _sentinel:
+            try:
+                value = obj[attribute]
+            except (TypeError, LookupError):
+                return self.undefined(obj=obj, name=attribute) if is_safe else self.unsafe_undefined(obj, attribute)
+
+        return TemplateContext.current().templar.proxy_or_render_template(value)
+
+    def call(
+        self,
+        __context: Context,
+        __obj: t.Any,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> t.Any:
+        if __obj in (_lookup, _query, _invoke_lookup):
+            # Both `_lookup` and `_query` handle arg proxying and undefined args internally.
+            # Performing either before calling them will interfere with that processing.
+            return super().call(__context, __obj, *args, **kwargs)
+
+        # DTFIX-MERGE: consider replacing this with split decorators?
+        if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
+            return first_undefined
+
+        try:
+            with JinjaCallContext(eager_trip_undefined=True):
+                # NB: arbitrary callables will always trip returned undefineds
+                call_res = super().call(__context, __obj, *proxy_args(args), **proxy_kwargs(kwargs))
+
+                if __obj is range:
+                    # Preserve the ability to do `range(1000000000) | random` by not converting range objects to lists.
+                    # Historically, range objects were only converted on Jinja finalize and filter outputs, so they've always been floating around in templating
+                    # code and visible to user plugins.
+                    return call_res
+
+                return _wrap_plugin_output(call_res)
+
+        except AnsibleUndefinedError as ex:
+            return ex.source
+
+
+_DEFAULT_UNDEF = AnsibleUndefined("Mandatory variable has not been overridden", _no_template_source=True)
+
+_sentinel: t.Final[object] = object()
+
+
+def _undef(hint=None):
+    """Jinja2 global function (undef) for creating custom undefined defaults with custom hints."""
+    if hint is None or isinstance(hint, Undefined) or hint == '':
+        return _DEFAULT_UNDEF
+
+    return AnsibleUndefined(hint)
+
+
+def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
+    """
+    Yield nodes from a potentially recursive iterable of nodes.
+    The recursion is required to expand template imports (TemplateModule).
+    Any UndefinedError exception encountered will be converted to an AnsibleUndefined instance.
+    """
+    iterator = iter(nodes)
+
+    while True:
+        try:
+            node = next(iterator)
+        except StopIteration:
+            break
+        except AnsibleUndefinedError as ex:
+            # Convert an AnsibleUndefinedError generated internally by Jinja2 back into an AnsibleUndefined instance.
+            # This instance may be embedded in a data structure and will be subject to UndefinedBehavior handling during template finalization.
+            yield ex.source
+            # Normal error handling will convert the first AnsibleUndefined encountered into an exception, ignoring any further AnsibleUndefined values.
+            # When using ReplaceUndefined having a second AnsibleUndefined allows us to warn the user about potential omission of subsequent template nodes.
+            # DTFIX-FUTURE: We should be able to determine if truncation occurred by having the code generator smuggle out the number of expected nodes.
+            yield AnsibleUndefined('template potentially truncated')
+        else:
+            if type(node) is TemplateModule:  # pylint: disable=unidiomatic-typecheck
+                yield from _flatten_nodes(node._body_stream)
+            else:
+                yield node
+
+
+def _flatten_and_lazify_vars(mapping: c.Mapping) -> t.Iterable[c.Mapping]:
+    """Prevent deeply-nested Jinja vars ChainMaps from being created by nested contexts and ensure that all top-level containers support lazy templating."""
+    mapping_type = type(mapping)
+    if mapping_type is ChainMap:
+        # noinspection PyUnresolvedReferences
+        for m in mapping.maps:
+            yield from _flatten_and_lazify_vars(m)
+    elif mapping_type is _AnsibleLazyTemplateDict:
+        if not mapping:
+            # DTFIX-MERGE: handle or remove?
+            raise Exception("we didn't think it was possible to have an empty lazy here...")
+        yield mapping
+    elif mapping_type in (dict, _AnsibleTaggedDict):
+        # don't propagate empty dictionary layers
+        if mapping:
+            yield _AnsibleLazyTemplateMixin._try_create(mapping)
+    else:
+        raise NotImplementedError(f"unsupported mapping type in Jinja vars: {mapping_type}")
+
+
+def _new_context(
+    *,
+    environment: Environment,
+    template_name: str | None,
+    blocks: dict[str, t.Callable[[Context], c.Iterator[str]]],
+    shared: bool = False,
+    jinja_locals: c.Mapping[str, t.Any] | None = None,
+    jinja_vars: c.Mapping[str, t.Any] | None = None,
+    jinja_globals: c.MutableMapping[str, t.Any] | None = None,
+) -> Context:
+    """Override Jinja's context vars setup to use ChainMaps and containers that support lazy templating."""
+    layers = []
+
+    if jinja_locals:
+        # DTFIX-MERGE: if we can't trip this in coverage, kill it off?
+        if type(jinja_locals) is not dict:  # pylint: disable=unidiomatic-typecheck
+            raise NotImplementedError("locals must be a dict")
+
+        # Omit values set to Jinja's internal `missing` sentinel; they are locals that have not yet been
+        # initialized in the current context, and should not be exposed to child contexts. e.g.: {% import 'a' as b with context %}.
+        # The `b` local will be `missing` in the `a` context and should not be propagated as a local to the child context we're creating.
+        layers.append(_AnsibleLazyTemplateMixin._try_create({k: v for k, v in jinja_locals.items() if v is not missing}))
+
+    if jinja_vars:
+        layers.extend(_flatten_and_lazify_vars(jinja_vars))
+
+    if jinja_globals and not shared:
+        # Even though we don't currently support templating globals, it's easier to ensure that everything is template-able rather than trying to
+        # pick apart the ChainMaps to enforce non-template-able globals, or to risk things that *should* be template-able not being lazified.
+        layers.extend(_flatten_and_lazify_vars(jinja_globals))
+
+    if not layers:
+        # ensure we have at least one layer (which should be lazy), since _flatten_and_lazify_vars eliminates most empty layers
+        layers.append(_AnsibleLazyTemplateMixin._try_create({}))
+
+    # only return a ChainMap if we're combining layers, or we have none
+    parent = layers[0] if len(layers) == 1 else ChainMap(*layers)
+
+    # the `parent` cast is only to satisfy Jinja's overly-strict type hint
+    return environment.context_class(environment, t.cast(dict, parent), template_name, blocks, globals=jinja_globals)
+
+
+def is_possibly_template(value: str, overrides: TemplateOverrides = TemplateOverrides.DEFAULT):
+    """
+    A lightweight check to determine if the given string looks like it contains a template, even if that template is invalid.
+    Return True if the given string starts with a Jinja overrides header or if it contains template start strings.
+    """
+    return value.startswith(JINJA2_OVERRIDE) or overrides._contains_start_string(value)
+
+
+def is_possibly_all_template(value: str, overrides: TemplateOverrides = TemplateOverrides.DEFAULT):
+    """
+    A lightweight check to determine if the given string looks like it contains *only* a template, even if that template is invalid.
+    Return True if the given string starts with a Jinja overrides header or if it starts and ends with Jinja template delimiters.
+    """
+    return value.startswith(JINJA2_OVERRIDE) or overrides._starts_and_ends_with_jinja_delimiters(value)
+
+
+class FinalizeMode(enum.Enum):
+    TOP_LEVEL = enum.auto()
+    CONCAT = enum.auto()
+    POST_FINALIZE = enum.auto()
+
+
+def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
+    """Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions."""
+    # DTFIX-MERGE: add tests to ensure this method doesn't drift from allowed types
+    o_type = type(o)
+
+    from ansible.vars.hostvars import HostVars, HostVarsVars  # DTFIX-PR: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
+
+    value_type: type[dict | list | tuple | set]
+
+    if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
+        return o
+    elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict, HostVars, HostVarsVars):
+        value_expression = ((
+            _finalize_template_result(k, mode),
+            _finalize_template_result(v, mode)
+        ) for k, v in o.items() if v is not Omit)
+        value_type = dict
+    elif o_type in (list, _AnsibleTaggedList, _AnsibleLazyTemplateList):
+        value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
+        value_type = list
+    elif o_type is AnsibleUndefined:
+        # this early return assumes handle_undefined follows our variable type rules
+        return TemplateContext.current().options.undefined_behavior.handle_undefined(o, mode)
+    elif o_type is _AnsibleTaggedVaultBomb:
+        raise o.detonate()  # this raise is just to keep silly tools that don't understand NoReturn happy about value_type/expression not being assigned
+    elif o is Omit:
+        return o  # allow pass through of omit for later handling after top-level finalize completes
+    elif mode is FinalizeMode.TOP_LEVEL:  # unsupported type (raise)
+        raise AnsibleVariableTypeError(variable_type=o_type)
+    else:  # unsupported type (do not raise)
+        return o
+
+    # avoiding tag_copy to minimize call stack depth when dealing with recursive template calls on deeply nested lazy containers
+    return AnsibleTagHelper.tag(value_expression, AnsibleTagHelper.tags(o), value_type=value_type)

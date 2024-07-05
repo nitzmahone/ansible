@@ -154,7 +154,8 @@ class ActionModule(ActionBase):
                 exec_data = ps_manifest._create_powershell_wrapper(
                     to_bytes(script_cmd), source, {}, env_dict, self._task.async_val,
                     pc.become, pc.become_method, pc.become_user,
-                    self._play_context.become_pass, pc.become_flags, "script", task_vars, None
+                    self._play_context.become_pass, pc.become_flags, "script", task_vars, None,
+                    profile='legacy',  # the profile doesn't really matter since the module args dict is empty
                 )
                 # build the necessary exec wrapper command
                 # FUTURE: this still doesn't let script work on Windows with non-pipelined connections or

@@ -24,7 +24,7 @@ from ansible.playbook.role import Role
 from ansible.playbook.role.include import RoleInclude
 from ansible.utils.display import Display
 from ansible.module_utils.six import string_types
-from ansible.template import Templar
+from ansible.template.templar import Templar
 
 __all__ = ['IncludeRole']
 

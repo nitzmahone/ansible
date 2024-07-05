@@ -231,7 +231,6 @@ path:
 import errno
 import os
 import shutil
-import sys
 import time
 
 from pwd import getpwnam, getpwuid
@@ -260,14 +259,6 @@ class ParameterError(AnsibleModuleError):
 class Sentinel(object):
     def __new__(cls, *args, **kwargs):
         return cls
-
-
-def _ansible_excepthook(exc_type, exc_value, tb):
-    # Using an exception allows us to catch it if the calling code knows it can recover
-    if issubclass(exc_type, AnsibleModuleError):
-        module.fail_json(**exc_value.results)
-    else:
-        sys.__excepthook__(exc_type, exc_value, tb)
 
 
 def additional_parameter_handling(params):
@@ -940,48 +931,49 @@ def main():
         supports_check_mode=True,
     )
 
-    # When we rewrite basic.py, we will do something similar to this on instantiating an AnsibleModule
-    sys.excepthook = _ansible_excepthook
-    additional_parameter_handling(module.params)
-    params = module.params
+    try:
+        additional_parameter_handling(module.params)
+        params = module.params
 
-    state = params['state']
-    recurse = params['recurse']
-    force = params['force']
-    follow = params['follow']
-    path = params['path']
-    src = params['src']
+        state = params['state']
+        recurse = params['recurse']
+        force = params['force']
+        follow = params['follow']
+        path = params['path']
+        src = params['src']
 
-    if module.check_mode and state != 'absent':
-        file_args = module.load_file_common_arguments(module.params)
-        if file_args['owner']:
-            check_owner_exists(module, file_args['owner'])
-        if file_args['group']:
-            check_group_exists(module, file_args['group'])
+        if module.check_mode and state != 'absent':
+            file_args = module.load_file_common_arguments(module.params)
+            if file_args['owner']:
+                check_owner_exists(module, file_args['owner'])
+            if file_args['group']:
+                check_group_exists(module, file_args['group'])
 
-    timestamps = {}
-    timestamps['modification_time'] = keep_backward_compatibility_on_timestamps(params['modification_time'], state)
-    timestamps['modification_time_format'] = params['modification_time_format']
-    timestamps['access_time'] = keep_backward_compatibility_on_timestamps(params['access_time'], state)
-    timestamps['access_time_format'] = params['access_time_format']
+        timestamps = {}
+        timestamps['modification_time'] = keep_backward_compatibility_on_timestamps(params['modification_time'], state)
+        timestamps['modification_time_format'] = params['modification_time_format']
+        timestamps['access_time'] = keep_backward_compatibility_on_timestamps(params['access_time'], state)
+        timestamps['access_time_format'] = params['access_time_format']
 
-    # short-circuit for diff_peek
-    if params['_diff_peek'] is not None:
-        appears_binary = execute_diff_peek(to_bytes(path, errors='surrogate_or_strict'))
-        module.exit_json(path=path, changed=False, appears_binary=appears_binary)
+        # short-circuit for diff_peek
+        if params['_diff_peek'] is not None:
+            appears_binary = execute_diff_peek(to_bytes(path, errors='surrogate_or_strict'))
+            module.exit_json(path=path, changed=False, appears_binary=appears_binary)
 
-    if state == 'file':
-        result = ensure_file_attributes(path, follow, timestamps)
-    elif state == 'directory':
-        result = ensure_directory(path, follow, recurse, timestamps)
-    elif state == 'link':
-        result = ensure_symlink(path, src, follow, force, timestamps)
-    elif state == 'hard':
-        result = ensure_hardlink(path, src, follow, force, timestamps)
-    elif state == 'touch':
-        result = execute_touch(path, follow, timestamps)
-    elif state == 'absent':
-        result = ensure_absent(path)
+        if state == 'file':
+            result = ensure_file_attributes(path, follow, timestamps)
+        elif state == 'directory':
+            result = ensure_directory(path, follow, recurse, timestamps)
+        elif state == 'link':
+            result = ensure_symlink(path, src, follow, force, timestamps)
+        elif state == 'hard':
+            result = ensure_hardlink(path, src, follow, force, timestamps)
+        elif state == 'touch':
+            result = execute_touch(path, follow, timestamps)
+        elif state == 'absent':
+            result = ensure_absent(path)
+    except AnsibleModuleError as ex:
+        module.fail_json(**ex.results)
 
     module.exit_json(**result)
 

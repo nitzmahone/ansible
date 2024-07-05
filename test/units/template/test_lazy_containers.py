@@ -1,0 +1,683 @@
+# DTFIX-MERGE: more thorough tests are needed here, this is just a starting point
+
+from __future__ import annotations
+
+import copy
+import re
+import typing as t
+
+import pytest
+
+from ansible.errors import AnsibleTemplateError, AnsibleUndefinedVariable
+from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
+from ansible.template.jinja_plugins import JinjaCallContext
+from ansible.template.utils import TemplateContext
+from ansible.template.templar import Templar, TemplateOptions
+from ansible.template.lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateList, _AnsibleLazyTemplateDict, _LazyValue
+
+from ..module_utils.datatag.test_datatag import ExampleSingletonTag
+
+TRUST = TrustedAsTemplate()
+
+VALUE_TO_TEMPLATE = TRUST.tag("{{ 'hello' | default('goodbye') }}")
+
+CONTAINER_VALUES = (
+    dict(hello=VALUE_TO_TEMPLATE),
+    [VALUE_TO_TEMPLATE],
+    (VALUE_TO_TEMPLATE,),
+)
+
+
+@pytest.mark.parametrize("value", CONTAINER_VALUES, ids=[type(value).__name__ for value in CONTAINER_VALUES])
+def test_container_equality(value: t.Any) -> None:
+    templar = Templar()
+
+    rendered = templar.template(value)
+
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
+        # NOTE: Assertion failure helper text may be misleading, since repr() will show rendered templates, which will appear to match expected values.
+
+        lazy = _AnsibleLazyTemplateMixin._try_create(value)
+
+        assert lazy == lazy  # pylint: disable=comparison-with-itself
+
+        assert lazy == rendered
+        assert rendered == lazy
+
+        assert lazy != value
+        assert value != lazy
+
+
+@pytest.mark.parametrize("value", CONTAINER_VALUES, ids=[type(value).__name__ for value in CONTAINER_VALUES])
+def test_container_format(value: t.Any) -> None:
+    templar = Templar()
+
+    rendered = templar.template(value)
+
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
+        # NOTE: Assertion failure helper text may be misleading, since repr() will show rendered templates, which will appear to match expected values.
+
+        lazy = _AnsibleLazyTemplateMixin._try_create(value)
+
+        assert "{0}".format(lazy) == "{0}".format(rendered)
+
+
+@pytest.mark.parametrize("container_type", (
+    list,
+    tuple,
+))
+def test_container_contains(container_type: type) -> None:
+    templar = Templar()
+
+    # including default('goodbye') as canary for flattening to a string
+    value = container_type([VALUE_TO_TEMPLATE])
+    rendered = templar.template(value)
+
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
+        # NOTE: Assertion failure helper text may be misleading, since repr() will show rendered templates, which will appear to match expected values.
+
+        lazy = _AnsibleLazyTemplateMixin._try_create(value)
+
+        for src in (lazy, rendered):
+            assert 'hello' in src
+            assert 'goodbye' not in src
+
+
+@pytest.mark.parametrize("container_type", (
+    list,
+    # no need to test a tuple, it's just converted to a list
+))
+def test_container_comparison(container_type: type) -> None:
+    templar = Templar()
+
+    # including default('goodbye') as canary for flattening to a string
+    value = container_type([VALUE_TO_TEMPLATE])
+    rendered = templar.template(value)
+
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
+        # NOTE: Assertion failure helper text may be misleading, since repr() will show rendered templates, which will appear to match expected values.
+
+        lazy = _AnsibleLazyTemplateMixin._try_create(value)
+
+        assert value > rendered
+        assert not (lazy > rendered)  # pylint: disable=unnecessary-negation
+
+        assert value >= rendered
+        assert lazy >= rendered
+
+        assert rendered < value
+        assert not (rendered < lazy)  # pylint: disable=unnecessary-negation
+
+        assert rendered <= value
+        assert rendered <= lazy
+
+
+def test_list_sort() -> None:
+    templar = Templar()
+
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
+        lazy: list = _AnsibleLazyTemplateMixin._try_create([TRUST.tag('{{ 2 }}'), TRUST.tag('{{ 1 }}')])
+        lazy.sort()
+
+        assert lazy == [1, 2]
+
+
+def test_list_index() -> None:
+    templar = Templar()
+
+    rendered = templar.template(VALUE_TO_TEMPLATE)
+
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
+        lazy: list = _AnsibleLazyTemplateMixin._try_create([VALUE_TO_TEMPLATE])
+
+        assert lazy.index(rendered) == 0
+
+
+def test_list_remove() -> None:
+    templar = Templar()
+
+    rendered = templar.template(VALUE_TO_TEMPLATE)
+
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
+        lazy: list = _AnsibleLazyTemplateMixin._try_create([VALUE_TO_TEMPLATE])
+
+        assert rendered in lazy
+
+        lazy.remove(rendered)
+
+        assert lazy == []
+
+
+def test_dict_get_with_default(with_template_context) -> None:
+    """Ensure getting a default value does not result in templating or storage of the default."""
+    my_dict = _AnsibleLazyTemplateMixin._try_create({})
+    value = TrustedAsTemplate().tag("{{ 1 }}")
+
+    with JinjaCallContext(eager_trip_undefined=False):
+        # A mutation from another context is required to enter the code path where templating and/or storage can occur.
+        my_dict['x'] = TrustedAsTemplate().tag("{{ 2 }}")
+
+    result = my_dict.get('a', value)
+
+    assert result is value
+    assert 'a' not in my_dict
+
+
+def test_dict_setdefault(with_template_context) -> None:
+    """Ensure that setdefault templates existing values, but not defaults."""
+    my_dict = _AnsibleLazyTemplateMixin._try_create(dict(invalid_template=TRUST.tag("{{ 1/0 }}"), valid_template=TRUST.tag("{{ 1 }}")))
+    value_for_default = TrustedAsTemplate().tag("{{ 'default' }}")
+
+    with JinjaCallContext(eager_trip_undefined=False):
+        assert my_dict.setdefault('valid_template') == 1
+        assert my_dict.setdefault('valid_template', value_for_default) == 1
+        assert my_dict.setdefault('nonexistent_key', value_for_default) is value_for_default
+
+        with pytest.raises(AnsibleTemplateError):
+            my_dict.setdefault('invalid_template', value_for_default)
+
+        # repeat to ensure we didn't record any change
+        with pytest.raises(AnsibleTemplateError):
+            my_dict.setdefault('invalid_template', value_for_default)
+
+
+def test_dict_pop(with_template_context) -> None:
+    """Ensure that pop does not template or store its default, and that templating occurs before the collection is mutated."""
+    my_dict = _AnsibleLazyTemplateMixin._try_create({})
+    value_for_default = TRUST.tag("{{ 1 }}")
+
+    with JinjaCallContext(eager_trip_undefined=False):
+        # A mutation from another context is required to enter the code path where templating and/or storage can occur.
+        my_dict['busted_template'] = TRUST.tag("{{ 1 / 0 }}")
+
+    result = my_dict.pop("boguskey", value_for_default)
+
+    assert result is value_for_default
+    assert "boguskey" not in my_dict
+
+    with pytest.raises(AnsibleTemplateError):
+        my_dict.pop('busted_template')
+
+    assert 'busted_template' in my_dict
+
+
+def test_dict_popitem(with_template_context):
+    """Ensure popitem respects insertion order, templating of values, and that templating occurs before the collection is mutated."""
+    my_dict = _AnsibleLazyTemplateMixin._try_create(dict(
+        also_valid_template=TRUST.tag("{{ 0 }}"),
+        busted_template=TRUST.tag("{{ 1 / 0 }}"),
+        valid_template=TRUST.tag("{{ 1 }}"),
+    ))
+
+    assert my_dict.popitem() == ['valid_template', 1]
+
+    with pytest.raises(AnsibleTemplateError):
+        my_dict.popitem()
+
+    del my_dict['busted_template']
+
+    assert my_dict.popitem() == ['also_valid_template', 0]
+
+    with pytest.raises(KeyError):
+        my_dict.popitem()
+
+
+@pytest.mark.parametrize("native_value, expression", (
+    ({}, 'obj.popitem()'),
+    ([], 'obj.pop()'),
+    ({}, 'obj.pop("missing")'),
+    ([], 'obj.pop(1)'),
+))
+def test_get_errors(with_template_context, native_value: object, expression: str) -> None:
+    """Verify getting a value from a lazy container fails the same as the native container when the requested key/index is missing or the container is empty."""
+    lazy_value = _AnsibleLazyTemplateMixin._try_create(native_value)
+
+    with pytest.raises(Exception) as native_error:
+        eval(expression, dict(obj=native_value))
+
+    with pytest.raises(type(native_error.value), match=f'^{re.escape(str(native_error.value))}$'):
+        eval(expression, dict(obj=lazy_value))
+
+
+def test_dict_items_and_values() -> None:
+    templar = Templar()
+
+    value = dict(key=VALUE_TO_TEMPLATE)
+    rendered = templar.template(value)
+
+    with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
+        lazy: dict = _AnsibleLazyTemplateMixin._try_create(value)
+
+        assert list(lazy.items()) == list(list(item) for item in rendered.items())
+        assert list(lazy.values()) == list(rendered.values())
+
+
+@pytest.mark.parametrize("template, variables, expected", [
+    ("{{ (d1 | items) + (d2 | items) }}", dict(d1=dict(a=1), d2=dict(b=2)), [['a', 1], ['b', 2]]),
+    ("{{ (d1 | items) + [('c', 3)] }}", dict(d1=dict(a=1)), [['a', 1], ['c', 3]]),
+    ("{{ [('c', 3)] + (d1 | items) }}", dict(d1=dict(a=1)), [['c', 3], ['a', 1]]),
+    ("{{ (d1 | items) * 2 }}", dict(d1=dict(a=1)), [['a', 1], ['a', 1]]),
+    ("{{ 2 * (d1 | items) }}", dict(d1=dict(a=1)), [['a', 1], ['a', 1]]),
+    ("{{ (1, 2) }}", dict(), [1, 2]),
+])
+def test_lazy_list_adapter_operators(template, variables, expected) -> None:
+    templar = Templar(variables=variables)
+
+    assert templar.template(TRUST.tag(template)) == expected
+
+
+@pytest.mark.parametrize("expression, expected_value, expected_type", [
+    ("l1 + l2", [_LazyValue(1), _LazyValue(2)], _AnsibleLazyTemplateList),  # __add__
+    ("l1 + [2]", [_LazyValue(1), 2], _AnsibleLazyTemplateList),  # __add__
+    ("[1] + l2", [1, _LazyValue(2)], _AnsibleLazyTemplateList),  # __radd__
+    ("l1 * 3", [_LazyValue(1), _LazyValue(1), _LazyValue(1)], _AnsibleLazyTemplateList),  # __mul__
+    ("3 * l2", [_LazyValue(2), _LazyValue(2), _LazyValue(2)], _AnsibleLazyTemplateList),  # __rmul__
+    ("d1 | d2", dict(a=1, b=2, c=2), _AnsibleLazyTemplateDict),  # __or__
+    ("d1 | {'b': 2, 'c': 2}", dict(a=1, b=2, c=2), _AnsibleLazyTemplateDict),  # __or__
+    ("{'a': 1} | d2", dict(a=1, b=2, c=2), _AnsibleLazyTemplateDict),  # __ror__
+    ("d1 |= d2", dict(d1=dict(a=_LazyValue(1), b=2, c=2)), _AnsibleLazyTemplateDict),  # __ior__
+    ("d1 |= {'b': 2, 'c': 2}", dict(d1=dict(a=_LazyValue(1), b=2, c=2)), _AnsibleLazyTemplateDict),  # __ior__
+    ('d1.copy()', dict(a=_LazyValue(1), c=_LazyValue(1)), _AnsibleLazyTemplateDict),  # _AnsibleLazyTemplateDict.copy
+    ('type(d1)(d1)', dict(a=_LazyValue(1), c=_LazyValue(1)), _AnsibleLazyTemplateDict),  # _AnsibleLazyTemplateDict.__init__ copy
+    ('type(d1)()', dict(), _AnsibleLazyTemplateDict),  # _AnsibleLazyTemplateDict.__init__ no args
+    ('l1.copy()', [_LazyValue(1)], _AnsibleLazyTemplateList),  # _AnsibleLazyTemplateList.copy
+    ('type(l1)(l1)', [_LazyValue(1)], _AnsibleLazyTemplateList),  # _AnsibleLazyTemplateList.__init__ copy
+    ('type(l1)()', list(), _AnsibleLazyTemplateList),  # _AnsibleLazyTemplateList.__init__ no args
+    ('copy.copy(l1)', [_LazyValue(1)], _AnsibleLazyTemplateList),
+    ('copy.copy(d1)', dict(a=_LazyValue(1), c=_LazyValue(1)), _AnsibleLazyTemplateDict),
+    ('copy.deepcopy(l1)', 'Deep copy of Ansible lazy types is not supported.', NotImplementedError),  # DTFIX-MERGE: this should be implemented
+    ('copy.deepcopy(d1)', 'Deep copy of Ansible lazy types is not supported.', NotImplementedError),  # DTFIX-MERGE: this should be implemented
+    ('ExampleSingletonTag().tag(l1)', [_LazyValue(1)], _AnsibleLazyTemplateList),
+    ('ExampleSingletonTag().tag(d1)', dict(a=_LazyValue(1), c=_LazyValue(1)), _AnsibleLazyTemplateDict),
+    ('list(reversed(l1))', [1], list),  # _AnsibleLazyTemplateList.__reversed__
+    ('list(reversed(d1))', ['c', 'a'], list),  # dict.__reversed__ - keys only
+    ('l1[:]', [_LazyValue(1)], _AnsibleLazyTemplateList),  # __getitem__ (slice)
+    ('d1["a"]', 1, int),  # __getitem__
+    ('d1.get("a")', 1, int),  # get
+    ('l1[0]', 1, int),  # __getitem__
+    ('d1.pop("a")', 1, int),  # dict.pop (check returned value)
+    ('d1.pop("a");', dict(d1=dict(c=_LazyValue(1))), _AnsibleLazyTemplateDict),  # dict.pop (check mutated source)
+    ('list(d1.items())', [['a', 1], ['c', 1]], list),  # items
+    ('d1.popitem()', ['c', 1], list),  # dict.popitem (check returned value)
+    ('d1.popitem();', dict(d1=dict(a=_LazyValue(1))), _AnsibleLazyTemplateDict),  # dict.popitem (check mutated source)
+    ('d1.clear(); d1["d"] = 4', dict(d1=dict(d=4), mutated=True), _AnsibleLazyTemplateDict),  # dict.clear (clear + mutate)
+    ('d1["d"] = 4; d1.clear()', dict(d1=dict()), _AnsibleLazyTemplateDict),  # dict.clear (mutate + clear)
+    ('d1.update(d2);', dict(d1=dict(a=_LazyValue(1), b=2, c=2), mutated=True), _AnsibleLazyTemplateDict),  # dict.update
+    ('d1.setdefault("d", 4)', 4, int),  # dict.setdefault (return value check only)
+    ('d1.setdefault("d", 4);', dict(d1=dict(a=_LazyValue(1), c=_LazyValue(1), d=4), mutated=True), _AnsibleLazyTemplateDict),  # dict.setdefault
+    ('l1.clear(); l1.append(4)', dict(l1=[4], mutated=True), _AnsibleLazyTemplateList),  # list.clear (clear + mutate)
+    ('l1.append(4); l1.clear()', dict(l1=[]), _AnsibleLazyTemplateList),  # list.clear (mutate + clear)
+    ('l1.pop()', 1, int),  # list.pop (check returned value)
+    ('l1.pop();', dict(l1=[]), _AnsibleLazyTemplateList),  # list.pop (check returned value)
+    ('l1.insert(0, 4);', dict(l1=[4, _LazyValue(1)], mutated=True), _AnsibleLazyTemplateList),  # list.insert (check mutated source)
+    ('l1.extend(l2);', dict(l1=[_LazyValue(1), 2], mutated=True), _AnsibleLazyTemplateList),  # list.extend (check mutated source)
+    ('l1[0] = 2;', dict(l1=[2], mutated=True), _AnsibleLazyTemplateList),  # list.__setitem__ (check mutated source)
+    ('l1 > [1]', False, bool),  # __gt__ (lazy vs constant)
+    ('l1 > l1x', False, bool),  # __gt__ (lazy vs lazy)
+    ('l1 >= [1]', True, bool),  # __ge__ (lazy vs constant)
+    ('l1 >= l1x', True, bool),  # __ge__ (lazy vs lazy)
+    ('l1 < [1]', False, bool),  # __lt__ (lazy vs constant)
+    ('l1 < l1x', False, bool),  # __lt__ (lazy vs lazy)
+    ('l1 <= [1]', True, bool),  # __le__ (lazy vs constant)
+    ('l1 <= l1x', True, bool),  # __le__ (lazy vs lazy)
+    ('l1 == [1]', True, bool),  # __eq__ (lazy vs constant)
+    ('l1 == l1x', True, bool),  # __eq__ (lazy vs lazy)
+    ('l1 != [1]', False, bool),  # __ne__ (lazy vs constant)
+    ('l1 != l1x', False, bool),  # __ne__ (lazy vs lazy)
+    ('d1 == {"a": 1, "c": 1}', True, bool),  # __eq__ (lazy vs constant)
+    ('d1 == d1x', True, bool),  # __eq__ (lazy vs lazy)
+    ('d1 != {"a": 1, "c": 1}', False, bool),  # __ne__ (lazy vs constant)
+    ('d1 != d1x', False, bool),  # __eq__ (lazy vs lazy)
+    ('1 in l1', True, bool),  # __contains__
+    ('str(d1)', str(dict(a=1, c=1)), str),  # __str__
+    ('str(l1)', str([1]), str),  # __str__
+    ('repr(d1)', repr(dict(a=1, c=1)), str),  # __repr__
+    ('repr(l1)', repr([1]), str),  # __repr__
+    ('"{}".format(l1)', repr([1]), str),  # __format__ [no override required]
+    ('list(l1)', [1], list),  # _AnsibleLazyTemplateList.__iter__
+    ('list(d1)', ['a', 'c'], list),  # _AnsibleLazyTemplateDict.__iter__
+    ('l1._native_copy()', [1], list),  # native_copy
+    ('dict(d1)', dict(a=1, c=1), dict),  # __iter__
+    ('d1._native_copy()', dict(a=1, c=1), dict),  # native_copy
+    ('{} + l1', "unsupported operand type(s) for +: 'dict' and '_AnsibleLazyTemplateList'", TypeError),  # __radd__
+    ('d1 + l1', "unsupported operand type(s) for +: '_AnsibleLazyTemplateDict' and '_AnsibleLazyTemplateList'", TypeError),  # __radd__
+    ('d1 + []', "unsupported operand type(s) for +: '_AnsibleLazyTemplateDict' and 'list'", TypeError),  # python operator dispatch
+    ('set() + l1', "unsupported operand type(s) for +: 'set' and '_AnsibleLazyTemplateList'", TypeError),  # python operator dispatch
+    ('set() + d1', "unsupported operand type(s) for +: 'set' and '_AnsibleLazyTemplateDict'", TypeError),  # python operator dispatch
+    ('l1 + {}', 'can only concatenate list (not "dict") to list', TypeError),  # __add__ (relies on list.__add__)
+    ('l1 + set()', 'can only concatenate list (not "set") to list', TypeError),  # __add__ (relies on list.__add__)
+    ('l1 + tuple()', 'can only concatenate list (not "tuple") to list', TypeError),  # __add__ (relies on list.__add__)
+    ('tuple() + l1', 'can only concatenate tuple (not "_AnsibleLazyTemplateList") to tuple', TypeError),  # __radd__ (relies on tuple.__add__)
+    ('tuple() + d1', 'can only concatenate tuple (not "_AnsibleLazyTemplateDict") to tuple', TypeError),  # relies on tuple.__add__
+    ('l1.pop(42)', "pop index out of range", IndexError),
+], ids=str)
+def test_lazy_container_operators(expression: str, expected_value: t.Any, expected_type: type) -> None:
+    """
+    Verify that lazy container operators and methods properly implement lazy behavior.
+    Results are checked both for expected types and expected values.
+    When the result is a container, items in the container are checked to see if they're lazy as appropriate.
+    This test uses a function to simulate Jinja plugin behavior, since plugins can use operators and methods that Jinja expressions cannot.
+    """
+    # DTFIX-RELEASE: add a unit test to ensure every list/dict method has been overridden or on a list we can safely ignore
+    variables = dict(
+        one=1,
+        two=2,
+        data=dict(
+            l1=[TRUST.tag('{{ one }}')],
+            l1x=[TRUST.tag('{{ one }}')],
+            l2=[TRUST.tag('{{ two }}')],
+            d1=dict(a=TRUST.tag('{{ one }}'), c=TRUST.tag('{{ one }}')),
+            d1x=dict(a=TRUST.tag('{{ one }}'), c=TRUST.tag('{{ one }}')),
+            d2=dict(b=TRUST.tag('{{ two }}'), c=TRUST.tag('{{ two }}')),
+        ),
+    )
+
+    def run_test(data: dict[str, t.Any]) -> t.Any:
+        nonlocal expected_value
+
+        expect_mutation = False
+        secondary_templar = Templar()
+
+        # Run under a secondary context using a templar with no variables; this allows us to test the correct propagation and use of the
+        # embedded templar in lazy containers. Templated values will not render correctly if they pick up the ambient (no-vars) templar during
+        # various copy/operator scenarios.
+        with TemplateContext(template_value='', templar=secondary_templar, options=TemplateOptions.DEFAULT, stop_on_template=False):
+            code_globals = dict(
+                copy=copy,
+                ExampleSingletonTag=ExampleSingletonTag,
+            )
+
+            try:
+                result = eval(expression, code_globals, data)
+            except SyntaxError:
+                exec(expression, code_globals, data)
+
+                var_name = list(expected_value)[0]
+                expect_mutation = expected_value.get('mutated', False)
+                expected_value = expected_value[var_name]
+                result = data[var_name]
+            except Exception as ex:
+                if type(ex) is not expected_type:  # pylint: disable=unidiomatic-typecheck
+                    # we weren't expecting an exception, or got one of the wrong type; re-raise it now for the traceback instead of just a failed assertion
+                    raise
+
+                result = ex
+
+        assert type(result) is expected_type  # pylint: disable=unidiomatic-typecheck
+
+        if issubclass(expected_type, list):
+            expected_types = [type(value) for value in expected_value]
+            expected_result = [value.value if isinstance(value, _LazyValue) else value for value in expected_value]
+
+            actual_types = [type(value) for value in list.__iter__(result)]
+
+            assert actual_types == expected_types
+        elif issubclass(expected_type, dict):
+            expected_types = {key: type(value) for key, value in expected_value.items()}
+            expected_result = {key: value.value if isinstance(value, _LazyValue) else value for key, value in expected_value.items()}
+
+            actual_types = {key: type(value) for key, value in dict.items(result)}
+
+            assert actual_types == expected_types
+        elif issubclass(expected_type, Exception):
+            result = str(result)  # unfortunately exceptions can't be compared for equality, so use the string representation instead
+            expected_result = expected_value
+        else:
+            expected_result = expected_value
+
+        if isinstance(result, _AnsibleLazyTemplateMixin):
+            if expect_mutation:
+                assert result._mutator() is JinjaCallContext.current()
+            else:
+                assert result._mutator is None
+
+        assert result == expected_result
+
+    templar = Templar(variables=variables)
+    templar.environment.globals['run_test'] = run_test
+    templar.template(TRUST.tag('{{ run_test(data=data) }}'))
+
+
+def test_range_templating():
+    """
+    Verify special handling for Range objects.
+    They are usually listified like other iterables when returned from a Jinja filter or method/function call, except when calling the Python `range()`
+    global function directly, which allows the range object to be returned and used directly.
+    """
+    templar = Templar()
+
+    # ensure that an insanely large range is not listified
+    assert templar.evaluate_conditional(TRUST.tag("range(1000000000000) | type_debug == 'range'"))
+    assert isinstance(templar.template(TRUST.tag("{{ range(1000000000000) | random }}")), int)
+    assert templar.template(TRUST.tag("{{ range(3) | reverse }}")) == [2, 1, 0]
+
+
+@pytest.mark.parametrize("value", [
+    "{{ range(10000) }}",
+    "{{ [range(10000)] }}",
+    "{{ {'a': range(10000)} }}",
+])
+def test_range_template_fail(value):
+    """Verify unsupported range object usages."""
+    with pytest.raises(AnsibleTemplateError):
+        Templar().template(TRUST.tag(value))
+
+
+LISTIFIED_ITERATOR_VALUES_AND_EXPECTED = (
+    ("{'a': 1, 'b': 2}.items()", [['a', 1], ['b', 2]]),
+    ("['hi'] | map('upper')", ["HI"]),
+)
+
+LISTIFIED_ITERATOR_VALUES = tuple(item[0] for item in LISTIFIED_ITERATOR_VALUES_AND_EXPECTED)
+LISTIFIED_ITERATOR_TEMPLATES = tuple(TRUST.tag(f'{{{{ {value} }}}}') for value in LISTIFIED_ITERATOR_VALUES)
+
+
+@pytest.mark.parametrize("value, expected", LISTIFIED_ITERATOR_VALUES_AND_EXPECTED)
+def test_list_adapter_equality(value: str, expected: list) -> None:
+    src_pos = AnsibleSourcePosition(src='test')  # here to make sure it doesn't trigger an exception, it won't be in the result
+
+    assert Templar().evaluate_expression(TRUST.tag(src_pos.tag(f"{value} == {expected}")))
+
+
+@pytest.mark.parametrize("value", LISTIFIED_ITERATOR_VALUES)
+def test_list_adapter_source_propagation(value: t.Any) -> None:
+    src_pos = AnsibleSourcePosition(src='test')
+    tag = AnsibleSourcePosition.get_tag(Templar().template(TRUST.tag(src_pos.tag(f"{{{{ {value} }}}}"))))
+
+    assert tag is src_pos
+
+
+@pytest.mark.parametrize("value", t.cast(tuple, CONTAINER_VALUES) + LISTIFIED_ITERATOR_TEMPLATES, ids=str)
+def test_lazy_containers_to_yaml(value: t.Any) -> None:
+    Templar(variables=dict(value=value)).template(TRUST.tag("{{ value | to_yaml }}"))
+
+
+@pytest.mark.parametrize("value", t.cast(tuple, CONTAINER_VALUES) + LISTIFIED_ITERATOR_TEMPLATES, ids=str)
+def test_lazy_containers_to_json(value: t.Any) -> None:
+    Templar(variables=dict(value=value)).template(TRUST.tag("{{ value | to_json }}"))
+
+
+@pytest.mark.parametrize("value", (_AnsibleLazyTemplateDict, _AnsibleLazyTemplateList))
+def test_lazy_interface(value: type[_AnsibleLazyTemplateMixin]) -> None:
+    """Ensure that lazy containers implement all the methods that their native types provide."""
+    missing = set(dir(value._native_type)) - set(dir(value))
+    assert not missing
+
+
+@pytest.mark.parametrize("expression, expected", (
+    ("l1[0]", [0]),  # _AnsibleLazyTemplateList.__getitem__ and _ansible_finalize (list to lazy list)
+    ("l1[1]", [1]),  # _AnsibleLazyTemplateList.__getitem__
+    ("l1[2]", 'hello'),  # _AnsibleLazyTemplateList.__getitem__
+    ("[v for v in l1][0]", [0]),  # _AnsibleLazyTemplateList.__iter__ and _ansible_finalize (list to lazy list)
+    ("[v for v in l1][1]", [1]),  # _AnsibleLazyTemplateList.__iter__
+    ("[v for v in l1][2]", 'hello'),  # _AnsibleLazyTemplateList.__iter__
+    ("d1['a']", [0]),  # _AnsibleLazyTemplateDict.__getitem__ and _ansible_finalize (dict to lazy dict)
+    ("d1['b']", [1]),  # _AnsibleLazyTemplateDict.__getitem__
+    ("d1['c']", 'hello'),  # _AnsibleLazyTemplateDict.__getitem__
+    ("{k: v for k, v in d1.items()}['a']", [0]),  # _AnsibleLazyTemplateDict.items and _ansible_finalize (dict to lazy dict)
+    ("{k: v for k, v in d1.items()}['b']", [1]),  # _AnsibleLazyTemplateDict.items
+    ("{k: v for k, v in d1.items()}['c']", 'hello'),  # _AnsibleLazyTemplateDict.items
+), ids=str)
+def test_lazy_persistence(expression: str, expected: t.Any) -> None:
+    """
+    Verify that values returned from lazy containers are persistent, regardless of whether templating is involved or not.
+    A global function is used to simulate the behavior that would occur in a Jinja plugin.
+    """
+    variables = dict(
+        data=dict(
+            l1=[TRUST.tag('{{ [0] }}'), [1], 'hello'],
+            d1=dict(a=TRUST.tag('{{ [0] }}'), b=[1], c='hello'),
+        ),
+    )
+
+    def run_test(data: dict[str, t.Any]) -> None:
+        first = eval(expression, data)
+        second = eval(expression, data)
+
+        assert first == expected
+        assert first is second
+
+    templar = Templar(variables=variables)
+    templar.environment.globals['run_test'] = run_test
+
+    templar.template(TRUST.tag("{{ run_test(data=data) }}"))
+
+
+@pytest.mark.parametrize("expression", (
+    "data['l1'][0]",
+    "data['d1']['a']",
+))
+def test_lazy_mutation_persistence(expression: str) -> None:
+    """Verify that lazy containers persist values added after creation and return them as-is without modification, even if they contain trusted templates."""
+    variables = dict(
+        data=dict(
+            l1=[None],
+            d1=dict(a=None),
+        ),
+    )
+
+    def run_test(data: dict[str, t.Any]) -> None:
+        assert data
+
+        value = [TRUST.tag('{{ "hi" }}')]
+
+        exec(f'{expression} = value')
+
+        result = eval(expression)
+
+        assert result is value
+
+    templar = Templar(variables=variables)
+    templar.environment.globals['run_test'] = run_test
+
+    templar.template(TRUST.tag("{{ run_test(data=data) }}"))
+
+
+@pytest.mark.parametrize("expr, new_value, some_var, expected_value", [
+    ("create_dict()", TRUST.tag("{{ 'mom' }}"), None, dict(new="mom")),
+    ("mutate_dict(some_var)", TRUST.tag("{{ 'mom' }}"), dict(one="one"), dict(one="one", new="mom")),
+    ("create_list()", TRUST.tag("{{ 'mom' }}"), None, ["mom"]),
+    ("mutate_list(some_var)", TRUST.tag("{{ 'mom' }}"), [1], [1, "mom"]),
+])
+def test_lazy_mutation_cross_plugin_dirty_template(expr: str, new_value: t.Any, some_var: t.Any, expected_value: t.Any):
+    """Ensure that values returned from one plugin are lazily processed by subsequent plugins and after template finalization."""
+
+    def create_dict() -> dict:
+        return dict(new=new_value)
+
+    def create_list() -> list:
+        return [new_value]
+
+    def mutate_dict(value: dict) -> dict:
+        value['new'] = new_value
+        return value
+
+    def mutate_list(value: list) -> list:
+        value.append(new_value)
+        return value
+
+    def access(value: t.Any) -> None:
+        assert value == expected_value
+
+    available_vars = dict(some_var=some_var,
+                          access=access,
+                          create_dict=create_dict,
+                          create_list=create_list,
+                          mutate_dict=mutate_dict,
+                          mutate_list=mutate_list)
+
+    assert Templar(variables=available_vars).evaluate_expression(TRUST.tag(expr)) == expected_value
+    assert Templar(variables=available_vars).evaluate_expression(TRUST.tag(f'access({expr})')) is None
+
+
+@pytest.mark.parametrize("expr, new_value, some_var, expected_value", [
+    ("access_and_mutate_dict(mutate_dict(some_var))", TRUST.tag("{{ 'mom' }}"), dict(one="one"), dict(one="one", new="mom", secondnew="mom")),
+    ("access_and_mutate_list(mutate_list(some_var))", TRUST.tag("{{ 'mom' }}"), ["one"], ["one", "mom", "mom"]),
+])
+def test_lazy_mutation_cross_plugin_dirty_container(expr: str, new_value: t.Any, some_var: t.Any, expected_value: t.Any):
+    """Ensure that values returned from one plugin are lazily processed by subsequent plugins and after template finalization."""
+
+    def mutate_list(value: list) -> list:
+        value.append(new_value)
+
+        assert value[1] is new_value
+
+        return value
+
+    def access_and_mutate_list(value: list) -> list:
+        value.append(new_value)
+
+        assert value[2] is new_value
+        assert value[1] == expected_value[1]
+
+        return value
+
+    def mutate_dict(value: dict) -> dict:
+        value['new'] = new_value
+
+        assert value['new'] is new_value
+
+        return value
+
+    def access_and_mutate_dict(value: t.Any) -> list:
+        value['secondnew'] = new_value
+
+        assert value['secondnew'] is new_value
+        assert value['new'] == expected_value['new']
+
+        return value
+
+    available_vars = dict(some_var=some_var,
+                          access_and_mutate_list=access_and_mutate_list,
+                          mutate_list=mutate_list,
+                          access_and_mutate_dict=access_and_mutate_dict,
+                          mutate_dict=mutate_dict)
+
+    res = Templar(variables=available_vars).evaluate_expression(TRUST.tag(expr))
+    assert res == expected_value
+
+
+def test_undefined_in_jinja_constant_container():
+    """
+    Retrieval of an undefined value in a plugin which does not declare undefined support should internally raise AnsibleUndefinedVariable, which, if
+    unhandled by the plugin, will be converted to an AnsibleUndefined and returned as the result of that plugin's invocation, allowing the template
+    to continue execution.
+    """
+
+    plugin_retrieved_the_value = False
+
+    def demo(_input, arg):
+        nonlocal plugin_retrieved_the_value
+        _x = arg[0]
+        plugin_retrieved_the_value = True
+        return []
+
+    templar = Templar()
+    templar.environment.filters['demo'] = demo
+
+    with pytest.raises(AnsibleUndefinedVariable):
+        templar.template(TRUST.tag("{{ True | demo([bogus_var]) }}"))
+    assert not plugin_retrieved_the_value
+
+    assert templar.template(TRUST.tag("{{ True | demo([bogus_var]) | default('nope') }}")) == 'nope'
+    assert not plugin_retrieved_the_value

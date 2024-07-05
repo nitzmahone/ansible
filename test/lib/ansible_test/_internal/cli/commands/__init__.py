@@ -92,6 +92,16 @@ def do_commands(
     )
 
     common.add_argument(
+        '--show-traceback',
+        dest='show_traceback',
+        metavar='TB',
+        type=str,
+        default='never',
+        choices=('error', 'warning', 'deprecated', 'always', 'never'),
+        help='set ANSIBLE_DISPLAY_TRACEBACK (%(choices)s) (default: %(default)s)',
+    )
+
+    common.add_argument(
         '--redact',
         dest='redact',
         action='store_true',

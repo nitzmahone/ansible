@@ -10,18 +10,18 @@ import os.path
 import sys
 import stat
 import tempfile
+import typing as t
 
 from collections import namedtuple
 from collections.abc import Mapping, Sequence
 from jinja2.nativetypes import NativeEnvironment
 
-from ansible.errors import AnsibleOptionsError, AnsibleError, AnsibleRequiredOptionError
+from ansible.errors import AnsibleOptionsError, AnsibleError, AnsibleUndefinedConfigEntry, AnsibleRequiredOptionError
 from ansible.module_utils.common.text.converters import to_text, to_bytes, to_native
 from ansible.module_utils.common.yaml import yaml_load
 from ansible.module_utils.six import string_types
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.parsing.quoting import unquote
-from ansible.parsing.yaml.objects import AnsibleVaultEncryptedUnicode
 from ansible.utils.path import cleanup_tmp_file, makedirs_safe, unfrackpath
 
 
@@ -159,7 +159,7 @@ def ensure_type(value, value_type, origin=None, origin_ftype=None):
                 errmsg = 'dictionary'
 
         elif value_type in ('str', 'string'):
-            if isinstance(value, (string_types, AnsibleVaultEncryptedUnicode, bool, int, float, complex)):
+            if isinstance(value, (string_types, bool, int, float, complex)):
                 value = to_text(value, errors='surrogate_or_strict')
                 if origin_ftype and origin_ftype == 'ini':
                     value = unquote(value)
@@ -167,7 +167,7 @@ def ensure_type(value, value_type, origin=None, origin_ftype=None):
                 errmsg = 'string'
 
         # defaults to string type
-        elif isinstance(value, (string_types, AnsibleVaultEncryptedUnicode)):
+        elif isinstance(value, (string_types)):
             value = to_text(value, errors='surrogate_or_strict')
             if origin_ftype and origin_ftype == 'ini':
                 value = unquote(value)
@@ -363,6 +363,7 @@ class ConfigManager(object):
             # template default values if possible
             # NOTE: cannot use is_template due to circular dep
             try:
+                # FIXME: This really should be using an immutable sandboxed native environment, not just native environment
                 t = NativeEnvironment().from_string(value)
                 value = t.render(variables)
             except Exception:
@@ -488,10 +489,6 @@ class ConfigManager(object):
                 self.WARNINGS.add(u'value for config entry {0} contains invalid characters, ignoring...'.format(to_text(name)))
                 continue
             if temp_value is not None:  # only set if entry is defined in container
-                # inline vault variables should be converted to a text string
-                if isinstance(temp_value, AnsibleVaultEncryptedUnicode):
-                    temp_value = to_text(temp_value, errors='surrogate_or_strict')
-
                 value = temp_value
                 origin = name
 
@@ -509,9 +506,13 @@ class ConfigManager(object):
                                                             keys=keys, variables=variables, direct=direct)
         except AnsibleError:
             raise
-        except Exception as e:
-            raise AnsibleError("Unhandled exception when retrieving %s:\n%s" % (config, to_native(e)), orig_exc=e)
+        except Exception as ex:
+            raise AnsibleError(f"Unhandled exception when retrieving {config!r}.") from ex
         return value
+
+    def get_config_default(self, config: str, plugin_type: str | None = None, plugin_name: str | None = None) -> t.Any:
+        """Return the default value for the specified configuration."""
+        return self.get_configuration_definitions(plugin_type, plugin_name)[config]['default']
 
     def get_config_value_and_origin(self, config, cfile=None, plugin_type=None, plugin_name=None, keys=None, variables=None, direct=None):
         ''' Given a config key figure out the actual value and report on the origin of the settings '''
@@ -622,6 +623,7 @@ class ConfigManager(object):
                 else:
                     origin = 'default'
                     value = self.template_default(defs[config].get('default'), variables)
+
             try:
                 # ensure correct type, can raise exceptions on mismatched types
                 value = ensure_type(value, defs[config].get('type'), origin=origin, origin_ftype=origin_ftype)
@@ -631,8 +633,8 @@ class ConfigManager(object):
                     origin = 'default'
                     value = ensure_type(defs[config].get('default'), defs[config].get('type'), origin=origin, origin_ftype=origin_ftype)
                 else:
-                    raise AnsibleOptionsError('Invalid type for configuration option %s (from %s): %s' %
-                                              (to_native(_get_entry(plugin_type, plugin_name, config)).strip(), origin, to_native(e)))
+                    raise AnsibleOptionsError('Invalid type for configuration option %s (from %s)' %
+                                              (to_native(_get_entry(plugin_type, plugin_name, config)).strip(), origin)) from e
 
             # deal with restricted values
             if value is not None and 'choices' in defs[config] and defs[config]['choices'] is not None:
@@ -662,7 +664,7 @@ class ConfigManager(object):
             if 'deprecated' in defs[config] and origin != 'default':
                 self.DEPRECATED.append((config, defs[config].get('deprecated')))
         else:
-            raise AnsibleError('Requested entry (%s) was not defined in configuration.' % to_native(_get_entry(plugin_type, plugin_name, config)))
+            raise AnsibleUndefinedConfigEntry(f'Requested entry ({_get_entry(plugin_type, plugin_name, config)}) is not defined in configuration.')
 
         return value, origin
 
