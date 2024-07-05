@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# DTFIX-FUTURE: convert this to the new output validation test format, which will ignore things like host path changes
+
 # This test compares "known good" output with various settings against output
 # with the current code. It's brittle by nature, but this is probably the
 # "best" approach possible.

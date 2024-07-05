@@ -31,8 +31,7 @@ import itertools
 import random
 import sys
 import time
-
-import ansible.module_utils.compat.typing as t
+import typing as t
 
 
 def rate_limit_argument_spec(spec=None):

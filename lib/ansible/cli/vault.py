@@ -258,7 +258,7 @@ class VaultCLI(CLI):
             display.display("Reading plaintext input from stdin", stderr=True)
 
         for f in context.CLIARGS['args'] or ['-']:
-            # Fixme: use the correct vau
+            # FIXME: use the correct vau
             self.editor.encrypt_file(f, self.encrypt_secret,
                                      vault_id=self.encrypt_vault_id,
                                      output_file=context.CLIARGS['output_file'])

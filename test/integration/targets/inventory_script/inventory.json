@@ -1025,7 +1025,8 @@
                 "triggeredalarmstate": [],
                 "value": []
             }
-        }
+        },
+        "profile": "legacy_inventory"
     },
     "all": {
         "children": [

@@ -233,7 +233,6 @@ import re
 import select
 import socket
 import time
-import traceback
 
 from ansible.module_utils.basic import AnsibleModule, missing_required_lib
 from ansible.module_utils.common.sys_info import get_platform_subclass
@@ -247,8 +246,8 @@ try:
     import psutil
     HAS_PSUTIL = True
     # just because we can import it on Linux doesn't mean we will use it
-except ImportError:
-    PSUTIL_IMP_ERR = traceback.format_exc()
+except ImportError as ex:
+    PSUTIL_IMP_ERR = ex
 
 
 class TCPConnectionInfo(object):
@@ -613,7 +612,7 @@ def main():
             elif port:
                 alt_connect_timeout = math.ceil(_timedelta_total_seconds(end - utcnow()))
                 try:
-                    s = socket.create_connection((host, port), min(connect_timeout, alt_connect_timeout))
+                    s = socket.create_connection((host, int(port)), min(connect_timeout, alt_connect_timeout))
                 except Exception:
                     # Failed to connect by connect_timeout. wait and try again
                     pass

@@ -14,6 +14,7 @@ from ansible.cli.arguments import option_helpers as opt_help
 from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleParserError
 from ansible.executor.task_queue_manager import TaskQueueManager
 from ansible.module_utils.common.text.converters import to_text
+from ansible.utils.datatag.tags import TrustedAsTemplate
 from ansible.parsing.splitter import parse_kv
 from ansible.parsing.utils.yaml import from_yaml
 from ansible.playbook import Playbook
@@ -72,11 +73,14 @@ class AdHocCLI(CLI):
     def _play_ds(self, pattern, async_val, poll):
         check_raw = context.CLIARGS['module_name'] in C.MODULE_REQUIRE_ARGS
 
-        module_args_raw = context.CLIARGS['module_args']
+        module_args_raw = TrustedAsTemplate().tag(context.CLIARGS['module_args'])
         module_args = None
         if module_args_raw and module_args_raw.startswith('{') and module_args_raw.endswith('}'):
             try:
-                module_args = from_yaml(module_args_raw.strip(), json_only=True)
+                # DTFIX-MERGE: do we want to make YAML/parse_kv/JSON other APIs consistent about accepting TrustedAsTemplate
+                #  tagged input strings as a marker to propagate TrustedAsTemplate to their outputs? from_yaml does not
+                #  do this, but parse_kv does
+                module_args = from_yaml(module_args_raw.strip(), json_only=True, trusted_as_template=True)
             except AnsibleParserError:
                 pass
 

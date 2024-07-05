@@ -86,7 +86,6 @@ from ansible.errors import AnsibleError
 from ansible.module_utils.six import string_types
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.plugins.lookup import LookupBase
-from ansible.utils.listify import listify_lookup_plugin_terms
 
 
 FLAGS = ('skip_missing',)
@@ -99,8 +98,6 @@ class LookupModule(LookupBase):
         def _raise_terms_error(msg=""):
             raise AnsibleError(
                 "subelements lookup expects a list of two or three items, " + msg)
-
-        terms[0] = listify_lookup_plugin_terms(terms[0], templar=self._templar)
 
         # check lookup terms - check number of terms
         if not isinstance(terms, list) or not 2 <= len(terms) <= 3:

@@ -56,13 +56,14 @@ RETURN = """
 
 import os
 
-from jinja2.runtime import Undefined
 
-from ansible.errors import AnsibleUndefinedVariable
 from ansible.plugins.lookup import LookupBase
+from ansible.template.jinja_bits import _undef, _DEFAULT_UNDEF
 
 
 class LookupModule(LookupBase):
+    accept_undefined_args = True  # the `default` arg can accept undefined values
+
     def run(self, terms, variables, **kwargs):
 
         self.set_options(var_options=variables, direct=kwargs)
@@ -72,7 +73,7 @@ class LookupModule(LookupBase):
         for term in terms:
             var = term.split()[0]
             val = os.environ.get(var, d)
-            if isinstance(val, Undefined):
-                raise AnsibleUndefinedVariable('The "env" lookup, found an undefined variable: %s' % var)
+            if val is _DEFAULT_UNDEF:
+                val = _undef(f'The environment variable {var!r} is not set.')
             ret.append(val)
         return ret

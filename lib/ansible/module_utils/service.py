@@ -35,7 +35,6 @@ import platform
 import select
 import shlex
 import subprocess
-import traceback
 
 from ansible.module_utils.six import PY2, b
 from ansible.module_utils.common.text.converters import to_bytes, to_text
@@ -182,9 +181,9 @@ def daemonize(module, cmd):
         pipe = os.pipe()
         pid = fork_process()
     except OSError:
-        module.fail_json(msg="Error while attempting to fork: %s", exception=traceback.format_exc())
+        module.fail_json(msg="Error while attempting to fork: %s")
     except Exception as exc:
-        module.fail_json(msg=to_text(exc), exception=traceback.format_exc())
+        module.fail_json(msg=to_text(exc))
 
     # we don't do any locking as this should be a unique module/process
     if pid == 0:

@@ -16,19 +16,19 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-from ansible.errors import AnsibleError
-from ansible.playbook.conditional import Conditional
+import typing as t
+
+from ansible.errors import AnsibleValueOmittedError, AnsibleError
+from ansible.module_utils.common.validation import check_type_list_that_does_not_suck
 from ansible.plugins.action import ActionBase
-from ansible.module_utils.six import string_types
-from ansible.module_utils.parsing.convert_bool import boolean
+from ansible.template.templar import TemplateMode
 
 
 class ActionModule(ActionBase):
-    ''' Fail with custom message '''
+    """Assert that one or more conditional expressions evaluate to true."""
 
     _requires_connection = False
-
-    _VALID_ARGS = frozenset(('fail_msg', 'msg', 'quiet', 'success_msg', 'that'))
+    DOES_OWN_TEMPLATING = True  # DTFIX-PR: bikeshed a name for this attribute
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -37,49 +37,52 @@ class ActionModule(ActionBase):
         result = super(ActionModule, self).run(tmp, task_vars)
         del tmp  # tmp no longer has any effect
 
-        if 'that' not in self._task.args:
-            raise AnsibleError('conditional required in "that" string')
+        # since we need raw args, template everything normally except `that`
+        for arg_name, arg in list(self._task.args.items()):
+            if arg_name == 'that':
+                if not isinstance(arg, str):
+                    # if `that` is not a string, we don't need to attempt to resolve it as a template before validation (which will also listify it)
+                    continue
+                # if `that` is a string that might be a template, we only want to resolve to the container and avoid templating the container contents
+                mode = TemplateMode.STOP_ON_CONTAINER
+            else:
+                mode = TemplateMode.DEFAULT
 
-        fail_msg = None
-        success_msg = None
+            try:
+                templated_arg = self._templar.template(arg, mode=mode)
+            except AnsibleValueOmittedError:
+                self._task.args.pop(arg_name)
+                continue
+            except Exception as ex:
+                raise AnsibleError(f'Error while templating arg {arg_name!r}.', obj=arg) from ex
 
-        fail_msg = self._task.args.get('fail_msg', self._task.args.get('msg'))
-        if fail_msg is None:
-            fail_msg = 'Assertion failed'
-        elif isinstance(fail_msg, list):
-            if not all(isinstance(x, string_types) for x in fail_msg):
-                raise AnsibleError('Type of one of the elements in fail_msg or msg list is not string type')
-        elif not isinstance(fail_msg, (string_types, list)):
-            raise AnsibleError('Incorrect type for fail_msg or msg, expected a string or list and got %s' % type(fail_msg))
+            # if `that` is a non-list, restore the original input (template or container)
+            if arg_name == "that" and not isinstance(templated_arg, list):
+                # DTFIX-MERGE: ensure that we get a warning below because of template instead of expression
+                templated_arg = arg
 
-        success_msg = self._task.args.get('success_msg')
-        if success_msg is None:
-            success_msg = 'All assertions passed'
-        elif isinstance(success_msg, list):
-            if not all(isinstance(x, string_types) for x in success_msg):
-                raise AnsibleError('Type of one of the elements in success_msg list is not string type')
-        elif not isinstance(success_msg, (string_types, list)):
-            raise AnsibleError('Incorrect type for success_msg, expected a string or list and got %s' % type(success_msg))
+            self._task.args[arg_name] = templated_arg
 
-        quiet = boolean(self._task.args.get('quiet', False), strict=False)
+        validation_result, new_module_args = self.validate_argument_spec(
+            argument_spec=dict(
+                fail_msg=dict(type=str_or_list_of_str, aliases=['msg'], default='Assertion failed'),
+                success_msg=dict(type=str_or_list_of_str, default='All assertions passed'),
+                quiet=dict(type='bool', default=False),
+                # explicitly not validating types `elements` here to let type rules for conditionals apply
+                that=dict(type=check_type_list_that_does_not_suck, required=True),
+            ),
+        )
 
-        # make sure the 'that' items are a list
-        thats = self._task.args['that']
-        if not isinstance(thats, list):
-            thats = [thats]
+        fail_msg = new_module_args['fail_msg']
+        success_msg = new_module_args['success_msg']
+        quiet = new_module_args['quiet']
+        thats = new_module_args['that']
 
-        # Now we iterate over the that items, temporarily assigning them
-        # to the task's when value so we can evaluate the conditional using
-        # the built in evaluate function. The when has already been evaluated
-        # by this point, and is not used again, so we don't care about mangling
-        # that value now
-        cond = Conditional(loader=self._loader)
         if not quiet:
             result['_ansible_verbose_always'] = True
 
         for that in thats:
-            cond.when = [that]
-            test_result = cond.evaluate_conditional(templar=self._templar, all_vars=task_vars)
+            test_result = self._templar.evaluate_conditional(conditional=that)
             if not test_result:
                 result['failed'] = True
                 result['evaluated_to'] = test_result
@@ -92,3 +95,13 @@ class ActionModule(ActionBase):
         result['changed'] = False
         result['msg'] = success_msg
         return result
+
+
+def str_or_list_of_str(value: t.Any) -> str | list[str]:
+    if isinstance(value, str):
+        return value
+
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise TypeError("a string or list of strings is required")
+
+    return value

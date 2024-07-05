@@ -52,7 +52,7 @@ RETURN = """
     elements: str
 """
 
-from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleLookupError
+from ansible.errors import AnsibleError
 from ansible.plugins.lookup import LookupBase
 from ansible.module_utils.common.text.converters import to_text
 from ansible.utils.display import Display
@@ -83,8 +83,8 @@ class LookupModule(LookupBase):
                     ret.append(contents)
                 else:
                     # TODO: only add search info if abs path?
-                    raise AnsibleOptionsError("file not found, use -vvvvv to see paths searched")
-            except AnsibleError as e:
-                raise AnsibleLookupError("The 'file' lookup had an issue accessing the file '%s'" % term, orig_exc=e)
+                    raise AnsibleError("File not found. Use -vvvvv to see paths searched.")
+            except AnsibleError as ex:
+                raise AnsibleError(f"Unable to access the file {term!r}.") from ex
 
         return ret

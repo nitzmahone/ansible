@@ -27,17 +27,17 @@ import multiprocessing.queues
 
 from ansible import constants as C
 from ansible import context
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleError, ExitCode
 from ansible.executor.play_iterator import PlayIterator
 from ansible.executor.stats import AggregateStats
 from ansible.executor.task_result import TaskResult
 from ansible.module_utils.six import string_types
-from ansible.module_utils.common.text.converters import to_text, to_native
+from ansible.module_utils.common.text.converters import to_native
 from ansible.playbook.play_context import PlayContext
 from ansible.playbook.task import Task
 from ansible.plugins.loader import callback_loader, strategy_loader, module_loader
 from ansible.plugins.callback import CallbackBase
-from ansible.template import Templar
+from ansible.template.templar import Templar
 from ansible.vars.hostvars import HostVars
 from ansible.vars.reserved import warn_if_reserved
 from ansible.utils.display import Display
@@ -122,12 +122,12 @@ class TaskQueueManager:
     which dispatches the Play's tasks to hosts.
     '''
 
-    RUN_OK = 0
-    RUN_ERROR = 1
-    RUN_FAILED_HOSTS = 2
-    RUN_UNREACHABLE_HOSTS = 4
-    RUN_FAILED_BREAK_PLAY = 8
-    RUN_UNKNOWN_ERROR = 255
+    RUN_OK = ExitCode.SUCCESS
+    RUN_ERROR = ExitCode.GENERIC_ERROR
+    RUN_FAILED_HOSTS = ExitCode.HOST_FAILED
+    RUN_UNREACHABLE_HOSTS = ExitCode.HOST_UNREACHABLE
+    RUN_FAILED_BREAK_PLAY = 8  # never leaves PlaybookExecutor.run
+    RUN_UNKNOWN_ERROR = 255  # never leaves PlaybookExecutor.run, intentionally includes the bit value for 8
 
     def __init__(self, inventory, variable_manager, loader, passwords, stdout_callback=None, run_additional_callbacks=True, run_tree=False, forks=None):
 
@@ -461,9 +461,6 @@ class TaskQueueManager:
             for method in methods:
                 try:
                     method(*new_args, **kwargs)
-                except Exception as e:
+                except Exception as ex:
                     # TODO: add config toggle to make this fatal or not?
-                    display.warning(u"Failure using method (%s) in callback plugin (%s): %s" % (to_text(method_name), to_text(callback_plugin), to_text(e)))
-                    from traceback import format_tb
-                    from sys import exc_info
-                    display.vvv('Callback Exception: \n' + ' '.join(format_tb(exc_info()[2])))
+                    display.error_as_warning(f"Failure using method {method_name!r} in callback plugin {callback_plugin!r}.", exception=ex)

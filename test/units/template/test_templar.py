@@ -17,16 +17,41 @@
 
 from __future__ import annotations
 
+import itertools
+import pathlib
+import sys
+
+import mock
+import typing as t
+
+import pytest_mock
+
 from jinja2.runtime import Context
 
 import unittest
 
-from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleUndefinedVariable
+from ansible.errors import (
+    AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplatePluginNotFoundError,
+    AnsibleBrokenConditionalError, AnsibleTemplatePluginLoadError, AnsibleTemplatePluginRuntimeError, AnsibleTemplateError,
+)
+
+from ansible.module_utils.datatag import AnsibleTagHelper, AnsibleDatatagBase
+from ansible.utils.collection_loader._collection_finder import _AnsibleCollectionFinder
+from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
-from ansible.template import Templar, AnsibleContext, AnsibleEnvironment, AnsibleUndefined
-from ansible.utils.unsafe_proxy import AnsibleUnsafe, wrap_var
+from ansible.template.jinja_common import _TemplateConfig
+from ansible.template.jinja_plugins import _lookup
+from ansible.template.templar import Templar, TemplateOptions, TemplateTrustCheckFailedError, TemplateMode
+from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, is_possibly_template, is_possibly_all_template
+from ansible.template.undefined_behaviors import ReplaceUndefined
+from ansible.template.utils import TemplateContext
+from ansible.utils.display import Display
 from units.mock.loader import DictDataLoader
+
+import pytest
+
+NOT_A_TEMPLATE = NotATemplate()
+TRUST = TrustedAsTemplate()
 
 
 class BaseTemplar(object):
@@ -34,21 +59,21 @@ class BaseTemplar(object):
         init_plugin_loader()
         self.test_vars = dict(
             foo="bar",
-            bam="{{foo}}",
+            bam=TrustedAsTemplate().tag("{{foo}}"),
             num=1,
             var_true=True,
             var_false=False,
             var_dict=dict(a="b"),
             bad_dict="{a='b'",
             var_list=[1],
-            recursive="{{recursive}}",
+            recursive=TrustedAsTemplate().tag("{{recursive}}"),
             some_var="blip",
-            some_static_var="static_blip",
-            some_keyword="{{ foo }}",
-            some_unsafe_var=wrap_var("unsafe_blip"),
-            some_static_unsafe_var=wrap_var("static_unsafe_blip"),
-            some_unsafe_keyword=wrap_var("{{ foo }}"),
-            str_with_error="{{ 'str' | from_json }}",
+            some_keyword=TrustedAsTemplate().tag("{{ foo }}"),
+            some_unsafe_var="unsafe_blip",
+            some_unsafe_keyword=TrustedAsTemplate().tag("{{ foo }}"),
+            str_with_error=TrustedAsTemplate().tag("{{ 'str' | from_json }}"),
+            template_dict={TrustedAsTemplate().tag("{{ a_keyword }}"): TrustedAsTemplate().tag("{{ some_var }}")},
+            template_var=TrustedAsTemplate().tag('{{ some_var }}'),
         )
         self.fake_loader = DictDataLoader({
             "/path/to/my_file.txt": "foo\n",
@@ -56,89 +81,38 @@ class BaseTemplar(object):
         self.templar = Templar(loader=self.fake_loader, variables=self.test_vars)
         self._ansible_context = AnsibleContext(self.templar.environment, {}, {}, {})
 
-    def is_unsafe(self, obj):
-        return self._ansible_context._is_unsafe(obj)
-
-
-class SomeUnsafeClass(AnsibleUnsafe):
-    def __init__(self):
-        super(SomeUnsafeClass, self).__init__()
-        self.blip = 'unsafe blip'
+    def tearDown(self):
+        _AnsibleCollectionFinder._remove()
+        nuke_module_prefix('ansible_collections')
 
 
 class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
-    def test_lookup_jinja_dict_key_in_static_vars(self):
-        res = self.templar.template("{'some_static_var': '{{ some_var }}'}",
-                                    static_vars=['some_static_var'])
-        # self.assertEqual(res['{{ a_keyword }}'], "blip")
-        print(res)
+    def test_trust_fail_raises_in_tests(self):
+        """Ensure template trust check failures default to fatal for unit tests (set in units/conftest.py)"""
+        from ansible.template.templar import TemplateTrustCheckFailedError
 
-    def test_is_possibly_template_true(self):
-        tests = [
-            '{{ foo }}',
-            '{% foo %}',
-            '{# foo #}',
-            '{# {{ foo }} #}',
-            '{# {{ nothing }} {# #}',
-            '{# {{ nothing }} {# #} #}',
-            '{% raw %}{{ foo }}{% endraw %}',
-            '{{',
-            '{%',
-            '{#',
-            '{% raw',
-        ]
-        for test in tests:
-            self.assertTrue(self.templar.is_possibly_template(test))
+        assert _TemplateConfig.raise_on_trust_check_fail is True
 
-    def test_is_possibly_template_false(self):
-        tests = [
-            '{',
-            '%',
-            '#',
-            'foo',
-            '}}',
-            '%}',
-            'raw %}',
-            '#}',
-        ]
-        for test in tests:
-            self.assertFalse(self.templar.is_possibly_template(test))
+        with pytest.raises(TemplateTrustCheckFailedError):
+            self.templar.template("{{ i_am_not_trusted }}")
+
+    def test_trust_fail_warning_behavior(self):
+        """Validate that trust checks are non-fatal when Templar's _raise_on_trust_check_fail is False"""
+        untrusted_template = "{{ i_am_not_trusted }}"
+
+        with (mock.patch.object(_TemplateConfig, 'raise_on_trust_check_fail', False),
+              mock.patch.object(Display, 'warning', return_value=None) as mock_warning):
+            assert self.templar.template(untrusted_template) is untrusted_template
+
+        assert mock_warning.call_count > 0
+        all_args = repr(mock_warning.call_args)
+        assert "Skipped untrusted template" in all_args
+        assert untrusted_template in all_args
 
     def test_is_possible_template(self):
         """This test ensures that a broken template still gets templated"""
         # Purposefully invalid jinja
-        self.assertRaises(AnsibleError, self.templar.template, '{{ foo|default(False)) }}')
-
-    def test_is_template_true(self):
-        tests = [
-            '{{ foo }}',
-            '{% foo %}',
-            '{# foo #}',
-            '{# {{ foo }} #}',
-            '{# {{ nothing }} {# #}',
-            '{# {{ nothing }} {# #} #}',
-            '{% raw %}{{ foo }}{% endraw %}',
-        ]
-        for test in tests:
-            self.assertTrue(self.templar.is_template(test))
-
-    def test_is_template_false(self):
-        tests = [
-            'foo',
-            '{{ foo',
-            '{% foo',
-            '{# foo',
-            '{{ foo %}',
-            '{{ foo #}',
-            '{% foo }}',
-            '{% foo #}',
-            '{# foo %}',
-            '{# foo }}',
-            '{{ foo {{',
-            '{% raw %}{% foo %}',
-        ]
-        for test in tests:
-            self.assertFalse(self.templar.is_template(test))
+        self.assertRaises(AnsibleError, self.templar.template, TrustedAsTemplate().tag('{{ foo|default(False)) }}'))
 
     def test_is_template_raw_string(self):
         res = self.templar.is_template('foo')
@@ -148,75 +122,41 @@ class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
         res = self.templar.is_template(None)
         self.assertFalse(res)
 
-    def test_template_convert_bare_string(self):
-        res = self.templar.template('foo', convert_bare=True)
-        self.assertEqual(res, 'bar')
-
-    def test_template_convert_bare_nested(self):
-        res = self.templar.template('bam', convert_bare=True)
-        self.assertEqual(res, 'bar')
-
-    def test_template_convert_bare_unsafe(self):
-        res = self.templar.template('some_unsafe_var', convert_bare=True)
-        self.assertEqual(res, 'unsafe_blip')
-        # self.assertIsInstance(res, AnsibleUnsafe)
-        self.assertTrue(self.is_unsafe(res), 'returned value from template.template (%s) is not marked unsafe' % res)
-
-    def test_template_convert_bare_filter(self):
-        res = self.templar.template('bam|capitalize', convert_bare=True)
-        self.assertEqual(res, 'Bar')
-
-    def test_template_convert_bare_filter_unsafe(self):
-        res = self.templar.template('some_unsafe_var|capitalize', convert_bare=True)
-        self.assertEqual(res, 'Unsafe_blip')
-        # self.assertIsInstance(res, AnsibleUnsafe)
-        self.assertTrue(self.is_unsafe(res), 'returned value from template.template (%s) is not marked unsafe' % res)
-
-    def test_template_convert_data(self):
-        res = self.templar.template('{{foo}}', convert_data=True)
+    def test_template(self):
+        res = self.templar.template(TrustedAsTemplate().tag('{{foo}}'))
         self.assertTrue(res)
         self.assertEqual(res, 'bar')
 
-    def test_template_convert_data_template_in_data(self):
-        res = self.templar.template('{{bam}}', convert_data=True)
+    def test_template_in_data(self):
+        res = self.templar.template(TrustedAsTemplate().tag('{{bam}}'))
         self.assertTrue(res)
         self.assertEqual(res, 'bar')
 
-    def test_template_convert_data_bare(self):
-        res = self.templar.template('bam', convert_data=True)
+    def test_template_bare(self):
+        res = self.templar.template('bam')
         self.assertTrue(res)
         self.assertEqual(res, 'bam')
 
-    def test_template_convert_data_to_json(self):
-        res = self.templar.template('{{bam|to_json}}', convert_data=True)
+    def test_template_to_json(self):
+        res = self.templar.template(TrustedAsTemplate().tag('{{bam|to_json}}'))
         self.assertTrue(res)
         self.assertEqual(res, '"bar"')
 
-    def test_template_convert_data_convert_bare_data_bare(self):
-        res = self.templar.template('bam', convert_data=True, convert_bare=True)
-        self.assertTrue(res)
-        self.assertEqual(res, 'bar')
-
-    def test_template_unsafe_non_string(self):
-        unsafe_obj = AnsibleUnsafe()
+    def test_template_untagged_string(self):
+        unsafe_obj = "Hello"
         res = self.templar.template(unsafe_obj)
-        self.assertTrue(self.is_unsafe(res), 'returned value from template.template (%s) is not marked unsafe' % res)
-
-    def test_template_unsafe_non_string_subclass(self):
-        unsafe_obj = SomeUnsafeClass()
-        res = self.templar.template(unsafe_obj)
-        self.assertTrue(self.is_unsafe(res), 'returned value from template.template (%s) is not marked unsafe' % res)
+        assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_weird(self):
-        data = u'''1 2 #}huh{# %}ddfg{% }}dfdfg{{  {%what%} {{#foo#}} {%{bar}%} {#%blip%#} {{asdfsd%} 3 4 {{foo}} 5 6 7'''
+        data = TrustedAsTemplate().tag(u'''1 2 #}huh{# %}ddfg{% }}dfdfg{{  {%what%} {{#foo#}} {%{bar}%} {#%blip%#} {{asdfsd%} 3 4 {{foo}} 5 6 7''')
         self.assertRaisesRegex(AnsibleError,
-                               'template error while templating string',
+                               'Syntax error in template',
                                self.templar.template,
                                data)
 
     def test_template_with_error(self):
         """Check that AnsibleError is raised, fail if an unhandled exception is raised"""
-        self.assertRaises(AnsibleError, self.templar.template, "{{ str_with_error }}")
+        self.assertRaises(AnsibleError, self.templar.template, TrustedAsTemplate().tag("{{ str_with_error }}"))
 
 
 class TestTemplarMisc(BaseTemplar, unittest.TestCase):
@@ -224,34 +164,32 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
 
         templar = self.templar
         # test some basic templating
-        self.assertEqual(templar.template("{{foo}}"), "bar")
-        self.assertEqual(templar.template("{{foo}}\n"), "bar\n")
-        self.assertEqual(templar.template("{{foo}}\n", preserve_trailing_newlines=True), "bar\n")
-        self.assertEqual(templar.template("{{foo}}\n", preserve_trailing_newlines=False), "bar")
-        self.assertEqual(templar.template("{{bam}}"), "bar")
-        self.assertEqual(templar.template("{{num}}"), 1)
-        self.assertEqual(templar.template("{{var_true}}"), True)
-        self.assertEqual(templar.template("{{var_false}}"), False)
-        self.assertEqual(templar.template("{{var_dict}}"), dict(a="b"))
-        self.assertEqual(templar.template("{{bad_dict}}"), "{a='b'")
-        self.assertEqual(templar.template("{{var_list}}"), [1])
-        self.assertEqual(templar.template(1, convert_bare=True), 1)
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}")), "bar")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}\n")), "bar\n")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}\n"), options=TemplateOptions(preserve_trailing_newlines=True)), "bar\n")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}\n"), options=TemplateOptions(preserve_trailing_newlines=False)), "bar")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bam}}")), "bar")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{num}}")), 1)
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{var_true}}")), True)
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{var_false}}")), False)
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{var_dict}}")), dict(a="b"))
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{bad_dict}}")), "{a='b'")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{var_list}}")), [1])
 
         # force errors
-        self.assertRaises(AnsibleUndefinedVariable, templar.template, "{{bad_var}}")
-        self.assertRaises(AnsibleUndefinedVariable, templar.template, "{{lookup('file', bad_var)}}")
-        self.assertRaises(AnsibleError, templar.template, "{{lookup('bad_lookup')}}")
-        self.assertRaises(AnsibleError, templar.template, "{{recursive}}")
-        self.assertRaises(AnsibleUndefinedVariable, templar.template, "{{foo-bar}}")
+        self.assertRaises(AnsibleUndefinedVariable, templar.template, TrustedAsTemplate().tag("{{bad_var}}"))
+        self.assertRaises(AnsibleUndefinedVariable, templar.template, TrustedAsTemplate().tag("{{lookup('file', bad_var)}}"))
+        self.assertRaises(AnsibleError, templar.template, TrustedAsTemplate().tag("{{lookup('bad_lookup')}}"))
+        self.assertRaises(AnsibleError, templar.template, TrustedAsTemplate().tag("{{recursive}}"))
+        self.assertRaises(AnsibleUndefinedVariable, templar.template, TrustedAsTemplate().tag("{{foo-bar}}"))
 
-        # test with fail_on_undefined=False
-        self.assertEqual(templar.template("{{bad_var}}", fail_on_undefined=False), "{{bad_var}}")
+        result = templar.template(TrustedAsTemplate().tag("{{bad_var}}"), options=TemplateOptions(undefined_behavior=ReplaceUndefined()))
+        assert "<< error 1 - 'bad_var' is undefined >>" in result
 
         # test setting available_variables
         templar.available_variables = dict(foo="bam")
-        self.assertEqual(templar.template("{{foo}}"), "bam")
+        self.assertEqual(templar.template(TrustedAsTemplate().tag("{{foo}}")), "bam")
         # variables must be a dict() for available_variables setter
-        # FIXME Use assertRaises() as a context manager (added in 2.7) once we do not run tests on Python 2.6 anymore.
         try:
             templar.available_variables = "foo=bam"
         except AssertionError:
@@ -260,115 +198,97 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
     def test_templar_escape_backslashes(self):
         # Rule of thumb: If escape backslashes is True you should end up with
         # the same number of backslashes as when you started.
-        self.assertEqual(self.templar.template("\t{{foo}}", escape_backslashes=True), "\tbar")
-        self.assertEqual(self.templar.template("\t{{foo}}", escape_backslashes=False), "\tbar")
-        self.assertEqual(self.templar.template("\\{{foo}}", escape_backslashes=True), "\\bar")
-        self.assertEqual(self.templar.template("\\{{foo}}", escape_backslashes=False), "\\bar")
-        self.assertEqual(self.templar.template("\\{{foo + '\t' }}", escape_backslashes=True), "\\bar\t")
-        self.assertEqual(self.templar.template("\\{{foo + '\t' }}", escape_backslashes=False), "\\bar\t")
-        self.assertEqual(self.templar.template("\\{{foo + '\\t' }}", escape_backslashes=True), "\\bar\\t")
-        self.assertEqual(self.templar.template("\\{{foo + '\\t' }}", escape_backslashes=False), "\\bar\t")
-        self.assertEqual(self.templar.template("\\{{foo + '\\\\t' }}", escape_backslashes=True), "\\bar\\\\t")
-        self.assertEqual(self.templar.template("\\{{foo + '\\\\t' }}", escape_backslashes=False), "\\bar\\t")
-
-    def test_template_jinja2_extensions(self):
-        fake_loader = DictDataLoader({})
-        templar = Templar(loader=fake_loader)
-
-        old_exts = C.DEFAULT_JINJA2_EXTENSIONS
-        try:
-            C.DEFAULT_JINJA2_EXTENSIONS = "foo,bar"
-            self.assertEqual(templar._get_extensions(), ['foo', 'bar'])
-        finally:
-            C.DEFAULT_JINJA2_EXTENSIONS = old_exts
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\t{{foo}}"), options=TemplateOptions(escape_backslashes=True)), "\tbar")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\t{{foo}}"), options=TemplateOptions(escape_backslashes=False)), "\tbar")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo}}"), options=TemplateOptions(escape_backslashes=True)), "\\bar")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo}}"), options=TemplateOptions(escape_backslashes=False)), "\\bar")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\t' }}"), options=TemplateOptions(escape_backslashes=True)), "\\bar\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\t' }}"), options=TemplateOptions(escape_backslashes=False)), "\\bar\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\t' }}"), options=TemplateOptions(escape_backslashes=True)), "\\bar\\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\t' }}"), options=TemplateOptions(escape_backslashes=False)), "\\bar\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\\\t' }}"), options=TemplateOptions(escape_backslashes=True)), "\\bar\\\\t")
+        self.assertEqual(self.templar.template(TrustedAsTemplate().tag("\\{{foo + '\\\\t' }}"), options=TemplateOptions(escape_backslashes=False)), "\\bar\\t")
 
 
 class TestTemplarLookup(BaseTemplar, unittest.TestCase):
+    @staticmethod
+    def lookup(name: str, /, *args, **kwargs) -> t.Any:
+        with TemplateContext(template_value=None, templar=Templar(), options=TemplateOptions(), stop_on_template=False):
+            return _lookup(name, *args, **kwargs)
+
     def test_lookup_missing_plugin(self):
-        self.assertRaisesRegex(AnsibleError,
-                               r'lookup plugin \(not_a_real_lookup_plugin\) not found',
-                               self.templar._lookup,
+        self.assertRaisesRegex(AnsibleTemplatePluginNotFoundError,
+                               "lookup plugin 'not_a_real_lookup_plugin' not found",
+                               self.lookup,
                                'not_a_real_lookup_plugin',
                                'an_arg', a_keyword_arg='a_keyword_arg_value')
 
     def test_lookup_list(self):
-        res = self.templar._lookup('list', 'an_arg', 'another_arg')
+        res = self.lookup('list', 'an_arg', 'another_arg')
         self.assertEqual(res, 'an_arg,another_arg')
 
     def test_lookup_jinja_undefined(self):
         self.assertRaisesRegex(AnsibleUndefinedVariable,
                                "'an_undefined_jinja_var' is undefined",
-                               self.templar._lookup,
-                               'list', '{{ an_undefined_jinja_var }}')
+                               self.templar.template,
+                               TrustedAsTemplate().tag('{{ lookup("list", an_undefined_jinja_var) }}'))
 
     def test_lookup_jinja_defined(self):
-        res = self.templar._lookup('list', '{{ some_var }}')
-        self.assertTrue(self.is_unsafe(res))
-        # self.assertIsInstance(res, AnsibleUnsafe)
+        res = self.lookup('list', 'x')
+        assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict_string_passed(self):
         self.assertRaisesRegex(AnsibleError,
                                "with_dict expects a dict",
-                               self.templar._lookup,
+                               self.lookup,
                                'dict',
-                               '{{ some_var }}')
+                               'x')
 
     def test_lookup_jinja_dict_list_passed(self):
         self.assertRaisesRegex(AnsibleError,
                                "with_dict expects a dict",
-                               self.templar._lookup,
+                               self.lookup,
                                'dict',
                                ['foo', 'bar'])
 
     def test_lookup_jinja_kwargs(self):
-        res = self.templar._lookup('list', 'blip', random_keyword='12345')
-        self.assertTrue(self.is_unsafe(res))
-        # self.assertIsInstance(res, AnsibleUnsafe)
+        res = self.lookup('list', 'blip', random_keyword='12345')
+        assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_list_wantlist(self):
-        res = self.templar._lookup('list', '{{ some_var }}', wantlist=True)
+        res = self.templar.template(TrustedAsTemplate().tag("{{ lookup('list', template_var, wantlist=True) }}"))
         self.assertEqual(res, ["blip"])
 
     def test_lookup_jinja_list_wantlist_undefined(self):
         self.assertRaisesRegex(AnsibleUndefinedVariable,
                                "'some_undefined_var' is undefined",
-                               self.templar._lookup,
-                               'list',
-                               '{{ some_undefined_var }}',
-                               wantlist=True)
+                               self.templar.template,
+                               TrustedAsTemplate().tag('{{ lookup("list", some_undefined_var, wantlist=True) }}'))
 
     def test_lookup_jinja_list_wantlist_unsafe(self):
-        res = self.templar._lookup('list', '{{ some_unsafe_var }}', wantlist=True)
+        res = self.lookup('list', 'x', wantlist=True)
         for lookup_result in res:
-            self.assertTrue(self.is_unsafe(lookup_result))
-            # self.assertIsInstance(lookup_result, AnsibleUnsafe)
+            assert not TrustedAsTemplate.is_tagged_on(lookup_result)
 
-        # Should this be an AnsibleUnsafe
-        # self.assertIsInstance(res, AnsibleUnsafe)
+        assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict(self):
-        res = self.templar._lookup('list', {'{{ a_keyword }}': '{{ some_var }}'})
+        res = self.templar.template(TrustedAsTemplate().tag('{{ lookup("list", template_dict) }}'))
         self.assertEqual(res['{{ a_keyword }}'], "blip")
-        # TODO: Should this be an AnsibleUnsafe
-        # self.assertIsInstance(res['{{ a_keyword }}'], AnsibleUnsafe)
-        # self.assertIsInstance(res, AnsibleUnsafe)
+        assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict_unsafe(self):
-        res = self.templar._lookup('list', {'{{ some_unsafe_key }}': '{{ some_unsafe_var }}'})
-        self.assertTrue(self.is_unsafe(res['{{ some_unsafe_key }}']))
-        # self.assertIsInstance(res['{{ some_unsafe_key }}'], AnsibleUnsafe)
-        # TODO: Should this be an AnsibleUnsafe
-        # self.assertIsInstance(res, AnsibleUnsafe)
+        res = self.lookup('list', {'x': 'x'})
+        assert not TrustedAsTemplate.is_tagged_on(res['x'])
+        assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_dict_unsafe_value(self):
-        res = self.templar._lookup('list', {'{{ a_keyword }}': '{{ some_unsafe_var }}'})
-        self.assertTrue(self.is_unsafe(res['{{ a_keyword }}']))
-        # self.assertIsInstance(res['{{ a_keyword }}'], AnsibleUnsafe)
-        # TODO: Should this be an AnsibleUnsafe
-        # self.assertIsInstance(res, AnsibleUnsafe)
+        res = self.lookup('list', {'x': 'x'})
+        assert not TrustedAsTemplate.is_tagged_on(res['x'])
+        assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_lookup_jinja_none(self):
-        res = self.templar._lookup('list', None)
+        res = self.lookup('list', None)
         self.assertIsNone(res)
 
 
@@ -391,68 +311,655 @@ class TestAnsibleContext(BaseTemplar, unittest.TestCase):
         self.assertIsInstance(context, Context)
 
     def test_resolve_unsafe(self):
-        context = self._context(variables={'some_unsafe_key': wrap_var('some_unsafe_string')})
+        context = self._context(variables={'some_unsafe_key': 'some_unsafe_string'})
         res = context.resolve('some_unsafe_key')
-        # self.assertIsInstance(res, AnsibleUnsafe)
-        self.assertTrue(self.is_unsafe(res),
-                        'return of AnsibleContext.resolve (%s) was expected to be marked unsafe but was not' % res)
+        assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_resolve_unsafe_list(self):
-        context = self._context(variables={'some_unsafe_key': [wrap_var('some unsafe string 1')]})
+        context = self._context(variables={'some_unsafe_key': ['some unsafe string 1']})
         res = context.resolve('some_unsafe_key')
-        # self.assertIsInstance(res[0], AnsibleUnsafe)
-        self.assertTrue(self.is_unsafe(res),
-                        'return of AnsibleContext.resolve (%s) was expected to be marked unsafe but was not' % res)
+        assert not TrustedAsTemplate.is_tagged_on(res[0])
+        assert not TrustedAsTemplate.is_tagged_on(res)
 
     def test_resolve_unsafe_dict(self):
         context = self._context(variables={'some_unsafe_key':
-                                           {'an_unsafe_dict': wrap_var('some unsafe string 1')}
+                                           {'an_unsafe_dict': 'some unsafe string 1'}
                                            })
         res = context.resolve('some_unsafe_key')
-        self.assertTrue(self.is_unsafe(res['an_unsafe_dict']),
-                        'return of AnsibleContext.resolve (%s) was expected to be marked unsafe but was not' % res['an_unsafe_dict'])
+        assert not TrustedAsTemplate.is_tagged_on(res['an_unsafe_dict'])
 
     def test_resolve(self):
         context = self._context(variables={'some_key': 'some_string'})
         res = context.resolve('some_key')
         self.assertEqual(res, 'some_string')
-        # self.assertNotIsInstance(res, AnsibleUnsafe)
-        self.assertFalse(self.is_unsafe(res),
-                         'return of AnsibleContext.resolve (%s) was not expected to be marked unsafe but was' % res)
 
     def test_resolve_none(self):
         context = self._context(variables={'some_key': None})
         res = context.resolve('some_key')
         self.assertEqual(res, None)
-        # self.assertNotIsInstance(res, AnsibleUnsafe)
-        self.assertFalse(self.is_unsafe(res),
-                         'return of AnsibleContext.resolve (%s) was not expected to be marked unsafe but was' % res)
-
-    def test_is_unsafe(self):
-        context = self._context()
-        self.assertFalse(context._is_unsafe(AnsibleUndefined()))
 
 
 def test_unsafe_lookup():
     res = Templar(
         None,
         variables={
-            'var0': '{{ var1 }}',
+            'var0': TrustedAsTemplate().tag('{{ var1 }}'),
             'var1': ['unsafe'],
         }
-    ).template('{{ lookup("list", var0) }}')
-    assert getattr(res[0], '__UNSAFE__', False)
+    ).template(TrustedAsTemplate().tag('{{ lookup("list", var0) }}'))
+    assert not TrustedAsTemplate.is_tagged_on(res[0])
 
 
 def test_unsafe_lookup_no_conversion():
     res = Templar(
         None,
         variables={
-            'var0': '{{ var1 }}',
+            'var0': TrustedAsTemplate().tag('{{ var1 }}'),
             'var1': ['unsafe'],
         }
     ).template(
-        '{{ lookup("list", var0) }}',
-        convert_data=False,
+        TrustedAsTemplate().tag('{{ lookup("list", var0) }}'),
     )
-    assert getattr(res, '__UNSAFE__', False)
+    assert not TrustedAsTemplate.is_tagged_on(res)
+
+
+@pytest.mark.parametrize("tagged", (
+    False,
+    True,
+))
+def test_dict_template(tagged: bool) -> None:
+    """Verify that templar.template can round-trip both tagged and untagged values in a dict."""
+    key1 = "key1"
+    val1 = "val1"
+
+    if tagged:
+        key1 = AnsibleSourcePosition(src="key1.py", line=1, col=2).tag(key1)
+        val1 = AnsibleSourcePosition(src="val1.py", line=3, col=4).tag(val1)
+
+    test1 = {
+        key1: val1,
+    }
+
+    variables = dict(
+        test1=test1,
+    )
+
+    templar = Templar(loader=None, variables=variables)
+
+    result = templar.template(TrustedAsTemplate().tag('{{test1}}'))
+
+    assert result == test1
+    assert AnsibleTagHelper.tags(result) == AnsibleTagHelper.tags(test1)
+
+
+@pytest.mark.parametrize("expr,expected,variables", [
+    ("'constant'", "constant", None),
+    ("a - b", 42, dict(a=100, b=58)),
+])
+def test_evaluate_expression(expr: str, expected: t.Any, variables: dict[str, t.Any] | None):
+    assert Templar(variables=variables).evaluate_expression(TRUST.tag(expr)) == expected
+
+
+@pytest.mark.parametrize("expr,error_type", [
+    ("fhdgsfk#$76&@#$&", AnsibleTemplateSyntaxError),
+    ("bogusvar", AnsibleUndefinedVariable),
+    ("untrusted expression", TemplateTrustCheckFailedError),
+    (dict(hi="{{'mom'}}"), TypeError),
+])
+def test_evaluate_expression_errors(expr: str, error_type: type[Exception]):
+    if error_type is not TemplateTrustCheckFailedError:
+        expr = TRUST.tag(expr)
+
+    with pytest.raises(error_type):
+        Templar().evaluate_expression(expr)
+
+
+@pytest.mark.parametrize("conditional,expected,variables", [
+    ("1 == 2", False, None),
+    ("test2_name | default(True)", True, None),
+    # DTFIX-RELEASE: more success cases?
+])
+def test_evaluate_conditional(conditional: str, expected: t.Any, variables: dict[str, t.Any] | None):
+    assert Templar().evaluate_conditional(TRUST.tag(conditional)) == expected
+
+
+@pytest.mark.parametrize("conditional,error_type", [
+    ("fkjhs$#@^%$*& ldfkjds", AnsibleTemplateSyntaxError),
+    ("#jinja2:variable_start_string:2\n{{blah}}", AnsibleTemplateSyntaxError),
+    ("#jinja2:bogus_key:'val'\n{{blah}}", AnsibleTemplateSyntaxError),
+    ("bogusvar", AnsibleUndefinedVariable),
+    ("not trusted", TemplateTrustCheckFailedError),
+])
+def test_evaluate_conditional_errors(conditional: t.Any, error_type: type[Exception], mocker: pytest_mock.MockerFixture):
+    mocker.patch.object(_TemplateConfig, 'allow_embedded_templates', True)  # force this on since a number of cases need it
+
+    if error_type is not TemplateTrustCheckFailedError:
+        conditional = TRUST.tag(conditional)
+
+    with pytest.raises(error_type):
+        Templar().evaluate_conditional(conditional)
+
+
+@pytest.mark.parametrize("value", (
+    '{{ foo }}',
+    '{% foo %}',
+    '{# foo #}',
+    '{# {{ foo }} #}',
+    '{# {{ nothing }} {# #}',
+    '{# {{ nothing }} {# #} #}',
+    '{% raw %}{{ foo }}{% endraw %}',
+    # in 2.16 and earlier these were not considered templates due to syntax errors
+    # now syntax errors in templates are still reported as templates, since is_template no longer compiles the template
+    '{{ foo',
+    '{% foo',
+    '{# foo',
+    '{{ foo %}',
+    '{{ foo #}',
+    '{% foo }}',
+    '{% foo #}',
+    '{# foo %}',
+    '{# foo }}',
+    '{{ foo {{',
+    '{% raw %}{% foo %}',
+))
+def test_is_template_true(value: str) -> None:
+    assert Templar().is_template(TRUST.tag(value))
+
+
+@pytest.mark.parametrize("value", (
+    'foo',
+))
+def test_is_template_false(value: str) -> None:
+    assert not Templar().is_template(TRUST.tag(value))
+
+
+@pytest.mark.parametrize("value", (
+    '{{ foo }}',
+    '{% foo %}',
+    '{# foo #}',
+    '{# {{ foo }} #}',
+    '{# {{ nothing }} {# #}',
+    '{# {{ nothing }} {# #} #}',
+    '{% raw %}{{ foo }}{% endraw %}',
+    '{{',
+    '{%',
+    '{#',
+    '{% raw',
+))
+def test_is_possibly_template_true(value: str) -> None:
+    assert is_possibly_template(value)
+
+
+@pytest.mark.parametrize("value", (
+    '{',
+    '%',
+    '#',
+    'foo',
+    '}}',
+    '%}',
+    'raw %}',
+    '#}',
+))
+def test_is_possibly_template_false(value: str) -> None:
+    assert not is_possibly_template(value)
+
+
+def test_stop_on_container() -> None:
+    # DTFIX-RELEASE: add more test cases
+    assert Templar().template(TRUST.tag('{{ [ 1 ] }}'), mode=TemplateMode.STOP_ON_CONTAINER) == [1]
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_stripped_conditionals(value: bool, mocker: pytest_mock.MockerFixture) -> None:
+    mocker.patch.object(_TemplateConfig, 'allow_embedded_templates', True)  # force this on since this case needs it
+
+    assert Templar().evaluate_conditional(TRUST.tag(f"""\n \r\n \t{{{{ {value} }}}} \n\n  \t \t\t  """)) == value
+
+
+@pytest.mark.parametrize("template, variables, error", (
+    ("{{ undefined_var.undefined_attribute }}", {}, "'undefined_var' is undefined >>"),
+    ("{{ some_dict['undefined_key'] }}", dict(some_dict={}), "object of type 'dict' has no attribute 'undefined_key' >>"),
+    ("{{ some_dict.undefined_key }}", dict(some_dict={}), "object of type 'dict' has no attribute 'undefined_key' >>"),
+    ("{{ m1 }} {{ m2 }} here", {}, "<< error 1 - 'm1' is undefined >> << error 2 - 'm2' is undefined >> here"),
+    ("before {{ m1 + m2 }} after", {}, "before << error 1 - 'm1' is undefined >><< error 2 - template potentially truncated >>"),
+))
+def test_jinja_sourced_undefined(template: str, variables: dict[str, t.Any], error: str) -> None:
+    """
+    Ensure when Jinja encounters AnsibleUndefined and raises UndefinedError,
+    that we turn it back into AnsibleUndefined so undefined_behavior can handle it during finalization.
+    """
+    assert error in Templar(variables=variables).template(TRUST.tag(template), options=TemplateOptions(undefined_behavior=ReplaceUndefined()))
+
+
+def test_omit_concat() -> None:
+    assert Templar().template(TRUST.tag("{{ omit }}hi{{ omit }} mom")) == 'hi mom'
+
+
+@pytest.mark.parametrize("conditional", (
+    # Jinja plugins
+    "'join' is filter",
+    "'join' is not test",
+    "'eq' is test",
+    "'eq' is not filter",
+
+    # Ansible plugins
+    "'comment' is filter",
+    "'comment' is not test",
+    "'version' is test",
+    "'version' is not filter",
+
+    # plugin not found
+    "'nope' is not filter",
+    "'nope' is not test",
+))
+def test_plugin_found_not_found(conditional: str) -> None:
+    assert Templar().evaluate_conditional(TRUST.tag(conditional))
+
+
+@pytest.mark.parametrize("value, expected", (
+    ("{{ {'a': 1}.items() }}", [['a', 1]]),
+    ("{{ {'a': 1}.keys() }}", ['a']),
+    ("{{ {'a': 1}.values() }}", [1]),
+    ("{{ yielder(2) }}", [0, 1]),
+    ("{% set y = yielder(2) %}{{ y | list }} | {{ y | list }}", "[0, 1] | [0, 1]"),
+), ids=str)
+def test_finalize_generator(value: t.Any, expected: t.Any) -> None:
+    def yielder(count: int) -> t.Generator[int, None, None]:
+        yield from range(count)
+
+    templar = Templar(variables=dict(
+        yielder=yielder,
+    ))
+
+    # DTFIX-RELEASE: we still need to deal with the "Encountered unsupported" warnings these generate
+    assert templar.template(TRUST.tag(value)) == expected
+
+
+@pytest.mark.parametrize("template", (
+    "{{ lookup('my_lookup', some_var) }}",
+    "{{ some_var | my_filter }}",
+    "{{ some_var is my_test }}",
+))
+def test_eager_trip_undefined(template: str, mocker: pytest_mock.MockerFixture) -> None:
+    """Verify that eager tripping of AnsibleUndefined works for template plugins which only perform isinstance checks on undefined values."""
+    from ansible.plugins.lookup import LookupBase
+
+    class MyLookup(LookupBase):
+        def run(self, terms, variables=None, **kwargs):
+            return [isinstance(value, bool) for value in itertools.chain(*terms)]
+
+    def my_filter(values):
+        return [isinstance(value, bool) for value in values]
+
+    def my_test(values):
+        return all(isinstance(value, bool) for value in values)
+
+    def mock_lookup_get(*_args, **_kwargs) -> t.Any:
+        return MyLookup()
+
+    mock_lookup_loader = mocker.MagicMock()
+    mock_lookup_loader.get = mock_lookup_get
+
+    mocker.patch('ansible.template.jinja_plugins.lookup_loader', mock_lookup_loader)
+
+    def get_templar(variables: dict[str, t.Any]) -> Templar:
+        new_templar = Templar(variables=variables)
+        new_templar.environment.filters['my_filter'] = my_filter
+        new_templar.environment.tests['my_test'] = my_test
+
+        return new_templar
+
+    template = TRUST.tag(template)
+
+    # verify the template works when some_var is defined
+
+    templar = get_templar(dict(some_var=[True]))
+
+    result = templar.template(template)
+
+    assert result is True or result == [True]
+
+    # verify the template raises AnsibleUndefinedVariable when some_var contains a template that references an undefined variable
+
+    templar = get_templar(dict(some_var=[TRUST.tag("{{ nope }}")]))
+
+    with pytest.raises(AnsibleUndefinedVariable) as ex:
+        templar.template(template)
+
+    assert ex.value.message == "'nope' is undefined"
+
+
+def as_template(value: str) -> str:
+    return f"{{{{ {value} }}}}"
+
+
+TEMPLATED_LOOKUP_NAME_TEST_VALUES = [
+    ("""lookup('{{ "pipe" }}', 'echo hi')""", "hi"),
+    ("""query('{{ "pipe" }}', 'echo hi')""", ["hi"]),
+]
+
+
+@pytest.mark.parametrize("value", [v[0] for v in TEMPLATED_LOOKUP_NAME_TEST_VALUES])
+def test_lookup_query_name_is_not_templated_non_conditional(value: str) -> None:
+    with pytest.raises(AnsibleTemplatePluginNotFoundError):
+        Templar().template(TRUST.tag(as_template(value)))
+
+
+@pytest.mark.parametrize("value", [v[0] for v in TEMPLATED_LOOKUP_NAME_TEST_VALUES])
+def test_lookup_query_name_is_not_templated_conditional_nested_template(value: str, mocker: pytest_mock.MockerFixture) -> None:
+    mocker.patch.object(_TemplateConfig, 'allow_embedded_templates', True)  # force this on since a number of cases need it
+
+    with pytest.raises(AnsibleTemplatePluginNotFoundError):
+        Templar().evaluate_conditional(TRUST.tag(as_template(value)))
+
+
+@pytest.mark.parametrize("value, expected_result", TEMPLATED_LOOKUP_NAME_TEST_VALUES)
+def test_lookup_query_name_is_not_templated_conditional_expression(value: str, expected_result: t.Any, mocker: pytest_mock.MockerFixture) -> None:
+    display = Display()
+    deprecated_spy = mocker.spy(display, 'deprecated')
+    mocker.patch.object(_TemplateConfig, 'allow_embedded_templates', True)  # force this on since a number of cases need it
+
+    assert Templar().evaluate_conditional(TRUST.tag(f'{value} == {expected_result!r}'))
+    assert deprecated_spy.call_count == 1
+    assert "should not contain embedded templates" in deprecated_spy.call_args_list[0].kwargs['msg']
+
+
+@pytest.mark.parametrize("value", [
+    "foo(",
+    "'a' == {{ 'b' }}",
+])
+def test_conditional_syntax_error(value: str) -> None:
+    with pytest.raises(AnsibleTemplateSyntaxError):
+        Templar().evaluate_conditional(TRUST.tag(value))
+
+
+BROKEN_CONDITIONAL_VALUES = [
+    (None, True),  # stupid backward-compat
+    ("", True),  # stupid backward-compat
+    ("''", False),
+    ("0", False),
+    ("0.0", False),
+    ("1", True),
+    ("1.1", True),
+    ("'abc'", True),
+    ("{{ 'dude' }}", True),
+    ("{{ '' }}", False),
+    ("{{ None }}", False),
+    ("{{ 0 }}", False),
+    ("{{ 0.0 }}", False),
+    ("{{ [] }}", False),
+    ("{{ {} }}", False),
+    ([], False),
+    ([TRUST.tag("{{ omit }}")], False),
+    ({}, False),
+    (dict(a=TRUST.tag("{{ omit }}")), False),
+    (["abc", TRUST.tag("{{ omit }}")], True),
+    (dict(a="b", omitted=TRUST.tag("{{ omit }}")), True),
+    (0, False),
+    (0.0, False),
+    (1, True),
+    (1.1, True),
+]
+
+
+@pytest.mark.parametrize("value", [v[0] for v in BROKEN_CONDITIONAL_VALUES], ids=repr)
+def test_broken_conditionals_disabled(value: t.Any, mocker: pytest_mock.MockerFixture) -> None:
+    mocker.patch.object(_TemplateConfig, 'allow_broken_conditionals', False)
+
+    with pytest.raises(AnsibleBrokenConditionalError):
+        Templar().evaluate_conditional(TRUST.tag(value))
+
+
+@pytest.mark.parametrize("value, expected_result", BROKEN_CONDITIONAL_VALUES, ids=repr)
+def test_broken_conditionals_enabled(value: t.Any, expected_result: bool, mocker: pytest_mock.MockerFixture) -> None:
+    display = Display()
+    deprecated_spy = mocker.spy(display, 'deprecated')
+    mocker.patch.object(_TemplateConfig, 'allow_broken_conditionals', True)
+    mocker.patch.object(_TemplateConfig, 'allow_embedded_templates', True)  # force this on since a number of cases need it
+
+    assert Templar().evaluate_conditional(TRUST.tag(value)) == expected_result
+
+    if isinstance(value, str) and is_possibly_all_template(value):
+        assert deprecated_spy.call_count == 2
+        assert "should not be surrounded" in deprecated_spy.call_args_list[0].kwargs['msg']
+    else:
+        assert deprecated_spy.call_count == 1
+
+    if value in (None, ''):
+        assert "Empty conditional" in deprecated_spy.call_args_list[-1].kwargs['msg']
+    else:
+        assert "must have a boolean result" in deprecated_spy.call_args_list[-1].kwargs['msg']
+
+
+@pytest.mark.parametrize("template, expected, expect_warning", (
+    ("1 == '{{ 1 }}'", False, False),  # constants are not directly intercepted or proxied for templating in this case, so no warning
+    ("lookup('items', '{{ [1, 2, 3] }}') == [1, 2, 3]", False, True),
+    ("query('items', '{{ [1, 2, 3] }}') == [1, 2, 3]", False, True),
+))
+def test_embedded_templates_disabled(template: str, expected: t.Any, expect_warning: bool, mocker: pytest_mock.MockerFixture) -> None:
+    display = Display()
+    warning_spy = mocker.spy(display, 'warning')
+    mocker.patch.object(_TemplateConfig, 'allow_embedded_templates', False)
+    mocker.patch.object(_TemplateConfig, 'raise_on_trust_check_fail', False)  # test user-visible behavior
+
+    assert Templar().evaluate_conditional(TRUST.tag(template)) == expected
+    assert warning_spy.call_count == (1 if expect_warning else 0)
+
+
+@pytest.mark.parametrize("template, expected", (
+    ("1 == '{{ 1 }}'", True),
+    ("lookup('items', '{{ [1, 2, 3] }}') == [1, 2, 3]", True),
+    ("query('items', '{{ [1, 2, 3] }}') == [1, 2, 3]", True),
+))
+def test_embedded_templates_enabled(template: str, expected: t.Any, mocker: pytest_mock.MockerFixture) -> None:
+    display = Display()
+    deprecated_spy = mocker.spy(display, 'deprecated')
+    mocker.patch.object(_TemplateConfig, 'allow_embedded_templates', True)
+
+    templar = Templar()
+
+    assert templar.evaluate_conditional(TRUST.tag(template)) == expected
+    assert deprecated_spy.call_count == 1
+    assert "should not contain embedded templates" in deprecated_spy.call_args_list[0].kwargs['msg']
+
+    deprecated_spy.reset_mock()
+
+    # only lookup/query args support embedded templates in an actual template (not a naked expression)
+    if 'lookup' in template or 'query' in template:
+        assert templar.evaluate_conditional(TRUST.tag(as_template(template))) == expected
+        assert deprecated_spy.call_count == 2
+        assert any(call for call in deprecated_spy.call_args_list if "should not contain embedded templates" in call.kwargs['msg'])
+        assert any(call for call in deprecated_spy.call_args_list if "should not be surrounded by templating delimiters" in call.kwargs['msg'])
+
+
+def test_available_vars_smuggling():
+    """
+    Jinja Template.render() and TemplateExpression.__call__() flatten their args/kwargs via splatting to dict(), which is an unnecessary copy as well as
+    causing top-level templated variables to be rendered prematurely. We have some arg smuggling code to prevent this, which this test validates.
+    """
+
+    class ExplodingDict(dict):
+        """A dict subclass that explodes when copied or iterated via `dict()`."""
+
+        def __iter__(self):
+            raise NotImplementedError()
+
+        def keys(self):
+            raise NotImplementedError()
+
+    template_vars = ExplodingDict()
+
+    # ensure our tripwire dict subclass fails when used as the source for a dict copy
+    with pytest.raises(NotImplementedError):
+        dict(template_vars)
+
+    # if Jinja copies our input dict, it should blow up; assert that it doesn't and that the template renders as expected
+    assert Templar(variables=template_vars).template(TRUST.tag("{{ 1 }}")) == 1
+
+
+def test_template_var_isolation():
+    """
+    Ensure that plugin mutations to lazy-wrapped container variables do not persist outside templating.
+    Direct mutation via Templar.available_variables is not currently protected (and is generally a bad idea).
+    """
+
+    orig_dict_value = dict(one="one")
+    orig_list_value = [1, 2, 3]
+
+    available_vars = dict(dict_value=orig_dict_value, list_value=orig_list_value)
+
+    def mutate_my_vars(dict_value: dict, list_value: list) -> dict[str, t.Any]:
+        dict_value["added"] = "added"
+        list_value.append("added")
+
+        return dict(dict_value=dict_value, list_value=list_value)
+
+    res = Templar(variables=available_vars).evaluate_expression(
+        TRUST.tag("mutate_my_vars(dict_value, list_value)"),
+        template_locals=dict(mutate_my_vars=mutate_my_vars)
+    )
+
+    # ensure the plugin returned the mutated copies as expected
+    assert res == dict(dict_value=dict(one="one", added="added"), list_value=[1, 2, 3, "added"])
+
+    # ensure the original input variables are the same unmodified instances
+    assert available_vars == dict(dict_value=dict(one="one"), list_value=[1, 2, 3])
+    assert available_vars['dict_value'] is orig_dict_value
+    assert available_vars['list_value'] is orig_list_value
+
+
+@pytest.mark.parametrize('fixture, plugin_type, plugin_name, expected', (
+    ('no_collections', 'filter', 'invalid/name.does_not_matter.also_does_not_matter', AnsibleTemplatePluginNotFoundError),  # plugin is None
+    ('no_collections', 'lookup', 'invalid/name.does_not_matter.also_does_not_matter', AnsibleTemplatePluginNotFoundError),
+    ('no_collections', 'filter', 'missing_namespace_name.does_not_matter.also_does_not_matter', AnsibleTemplatePluginNotFoundError),  # KeyError
+    ('no_collections', 'lookup', 'missing_namespace_name.does_not_matter.also_does_not_matter', AnsibleTemplatePluginNotFoundError),
+
+    ('valid_collection', 'filter', 'valid.invalid/name.does_not_matter', AnsibleTemplatePluginNotFoundError),  # KeyError
+    ('valid_collection', 'lookup', 'valid.invalid/name.does_not_matter', AnsibleTemplatePluginNotFoundError),
+    ('valid_collection', 'filter', 'valid.missing_collection.does_not_matter', AnsibleTemplatePluginNotFoundError),  # KeyError
+    ('valid_collection', 'lookup', 'valid.missing_collection.does_not_matter', AnsibleTemplatePluginNotFoundError),
+    ('valid_collection', 'filter', 'valid.also_valid.invalid/name', AnsibleTemplatePluginNotFoundError),  # plugin is None
+    ('valid_collection', 'lookup', 'valid.also_valid.invalid/name', AnsibleTemplatePluginNotFoundError),
+    ('valid_collection', 'filter', 'valid.also_valid.missing_plugin', AnsibleTemplatePluginNotFoundError),  # plugin is None
+    ('valid_collection', 'lookup', 'valid.also_valid.missing_plugin', AnsibleTemplatePluginNotFoundError),
+    ('valid_collection', 'filter', 'valid.also_valid.also_also_valid', []),
+    ('valid_collection', 'lookup', 'valid.also_valid.also_also_valid', []),
+    ('valid_collection', 'filter', 'valid.also_valid.runtime_error', AnsibleTemplatePluginRuntimeError),
+    ('valid_collection', 'lookup', 'valid.also_valid.runtime_error', AnsibleTemplatePluginRuntimeError),
+    ('valid_collection', 'filter', 'valid.also_valid.load_error', AnsibleTemplatePluginLoadError),  # AnsibleError
+    ('valid_collection', 'lookup', 'valid.also_valid.load_error', AnsibleTemplatePluginLoadError),
+
+    ('no_collections', 'filter', 'ansible.invalid/name.does_not_matter', AnsibleTemplatePluginNotFoundError),  # KeyError
+    ('no_collections', 'lookup', 'ansible.invalid/name.does_not_matter', AnsibleTemplatePluginNotFoundError),
+    ('no_collections', 'filter', 'ansible.missing_collection.does_not_matter', AnsibleTemplatePluginNotFoundError),  # KeyError
+    ('no_collections', 'lookup', 'ansible.missing_collection.does_not_matter', AnsibleTemplatePluginNotFoundError),
+    ('no_collections', 'filter', 'ansible.builtin.invalid/name', AnsibleTemplatePluginNotFoundError),  # plugin is None
+    ('no_collections', 'lookup', 'ansible.builtin.invalid/name', AnsibleTemplatePluginNotFoundError),
+    ('no_collections', 'filter', 'ansible.builtin.missing_plugin', AnsibleTemplatePluginNotFoundError),  # plugin is None
+    ('no_collections', 'lookup', 'ansible.builtin.missing_plugin', AnsibleTemplatePluginNotFoundError),
+    ('no_collections', 'filter', 'ansible.builtin.quote', 'foo'),
+    ('no_collections', 'lookup', 'ansible.builtin.env', []),
+
+    ('no_collections', 'filter', 'invalid/name', AnsibleTemplatePluginNotFoundError),  # plugin is None
+    ('no_collections', 'lookup', 'invalid/name', AnsibleTemplatePluginNotFoundError),
+    ('no_collections', 'filter', 'missing_plugin', AnsibleTemplatePluginNotFoundError),  # plugin is None
+    ('no_collections', 'lookup', 'missing_plugin', AnsibleTemplatePluginNotFoundError),
+    ('no_collections', 'filter', 'quote', 'foo'),
+    ('no_collections', 'lookup', 'env', []),
+), ids=str)
+def test_jinja2_loader_plugin(fixture: str, plugin_type: str, plugin_name: str, expected: t.Any) -> None:
+    if plugin_type == 'filter':
+        expression = f'{{{{ "foo" | {plugin_name} }}}}'
+    else:
+        expression = f'{{{{ lookup("{plugin_name}") }}}}'
+
+    # HACK: this test should really be using a shared collection loader fixture, but this fixes an "inherited" dummy collection loader
+    from ansible.utils.collection_loader._collection_finder import _AnsibleCollectionFinder
+
+    try:
+        _AnsibleCollectionFinder._remove()
+        nuke_module_prefix('ansible_collections')
+    except Exception:
+        pass
+
+    _AnsibleCollectionFinder(paths=[str(pathlib.Path(__file__).parent / 'fixtures' / fixture)])._install()
+
+    try:
+        if isinstance(expected, type) and issubclass(expected, Exception):
+            with pytest.raises(expected):
+                Templar().template(TRUST.tag(expression))
+        else:
+            assert Templar().template(TRUST.tag(expression)) == expected
+    finally:
+        _AnsibleCollectionFinder._remove()
+
+        nuke_module_prefix('ansible_collections')
+
+
+def test_variable_name_as_template_success() -> None:
+    source_pos = AnsibleSourcePosition(src="somefile")
+    name = NotATemplate().tag(source_pos.tag("blar"))
+
+    res = Templar().variable_name_as_template(name)
+    assert res.replace(' ', '') == "{{blar}}"
+
+    required_tags: frozenset[AnsibleDatatagBase] = frozenset({source_pos, TrustedAsTemplate()})
+
+    assert required_tags - AnsibleTagHelper.tags(res) == set()  # there might be others, that's fine
+    assert not NotATemplate.is_tagged_on(res)
+
+
+def test_variable_name_as_template_invalid() -> None:
+    invalid_name = AnsibleSourcePosition(src="somefile").tag("  invalid[var*name")
+
+    with pytest.raises(AnsibleError) as err:
+        Templar().variable_name_as_template(invalid_name)
+
+    assert err.value.obj is invalid_name
+
+
+def test_resolve_variable_expression_success() -> None:
+    templar = Templar(variables=dict(thing=dict(subdict1=dict(subdict2="hi mom"))))
+
+    assert templar.resolve_variable_expression("thing.subdict1.subdict2") == "hi mom"
+
+
+def test_resolve_variable_expression_invalid() -> None:
+    templar = Templar(variables=dict(thing=dict(subdict1=dict(subdict2="hi mom"))))
+
+    expr = "thing['subdict1']['subdict2']"  # non-identifier components should fail early
+
+    with pytest.raises(AnsibleError) as err:
+        templar.resolve_variable_expression(expr)
+
+    assert err.value.obj is expr
+
+
+def test_resolve_variable_expression_missing() -> None:
+    templar = Templar()
+
+    source_pos = AnsibleSourcePosition(src="somefile")
+
+    expr = source_pos.tag("missing_variable")
+
+    with pytest.raises(AnsibleUndefinedVariable) as err:
+        templar.resolve_variable_expression(expr)
+
+    assert err.value.obj == expr  # may not be the same instance, since it was tagged TrustedAsTemplate internally
+
+    required_tags: frozenset[AnsibleDatatagBase] = frozenset({source_pos, TrustedAsTemplate()})
+
+    assert required_tags - AnsibleTagHelper.tags(err.value.obj) == set()  # there might be others, that's fine
+
+
+def test_error_invalid_non_string_template():
+    """Ensure errors on non-string template inputs include type information."""
+    with pytest.raises(AnsibleTemplateError) as err:
+        Templar().template(...)
+
+    assert f"of type {type(...)}" in err.value.message
+
+
+def nuke_module_prefix(prefix):
+    for module_to_nuke in [m for m in sys.modules if m.startswith(prefix)]:
+        sys.modules.pop(module_to_nuke)

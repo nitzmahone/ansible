@@ -32,13 +32,13 @@ DOCUMENTATION = '''
 import time
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleParserError
+from ansible.errors import AnsibleError, AnsibleParserError, AnsibleTemplateError
 from ansible.playbook.handler import Handler
 from ansible.playbook.included_file import IncludedFile
 from ansible.plugins.loader import action_loader
 from ansible.plugins.strategy import StrategyBase
-from ansible.template import Templar
-from ansible.module_utils.common.text.converters import to_text
+from ansible.template.templar import Templar, TemplateOptions, as_non_templatable_text
+from ansible.template.undefined_behaviors import ReplaceUndefined
 from ansible.utils.display import Display
 
 display = Display()
@@ -128,8 +128,8 @@ class StrategyModule(StrategyBase):
 
                         try:
                             throttle = int(templar.template(task.throttle))
-                        except Exception as e:
-                            raise AnsibleError("Failed to convert the throttle value to an integer.", obj=task._ds, orig_exc=e)
+                        except Exception as ex:
+                            raise AnsibleError("Failed to convert the throttle value to an integer.", obj=task.throttle) from ex
 
                         if throttle > 0:
                             same_tasks = 0
@@ -155,12 +155,11 @@ class StrategyModule(StrategyBase):
                             action = None
 
                         try:
-                            task.name = to_text(templar.template(task.name, fail_on_undefined=False), nonstring='empty')
-                            display.debug("done templating", host=host_name)
-                        except Exception:
-                            # just ignore any errors during task name templating,
-                            # we don't care if it just shows the raw name
-                            display.debug("templating failed for some reason", host=host_name)
+                            with ReplaceUndefined.warning_context() as replace_undefined:
+                                task.name = as_non_templatable_text(templar.template(task.name, options=TemplateOptions(undefined_behavior=replace_undefined)))
+                        except AnsibleTemplateError as ex:
+                            display.warning(f'Templating task name {task.name!r} failed: {ex}')
+                            display.debug(f'Templating task name {task.name!r} failed: {ex}', host=host_name)
 
                         run_once = templar.template(task.run_once) or action and getattr(action, 'BYPASS_HOST_LOOP', False)
                         if run_once:
@@ -260,11 +259,12 @@ class StrategyModule(StrategyBase):
                         iterator.handlers = [h for b in iterator._play.handlers for h in b.block]
                     except AnsibleParserError:
                         raise
-                    except AnsibleError as e:
-                        display.error(to_text(e), wrap_text=False)
+                    except AnsibleError as ex:
+                        # FIXME: send the error to the callback; don't directly write to display here
+                        display.error(ex)
                         for r in included_file._results:
                             r._result['failed'] = True
-                            r._result['reason'] = str(e)
+                            r._result['reason'] = str(ex)
                             self._tqm._stats.increment('failures', r._host.name)
                             self._tqm.send_callback('v2_runner_on_failed', r)
                             failed_includes_hosts.add(r._host)

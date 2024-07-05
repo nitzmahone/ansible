@@ -17,16 +17,21 @@
 
 from __future__ import annotations
 
+import functools
 import re
 import operator as py_operator
 
 from collections.abc import MutableMapping, MutableSequence
 
+from jinja2.tests import test_defined, test_undefined
+
 from ansible.module_utils.compat.version import LooseVersion, StrictVersion
 
 from ansible import errors
 from ansible.module_utils.common.text.converters import to_native, to_text
+from ansible.utils.datatag.tags import VaultedValue
 from ansible.module_utils.parsing.convert_bool import boolean
+from ansible.plugins import accept_undefined_args
 from ansible.utils.display import Display
 from ansible.utils.version import SemanticVersion
 
@@ -123,8 +128,7 @@ def regex(value='', pattern='', ignorecase=False, multiline=False, match_type='s
         This is likely only useful for `search` and `match` which already
         have their own filters.
     '''
-    # In addition to ensuring the correct type, to_text here will ensure
-    # _fail_with_undefined_error happens if the value is Undefined
+    # In addition to ensuring the correct type, to_text ensures that AnsibleUndefinedError is raised if the value is undefined
     value = to_text(value, errors='surrogate_or_strict')
     flags = 0
     if ignorecase:
@@ -140,7 +144,7 @@ def vault_encrypted(value):
 
     .. versionadded:: 2.10
     """
-    return getattr(value, '__ENCRYPTED__', False) and value.is_encrypted()
+    return VaultedValue.is_tagged_on(value)
 
 
 def match(value, pattern='', ignorecase=False, multiline=False):
@@ -237,6 +241,20 @@ def falsy(value, convert_bool=False):
     return not truthy(value, convert_bool=convert_bool)
 
 
+@accept_undefined_args
+@functools.wraps(test_defined)
+def wrapped_test_defined(*args, **kwargs):
+    """Wrapper around Jinja's `defined` test to avoid mutating the externally-owned function with our marker attribute."""
+    return test_defined(*args, **kwargs)
+
+
+@accept_undefined_args
+@functools.wraps(test_undefined)
+def wrapped_test_undefined(*args, **kwargs):
+    """Wrapper around Jinja's `undefined` test to avoid mutating the externally-owned function with our marker attribute."""
+    return test_undefined(*args, **kwargs)
+
+
 class TestModule(object):
     ''' Ansible core jinja2 tests '''
 
@@ -282,4 +300,8 @@ class TestModule(object):
 
             # vault
             'vault_encrypted': vault_encrypted,
+
+            # overrides that require special arg handling
+            'defined': wrapped_test_defined,
+            'undefined': wrapped_test_undefined,
         }

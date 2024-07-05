@@ -244,8 +244,8 @@ class CallbackModule(CallbackBase):
 
         if host_data.status == 'failed':
             if 'exception' in res:
-                message = res['exception'].strip().split('\n')[-1]
-                output = res['exception']
+                message = res['exception'].errors[0].msg
+                output = res['exception'].formatted_traceback
                 test_case.errors.append(TestError(message=message, output=output))
             elif 'msg' in res:
                 message = res['msg']
