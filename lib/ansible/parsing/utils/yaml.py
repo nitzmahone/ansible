@@ -41,6 +41,6 @@ def from_yaml(
             try:
                 return AnsibleLoader(data, file_name=file_name, vault_secrets=vault_secrets, trusted_as_template=trusted_as_template).get_single_data()
             except Exception as yaml_ex:
-                # DTFIX-U: how can we indicate in AnsibleSourcePosition that the data is in-memory only, so we can support context information -- is that useful?
+                # DTFIX-U: how can we indicate in AnsibleSourcePosition that the data is in-memory only, to support context information -- is that useful?
                 #        we'd need to pass data to handle_exception so it could be used as the content instead of reading from disk
                 AnsibleYAMLParserError.handle_exception(yaml_ex, src=file_name)
