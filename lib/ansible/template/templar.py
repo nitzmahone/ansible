@@ -46,7 +46,7 @@ from .undefined_behaviors import FAIL_ON_UNDEFINED, UndefinedBehavior
 
 _display = Display()
 
-# FIXME: remove/harden- just here for development backstop for now
+# DTFIX-U: remove/harden- just here for development backstop for now
 if tuple(map(int, jinja2_version.split('.'))) < (3, 1):
     raise RuntimeError('Jinja 3.1+ required')
 
@@ -63,10 +63,10 @@ class TemplateTrustCheckFailedError(AnsibleTemplateError):
 class TemplateOptions:
     DEFAULT: t.ClassVar[t.Self]
 
-    # FIXME: embedded sentinel
+    # DTFIX-U: embedded sentinel
     preserve_trailing_newlines: bool = t.cast(bool, ...)
     escape_backslashes: bool = t.cast(bool, ...)
-    overrides: TemplateOverrides = t.cast(TemplateOverrides, ...)  # FIXME: these aren't really overrides anymore, rename the dataclass and this field
+    overrides: TemplateOverrides = t.cast(TemplateOverrides, ...)  # DTFIX-U: these aren't really overrides anymore, rename the dataclass and this field
     undefined_behavior: UndefinedBehavior = t.cast(UndefinedBehavior, ...)
     value_for_omit: t.Any = ...
 
@@ -82,12 +82,12 @@ class TemplateOptions:
                 # HACK: stop post_init here when creating the shared defaults
                 return
 
-        # FIXME: dataclasses.replace on the defaults in a factory?
+        # DTFIX-U: dataclasses.replace on the defaults in a factory?
         for field in dataclasses.fields(self):
-            # FIXME: tighten this up?
+            # DTFIX-U: tighten this up?
             if getattr(self, field.name) is ...:
-                # FIXME: figure out a better way to avoid propagating options
-                # FIXME: review all options to determine correct propagation behavior
+                # DTFIX-U: figure out a better way to avoid propagating options
+                # DTFIX-U: review all options to determine correct propagation behavior
                 if field.name in ('value_for_omit', 'overrides', 'escape_backslashes'):
                     value = getattr(TemplateOptions.DEFAULT, field.name)
                 else:
@@ -183,7 +183,7 @@ class Templar:
 
     @property
     def available_variables(self) -> dict[str, t.Any] | ChainMap[str, t.Any]:
-        # FIXME: ensure that we're always accessing this as a shallow container-level snapshot, and eliminate uses of set_temporary_context and anything
+        # DTFIX-U: ensure that we're always accessing this as a shallow container-level snapshot, and eliminate uses of set_temporary_context and anything
         #  else that directly mutates this value. _new_context may resolve this for us?
         if self._variables is None:
             self._variables = self._variables_factory() if self._variables_factory else {}
@@ -232,7 +232,7 @@ class Templar:
             for key, value in original.items():
                 setattr(targets[key], key, value)
 
-    # FIXME: ditch this?
+    # DTFIX-U: ditch this?
     def resolve_variable_expression(self, expression: str) -> t.Any:
         """Resolve a variable name or simple dotted variable expression."""
         stripped_expression = expression.strip()
@@ -241,11 +241,11 @@ class Templar:
             raise AnsibleError(f'invalid variable expression: {expression}')
         return self.evaluate_expression(TrustedAsTemplate().tag(stripped_expression))
 
-    # FIXME: implement a pylint check for proper usage of LiteralString args (even if mypy eventually supports it,
+    # DTFIX-U: implement a pylint check for proper usage of LiteralString args (even if mypy eventually supports it,
     # we'll want this to get checked for collections, too).
     def template_literal_expression(self, expression: t.LiteralString, var_overrides: dict[str, t.Any] | None = None) -> t.Any:
         """Template string literal expressions with blind trust."""
-        # FIXME: propagate other tags? (source position, etc)
+        # DTFIX-U: propagate other tags? (source position, etc)
         variables = ChainMap(var_overrides, self.available_variables) if var_overrides else self.available_variables
         templar = Templar(self._loader, variables=variables)
         return templar.evaluate_expression(TrustedAsTemplate().tag(expression))
@@ -254,13 +254,13 @@ class Templar:
     def variable_name_as_template(name: str) -> str:
         stripped_name = name.strip()
         if not isidentifier(stripped_name):
-            # FIXME: better exception type here
+            # DTFIX-U: better exception type here
             raise AnsibleError(f"invalid variable name: {stripped_name}")
-        # FIXME: propagate other tags? (source position, etc)
+        # DTFIX-U: propagate other tags? (source position, etc)
         # this is safe enough to blindly apply trust, since it can only be an identifier
         return TrustedAsTemplate().tag('{{' + stripped_name + '}}')
 
-    # FIXME: TemplateMode.EXPRESSION should be strings only- enforce (or use a different entrypoint)
+    # DTFIX-U: TemplateMode.EXPRESSION should be strings only- enforce (or use a different entrypoint)
     def template(
             self,
             variable: t.Any,
@@ -281,12 +281,12 @@ class Templar:
         if mode != TemplateMode.EXPRESSION and NotATemplate.is_tagged_on(variable):
             return variable
 
-        # FIXME: early exit on empty collections
+        # DTFIX-U: early exit on empty collections
 
-        # FIXME: tighten this up, and figure out a better way to avoid propagating options
+        # DTFIX-U: tighten this up, and figure out a better way to avoid propagating options
         if template_ctx := TemplateContext.current(optional=True):
-            # FIXME: ideally avoid re-creating TemplateOptions every time here
-            options = options or TemplateOptions()  # FIXME: this is dangerous because it looks like it's the default, but it's a context-aware factory method
+            # DTFIX-U: ideally avoid re-creating TemplateOptions every time here
+            options = options or TemplateOptions()  # DTFIX-U: this is dangerous because it looks like it's the default, but it's a context-aware factory method
             stop_on_template = template_ctx.stop_on_template
         else:
             options = options or TemplateOptions.DEFAULT
@@ -402,15 +402,15 @@ class Templar:
                 newlines = options.overrides.newline_sequence * (data_newlines - res_newlines)
                 result = AnsibleTagHelper.tag_copy(result, result + newlines)
 
-        # FIXME: ensure tag propagation behavior is working for containers
-        # FIXME: should there be some form of recursive application here?
-        # FIXME: propagate more tags here?
+        # DTFIX-U: ensure tag propagation behavior is working for containers
+        # DTFIX-U: should there be some form of recursive application here?
+        # DTFIX-U: propagate more tags here?
         # if the input string template was source-tagged and the result is not, propagate the source tag to the new value
         if (src_pos := AnsibleSourcePosition.get_tag(template)) and not AnsibleSourcePosition.is_tagged_on(result):
             try:
                 result = src_pos.tag(result)
             except NotTaggableError:
-                pass  # FIXME: determine if there are cases where this error should not be suppressed
+                pass  # DTFIX-U: determine if there are cases where this error should not be suppressed
 
         return result
 
@@ -432,7 +432,7 @@ class Templar:
 
     @staticmethod
     def _raise_template_error(ex: Exception, variable: t.Any, mode: TemplateMode) -> t.NoReturn:
-        # FIXME: capture useful context information from each context early
+        # DTFIX-U: capture useful context information from each context early
 
         if isinstance(ex, AnsibleTemplateError):
             exception_to_raise = ex
@@ -440,10 +440,10 @@ class Templar:
             cause = 'expression' if mode is TemplateMode.EXPRESSION else 'template'
 
             if isinstance(variable, str):
-                if len(variable) <= 60 and '\n' not in variable:  # FIXME: implement better limits on inline template display
+                if len(variable) <= 60 and '\n' not in variable:  # DTFIX-U: implement better limits on inline template display
                     cause += f' {variable!r}'
             else:
-                cause += f' of type {type(variable)}'  # FIXME: what causes this, do we need it here or somewhere else?
+                cause += f' of type {type(variable)}'  # DTFIX-U: what causes this, do we need it here or somewhere else?
 
             ex_type = AnsibleTemplateError  # always raise an AnsibleTemplateError/subclass
 
@@ -474,7 +474,7 @@ class Templar:
             return False
 
     def evaluate_expression(self, expression: str, escape_backslashes=True, template_locals: dict[str, t.Any] | None = None) -> t.Any:
-        # FIXME: should we allow passing options here, so we can use this with the debug action?
+        # DTFIX-U: should we allow passing options here, so we can use this with the debug action?
         if not isinstance(expression, str):
             raise TypeError(f"evaluate_expression requires {str!r}, got {type(expression)!r}")
 
@@ -488,7 +488,7 @@ class Templar:
     _BROKEN_CONDITIONAL_ALLOWED_FRAGMENT = 'Broken conditionals are currently allowed because the `ALLOW_BROKEN_CONDITIONALS` configuration option is enabled.'
 
     def evaluate_conditional(self, conditional: str | bool | None) -> bool:
-        # FIXME: all error/warning messages need location info
+        # DTFIX-U: all error/warning messages need location info
         if type(conditional) is bool:  # pylint: disable=unidiomatic-typecheck
             return conditional
 
@@ -550,7 +550,7 @@ class Templar:
             return result
 
         bool_result = bool(result)
-        # FIXME: `type(result)` should probably be the base type of the data structure
+        # DTFIX-U: `type(result)` should probably be the base type of the data structure
         msg = (
             f'Conditional result was {textwrap.shorten(str(result), width=40)!r} of type {type(result)}, which evaluates to {bool_result}. '
             'Conditionals must have a boolean result.'
@@ -595,7 +595,7 @@ class Templar:
         return True
 
     def proxy_or_render_template(self, item: t.Any):
-        # FIXME: always blindly access item here?
+        # DTFIX-U: always blindly access item here?
         res = self.template(AnsibleAccessContext.current().access(item))
 
         if (type(res) is AnsibleUndefined and  # pylint: disable=unidiomatic-typecheck

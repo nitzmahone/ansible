@@ -260,7 +260,7 @@ class StrategyModule(StrategyBase):
                     except AnsibleParserError:
                         raise
                     except AnsibleError as ex:
-                        # FIXME: send the error to the callback; don't directly write to display here
+                        # DTFIX-U: send the error to the callback; don't directly write to display here
                         display.error(ex)
                         for r in included_file._results:
                             r._result['failed'] = True

@@ -2,7 +2,7 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 # deprecated: description="deprecate unsafe_proxy module" core_version="2.19"
-# FIXME: add full unit test coverage
+# DTFIX-U: add full unit test coverage
 from __future__ import annotations
 
 from collections.abc import Mapping, Set
@@ -18,7 +18,7 @@ __all__ = ['AnsibleUnsafe', 'wrap_var']
 
 T = t.TypeVar('T')
 
-# FIXME: should these also be adding `NotATemplate`?
+# DTFIX-U: should these also be adding `NotATemplate`?
 
 
 class AnsibleUnsafe:

@@ -20,7 +20,7 @@ from __future__ import annotations
 import collections.abc as c
 import typing as t
 
-# FIXME: consider using AnsibleSerializable to register known types automatically?
+# DTFIX-U: consider using AnsibleSerializable to register known types automatically?
 from ansible.module_utils.datatag import AnsibleTaggedObject, Tripwire, AnsibleTagHelper
 from ansible.utils.datatag.tags import VaultedValue
 from ansible.module_utils.datatag.access import AnsibleAccessContext
@@ -59,6 +59,6 @@ def represent_tripwire(self, data: Tripwire) -> t.NoReturn:
 
 AnsibleDumper.add_multi_representer(c.Mapping, AnsibleDumper.represent_dict)
 AnsibleDumper.add_multi_representer(Tripwire, represent_tripwire)
-# FIXME: do we actually need knobs to allow re-serialization of !!unsafe
-# FIXME: how do we want to handle this for lazy containers, for cases like using the to_yaml filter in templates?
+# DTFIX-U: do we actually need knobs to allow re-serialization of !!unsafe
+# DTFIX-U: how do we want to handle this for lazy containers, for cases like using the to_yaml filter in templates?
 AnsibleDumper.add_multi_representer(AnsibleTaggedObject, represent_ansible_tagged_object)

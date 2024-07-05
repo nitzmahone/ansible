@@ -379,7 +379,7 @@
 # https://github.com/ansible/ansible/issues/64169
 - include_vars: 64169.yml
 
-# FIXME: these pass in devel because of multi-pass templating; to make them work properly, hostvarsvars needs to pick
+# DTFIX-U: these pass in devel because of multi-pass templating; to make them work properly, hostvarsvars needs to pick
 #  up task/play vars dynamically from a context
 #- set_fact:
 #    '{{ item.key }}': '{{ hostvars[inventory_hostname][item.value] }}'

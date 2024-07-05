@@ -1,4 +1,4 @@
-# FIXME: this is part of the new DT changes, the API needs additional cleanup before releasing
+# DTFIX-U: this is part of the new DT changes, the API needs additional cleanup before releasing
 
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def _get_cause(exception: BaseException) -> BaseException | None:
 
 
 class _TemporaryDisplay:
-    # FIXME: generalize this and hide it in the display module so all users of Display can benefit
+    # DTFIX-U: generalize this and hide it in the display module so all users of Display can benefit
 
     @staticmethod
     def warning(*args, **kwargs):
@@ -113,7 +113,7 @@ def _get_display() -> Display | _TemporaryDisplay:
 
 
 def _create_error_detail(exception: BaseException, event: _traceback.TracebackEvent | None = None) -> ErrorDetail:
-    # FIXME: can this be moved to _internal._errors?
+    # DTFIX-U: can this be moved to _internal._errors?
     from . import AnsibleError
 
     target_exception: BaseException | None = exception
@@ -193,20 +193,20 @@ class SourceContext:
         if value is None:
             return None
 
-        # FIXME: replace this hack with an Origin tag
+        # DTFIX-U: replace this hack with an Origin tag
         if (position := AnsibleSourcePosition.get_tag(value)) and position.src and position.src[0] != "<":
             return cls.from_source_position(position)
 
         if RedactAnnotatedSourceContext.current(optional=True):
             return cls.error('content redacted')
 
-        # FIXME: redaction context may not be sufficient to avoid secret disclosure without SensitiveData and other enhancements
+        # DTFIX-U: redaction context may not be sufficient to avoid secret disclosure without SensitiveData and other enhancements
         truncated_value = textwrap.shorten(str(value), width=120)
 
         return SourceContext(
-            # FIXME: implement Origin tag support here
+            # DTFIX-U: implement Origin tag support here
             source_position=position or AnsibleSourcePosition(src="<string>"),
-            # FIXME: cleanup/share width
+            # DTFIX-U: cleanup/share width
             annotated_source_lines=[truncated_value],
             target_line=truncated_value,
         )

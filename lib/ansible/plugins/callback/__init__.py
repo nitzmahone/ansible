@@ -53,7 +53,7 @@ _YAML_BREAK_CHARS = '\n\x85\u2028\u2029'  # NL, NEL, LS, PS
 _SPACE_BREAK_RE = re.compile(fr' +([{_YAML_BREAK_CHARS}])')
 
 
-# FIXME: implement AnsibleAccessContext support
+# DTFIX-U: implement AnsibleAccessContext support
 class _AnsibleCallbackDumper(AnsibleDumper):
     def __init__(self, lossy=False):
         self._lossy = lossy
@@ -123,7 +123,7 @@ def _pretty_represent_str(self, data):
     return node
 
 
-# FIXME: make sure we don't need support for AnsibleTaggedStr here
+# DTFIX-U: make sure we don't need support for AnsibleTaggedStr here
 _AnsibleCallbackDumper.add_representer(
     str,
     _pretty_represent_str
@@ -244,7 +244,7 @@ class CallbackBase(AnsiblePlugin):
             # that want to further modify the result, or use custom serialization
             return abridged_result
 
-        # FIXME: nuke the fallback?
+        # DTFIX-U: nuke the fallback?
         if result_format == 'json':
             return json.dumps(abridged_result, cls=fallback_to_str.Encoder, indent=indent, ensure_ascii=False, sort_keys=sort_keys)
 
@@ -276,14 +276,14 @@ class CallbackBase(AnsiblePlugin):
     def _handle_warnings(self, res):
         """Display warnings and deprecation warnings sourced by task execution."""
         for warning in res.pop('warnings', []):
-            # FIXME: what to do about propagating wrap_text from the original display.warning call?
+            # DTFIX-U: what to do about propagating wrap_text from the original display.warning call?
             self._display._warning(warning, wrap_text=False)
 
         for warning in res.pop('deprecations', []):
             self._display._deprecated(warning)
 
     def _handle_exception(self, result, use_stderr=False):
-        # FIXME: figure out how to ensure that errors are consistently using stderr
+        # DTFIX-U: figure out how to ensure that errors are consistently using stderr
         if error_detail := result.pop('exception', None):
             self._display._error(error_detail, wrap_text=False, stderr=use_stderr)
 
@@ -394,7 +394,7 @@ class CallbackBase(AnsiblePlugin):
         ''' removes data from results for display '''
 
         # mostly controls that debug only outputs what it was meant to
-        # FIXME: this is a terrible heuristic to format debug's output- it masks exception detail
+        # DTFIX-U: this is a terrible heuristic to format debug's output- it masks exception detail
         if task_name in C._ACTION_DEBUG:
             if 'msg' in result:
                 # msg should be alone

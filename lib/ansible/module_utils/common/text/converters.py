@@ -268,10 +268,10 @@ def _json_encode_fallback(obj):
 
 
 def jsonify(data, **kwargs):
-    # FIXME: what to do with this? we shouldn't be (but are in validation.py), using this internally
+    # DTFIX-U: what to do with this? we shouldn't be (but are in validation.py), using this internally
     return json.dumps(data, cls=AnsibleJSONEncoder, **kwargs)
 
-    # FIXME: is this still needed? we're actually always encoding twice in py3 because encoding was removed
+    # DTFIX-U: is this still needed? we're actually always encoding twice in py3 because encoding was removed
     # for encoding in ("utf-8", "latin-1"):
     #     try:
     #         #return json.dumps(data, encoding=encoding, default=_json_encode_fallback, **kwargs)

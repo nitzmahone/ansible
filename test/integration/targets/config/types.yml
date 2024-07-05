@@ -15,7 +15,7 @@
 
         - assert:
             that:
-            # FIXME: should we be exposing/testing this?
+            # DTFIX-U: should we be exposing/testing this?
             - 'valid|type_debug == "_AnsibleLazyTemplateList"'
             - 'mustunquote|type_debug == "_AnsibleLazyTemplateList"'
             - 'notvalid|type_debug == "_AnsibleLazyTemplateList"'

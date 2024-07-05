@@ -128,7 +128,7 @@
   failed_when: debug.msg is not contains('{')
 
 
-# FIXME: move to templating integration test
+# DTFIX-U: move to templating integration test
 - name: templated strings in lookup/query args are processed in a conditional
   assert:
     that:
@@ -139,7 +139,7 @@
         {{ query('pipe', 'echo {{ "dude" }}') == ["dude"] }}
       - query('pipe', 'echo {{ "dude" }}') == ["dude"]
 
-# FIXME: move to templating integration test
+# DTFIX-U: move to templating integration test
 - name: templated strings in lookup/query args are processed in a non-conditional
   debug:
     msg:
@@ -177,4 +177,4 @@
     - result is failed
     - result.msg is contains("must have a boolean result")
 
-# FIXME: restore tests for `quiet` arg with a custom callback or output validation test
+# DTFIX-U: restore tests for `quiet` arg with a custom callback or output validation test

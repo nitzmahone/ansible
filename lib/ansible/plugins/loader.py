@@ -1309,7 +1309,7 @@ class Jinja2Loader(PluginLoader):
             raise AnsibleError('Do not set both path_only and class_only when calling PluginLoader.all()')
 
         self._ensure_non_collection_wrappers(*args, **kwargs)
-        # FIXME: surface these plugin errors (as wrapped plugins?) instead of hiding them
+        # DTFIX-U: surface these plugin errors (as wrapped plugins?) instead of hiding them
         if path_only:
             yield from (w._original_path for w in self._cached_non_collection_wrappers.values() if not isinstance(w, _DeferredPluginLoadFailure))
         else:
@@ -1352,7 +1352,7 @@ class Jinja2Loader(PluginLoader):
                 if not plugin_name.startswith(collection):
                     fqcn = f"{collection}.{plugin_name}"
 
-                # FIXME: the target_names below are not reflected on the wrapper
+                # DTFIX-U: the target_names below are not reflected on the wrapper
                 self._update_object(wrapper, plugin_name, p_map._original_path, resolved=fqcn)
 
                 target_names = {plugin_name, fqcn}

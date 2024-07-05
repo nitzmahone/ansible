@@ -141,7 +141,7 @@ class AnsibleJinja2Plugin(AnsiblePlugin, metaclass=abc.ABCMeta):
         super(AnsibleJinja2Plugin, self).__init__()
         self._function = function
 
-        # FIXME: should this come from sidecar config or another more user/doc-friendly mechanism?
+        # DTFIX-U: should this come from sidecar config or another more user/doc-friendly mechanism?
         # Declare support for undefined top-level arguments. Plugins with `False` here will never be invoked with undefined top-level arguments.
         self.accept_undefined_args = getattr(self._function, '_accept_undefined_args', False)
 

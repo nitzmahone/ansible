@@ -393,7 +393,7 @@
               # We expect the role to actually run, but will fail because an undefined variable was referenced
               # and validation wasn't performed up front (thus not returning 'argument_errors').
               - "'argument_errors' not in ansible_failed_result"
-              # FIXME: update to reflect final message text
+              # DTFIX-U: update to reflect final message text
               - |
                 ansible_failed_result.msg == "Task failed: 'c_int' is undefined"
 

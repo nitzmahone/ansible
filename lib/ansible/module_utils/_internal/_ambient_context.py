@@ -17,9 +17,9 @@ class AmbientContextBase:
     """
     __slots__ = ('_contextvar_token',)
 
-    # FIXME: this class should enforce strict nesting of contexts; overlapping context lifetimes leads to incredibly difficult to
+    # DTFIX-U: this class should enforce strict nesting of contexts; overlapping context lifetimes leads to incredibly difficult to
     #        debug situations with undefined behavior, so it should fail fast.
-    # FIXME: make frozen=True dataclass subclasses work (fix the mutability of the contextvar instance)
+    # DTFIX-U: make frozen=True dataclass subclasses work (fix the mutability of the contextvar instance)
 
     _contextvar: t.ClassVar[contextvars.ContextVar]
     _contextvar_token: contextvars.Token
@@ -49,7 +49,7 @@ class AmbientContextBase:
             raise ReferenceError(f"A required {cls.__name__} context is not active.")
 
     def __enter__(self) -> t.Self:
-        # FIXME: actively block multiple entry
+        # DTFIX-U: actively block multiple entry
         self._contextvar_token = self.__class__._contextvar.set(self)
         return self
 

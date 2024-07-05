@@ -15,7 +15,7 @@ else:
     _TemplateConfig.raise_on_trust_check_fail = True
 
 
-# FIXME: is this where we want this?
+# DTFIX-U: is this where we want this?
 def pytest_configure(config: pytest.Config):
     config.addinivalue_line("markers", "autoparam(value): metadata-driven parametrization")
     config.addinivalue_line("markers", "allow_delazify: test will delazify the result")
@@ -42,7 +42,7 @@ def collection_loader() -> None:
 
 # @pytest.fixture(autouse=True)
 # def prevent_collection_loader_leak(request: pytest.FixtureRequest):
-#     # FIXME: enable this fixture to ensure the collection loader has not "leaked"
+#     # DTFIX-U: enable this fixture to ensure the collection loader has not "leaked"
 #     for finder in sys.meta_path:
 #         if "_AnsibleCollectionFinder" in type(finder).__name__:
 #             finder._remove()

@@ -826,7 +826,7 @@ class CollectionModuleUtilLocator(ModuleUtilLocatorBase):
         if src is None:  # empty string is OK
             return False
 
-        self.source_code = src  # FIXME: ensure that source position is tagged here (for error messages in recursive_finder on compile errors)
+        self.source_code = src  # DTFIX-U: ensure that source position is tagged here (for error messages in recursive_finder on compile errors)
         return True
 
     def _get_module_utils_remainder_parts(self, name_parts):
@@ -861,7 +861,7 @@ metadata_versions: dict[t.Any, type[ModuleMetadata]] = {
 
 
 def _get_module_metadata(module: ast.Module) -> ModuleMetadata:
-    # FIXME: while module metadata works, this feature isn't fully baked and should be turned off before release
+    # DTFIX-U: while module metadata works, this feature isn't fully baked and should be turned off before release
     metadata_nodes: list[ast.Assign] = []
 
     for node in module.body:
@@ -1134,7 +1134,7 @@ class _BuiltModule:
 class _CachedModule:
     """Cached Python module created by AnsiballZ."""
 
-    # FIXME: secure this (locked down pickle, don't use pickle, etc.)
+    # DTFIX-U: secure this (locked down pickle, don't use pickle, etc.)
 
     zip_data: bytes
     metadata: ModuleMetadata
@@ -1375,7 +1375,7 @@ def _find_module_utils(
         b_module_data = output.getvalue()
 
     elif module_substyle == 'powershell':
-        module_metadata = ModuleMetadataV1(serialization_profile='legacy')  # FIXME: support serialization profiles for PowerShell modules
+        module_metadata = ModuleMetadataV1(serialization_profile='legacy')  # DTFIX-U: support serialization profiles for PowerShell modules
 
         # Powershell/winrm don't actually make use of shebang so we can
         # safely set this here.  If we let the fallback code handle this

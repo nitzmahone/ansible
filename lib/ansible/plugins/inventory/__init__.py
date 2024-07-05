@@ -187,7 +187,7 @@ class _BaseInventoryPlugin(AnsiblePlugin):
         if self.trusted_by_default:
             return _AutoTrustInputTemplar(loader=self.loader)
 
-        # FIXME: implement an optional "strict" mode that always uses the AnsibleVariableVisitor to check for unsupported types
+        # DTFIX-U: implement an optional "strict" mode that always uses the AnsibleVariableVisitor to check for unsupported types
 
         return Templar(loader=self.loader)
 
@@ -491,7 +491,7 @@ class Constructable(_BaseInventoryPlugin):
 class _AutoTrustInputTemplar(Templar):
     """Compatibility wrapper around Templar that automatically trusts templates passed directly to some templating methods."""
 
-    # FIXME: bikeshed name and location of this class
+    # DTFIX-U: bikeshed name and location of this class
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 

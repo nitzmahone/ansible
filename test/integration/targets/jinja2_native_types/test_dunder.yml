@@ -1,4 +1,4 @@
-# FIXME: FDI-003 (ish) - we probably shouldn't even allow storage of `Type` as an Ansible var
+# DTFIX-U: FDI-003 (ish) - we probably shouldn't even allow storage of `Type` as an Ansible var
 # also, access to arbitrary types via __ attrs has been abused for CVE-worthy things in the past
 
 # at the end of templating ops, we should be asserting that the result was a supported type to be stored as a var,

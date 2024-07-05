@@ -24,7 +24,7 @@ from ansible.module_utils.datatag.access import (
 )
 
 
-# FIXME: rename
+# DTFIX-U: rename
 @dataclasses.dataclass(**_tag_dataclass_kwargs)
 class _VaultBombPoorlyNamedTag(AnsibleSingletonTagBase):
     pass
@@ -57,7 +57,7 @@ class _VaultBomb(Tripwire):
         untagged_value = AnsibleTagHelper.as_untagged_type(value)
 
         # Propagate the original value's tags to the VaultBomb wrapper, keeping only the undecryptable tag on the inner value
-        # FIXME: Why not leave the inner value tagged as it was? Avoiding AccessContexts maybe?
+        # DTFIX-U: Why not leave the inner value tagged as it was? Avoiding AccessContexts maybe?
         wrapped = AnsibleTagHelper.tag_copy(value, _VaultBomb(uvv_tag.tag(untagged_value)))
         wrapped = UndecryptableVaultedValue.untag(wrapped)
         wrapped = AnsibleTagHelper.tag(wrapped, _VaultBombPoorlyNamedTag())
@@ -130,7 +130,7 @@ class _AnsibleTaggedVaultBomb(_VaultBomb, AnsibleTaggedObject):
     @classmethod
     def _init_class(cls):
         # deferred imperative customization, invoked by AnsibleTaggedObject
-        # FIXME: __setattr__ needs to be there at least for __init__
+        # DTFIX-U: __setattr__ needs to be there at least for __init__
         for name in cls._detonate_methods:
             setattr(cls, name, cls.detonate)
 
@@ -140,7 +140,7 @@ class UndecryptableAccessMutator(_MutatingAccessContextBase):
     _tag_type_interest = frozenset([UndecryptableVaultedValue])
 
     def _notify(self, o: t.Any) -> t.Any:
-        # FIXME: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
+        # DTFIX-U: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
         if UndecryptableVaultedValue.is_tagged_on(o):
             self._tripped = True
             return _VaultBomb.arm(o)
@@ -149,7 +149,7 @@ class UndecryptableAccessMutator(_MutatingAccessContextBase):
 
 
 class DetonateVaultBombsTripwire(_NotifiableAccessContextBase):
-    # FIXME: we might be able to kill this off now, since template finalize always trips these anyway; if not, explain why
+    # DTFIX-U: we might be able to kill this off now, since template finalize always trips these anyway; if not, explain why
     _tag_type_interest = frozenset([_VaultBombPoorlyNamedTag])
 
     def _notify(self, o: t.Any) -> t.Any:

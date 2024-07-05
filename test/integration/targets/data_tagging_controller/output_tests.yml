@@ -10,7 +10,7 @@
 - hosts: localhost
   gather_facts: true
   tasks:
-  # FIXME: move this and other target-side tests to a separate data_tagging_target integration test
+  # DTFIX-U: move this and other target-side tests to a separate data_tagging_target integration test
   - name: run our sample module and keep its output
     tagging_sample:
     register: demo_out

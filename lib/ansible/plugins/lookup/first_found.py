@@ -48,7 +48,7 @@ DOCUMENTATION = """
       - ref: playbook_task_paths
         description: Search paths used for relative paths/files.
 """
-# FIXME: how should the `none` references above appear in the prose (and which markup text should they be wrapped with)?
+# DTFIX-U: how should the `none` references above appear in the prose (and which markup text should they be wrapped with)?
 
 
 EXAMPLES = """
@@ -159,7 +159,7 @@ def _split_on(terms, spliters=','):
     if isinstance(terms, str):
         termlist = re.split(r'[%s]' % ''.join(map(re.escape, spliters)), terms)
 
-        # FIXME: any shared location to do this kind of thing?
+        # DTFIX-U: any shared location to do this kind of thing?
         # propagate tags from the input term to all output terms
         termlist = [AnsibleTagHelper.tag_copy(terms, term) for term in termlist]
 
@@ -213,7 +213,7 @@ class LookupModule(LookupBase):
         return total_search
 
     def run(self, terms, variables=None, **kwargs):
-        # FIXME: JinjaCallContext is not finalized user-facing API, need caution tape of some sort here?
+        # DTFIX-U: JinjaCallContext is not finalized user-facing API, need caution tape of some sort here?
         if te_action := JinjaCallContext.current()._te_invoking_action_name:
             # we're being invoked by TaskExecutor.get_loop_items(), special backcompat behavior
 

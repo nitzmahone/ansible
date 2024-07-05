@@ -96,7 +96,7 @@ class AnsibleConstructor(SafeConstructor):
     def construct_yaml_omap(self, node):
         src_pos = self._node_position_info(node)
         display.deprecated(
-            # FIXME: another source position use case, this time without value
+            # DTFIX-U: another source position use case, this time without value
             msg=f'YAML !!omap tag found at {str(src_pos)!r} is deprecated. Use a standard mapping instead, as key order is always preserved.',
             version='2.21',
         )
@@ -107,7 +107,7 @@ class AnsibleConstructor(SafeConstructor):
     def construct_yaml_pairs(self, node):
         src_pos = self._node_position_info(node)
         display.deprecated(
-            # FIXME: another source position use case, this time without value
+            # DTFIX-U: another source position use case, this time without value
             msg=f'YAML !!pairs tag found at {str(src_pos)!r} is deprecated.',
             version='2.21',
         )
@@ -118,10 +118,10 @@ class AnsibleConstructor(SafeConstructor):
     def construct_yaml_str(self, node):
         # Override the default string handling function
         # to always return unicode objects
-        # FIXME: is this still necessary under Py3?
+        # DTFIX-U: is this still necessary under Py3?
         value = to_text(self.construct_scalar(node))
 
-        # FIXME: factor out this shared code among the various constructor methods
+        # DTFIX-U: factor out this shared code among the various constructor methods
         tags = [self._node_position_info(node)]
 
         if self._unsafe_depth:
@@ -132,7 +132,7 @@ class AnsibleConstructor(SafeConstructor):
             #  the general scenario
             tags.append(TrustedAsTemplate())
 
-        # FIXME: optimize this to support non-conditional list construction and a shared instance of TrustedAsTemplate
+        # DTFIX-U: optimize this to support non-conditional list construction and a shared instance of TrustedAsTemplate
         return AnsibleTagHelper.tag(value, tags)
 
     def construct_yaml_binary(self, node):
@@ -192,7 +192,7 @@ class AnsibleConstructor(SafeConstructor):
 
         return AnsibleSourcePosition(src=datasource, line=line, col=column)
 
-# FIXME: review and deprecate tags below as appropriate
+# DTFIX-U: review and deprecate tags below as appropriate
 
 
 AnsibleConstructor.add_constructor(
@@ -223,7 +223,7 @@ AnsibleConstructor.add_constructor(
     u'tag:yaml.org,2002:pairs',
     AnsibleConstructor.construct_yaml_pairs)  # type: ignore[type-var]
 
-# FIXME: do we actually want to tag int/float/etc?
+# DTFIX-U: do we actually want to tag int/float/etc?
 AnsibleConstructor.add_constructor(
     'tag:yaml.org,2002:int',
     AnsibleConstructor.construct_yaml_int)  # type: ignore[type-var]

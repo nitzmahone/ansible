@@ -127,7 +127,7 @@ class TaskExecutor:
                             res['changed'] = True
                         if res['skipped'] and ('skipped' not in item or ('skipped' in item and not item['skipped'])):
                             res['skipped'] = False
-                        # FIXME: normalize `failed` to a bool, warn if the action/module used non-bool
+                        # DTFIX-U: normalize `failed` to a bool, warn if the action/module used non-bool
                         if 'failed' in item and item['failed']:
                             item_ignore = item.pop('_ansible_ignore_errors')
                             if not res.get('failed'):
@@ -153,7 +153,7 @@ class TaskExecutor:
                                 res[array] = res[array] + item[array]
                                 del item[array]
 
-                    # FIXME: normalize `failed` to a bool, warn if the action/module used non-bool
+                    # DTFIX-U: normalize `failed` to a bool, warn if the action/module used non-bool
                     if not res.get('failed', False):
                         res['msg'] = 'All items completed'
                     if res['skipped']:
@@ -225,7 +225,7 @@ class TaskExecutor:
             # This value will not be visible to other users of this templar or its `available_variables`.
             template_locals = dict(invoke_lookup=invoke_lookup)
 
-            # FIXME: should we wrap this up into a `Templar.invoke()` or something? Only one instance of it now, but might be useful in other places.
+            # DTFIX-U: should we wrap this up into a `Templar.invoke()` or something? Only one instance of it now, but might be useful in other places.
             items = templar.evaluate_expression(expression=TrustedAsTemplate().tag("invoke_lookup()"), template_locals=template_locals)
 
         elif self._task.loop is not None:
@@ -360,7 +360,7 @@ class TaskExecutor:
                 task_fields=task_fields,
             )
 
-            # FIXME: normalize `failed` to a bool, warn if the action/module used non-bool
+            # DTFIX-U: normalize `failed` to a bool, warn if the action/module used non-bool
             if tr.is_failed() or tr.is_unreachable():
                 self._final_q.send_callback('v2_runner_item_on_failed', tr)
             elif tr.is_skipped():
@@ -502,7 +502,7 @@ class TaskExecutor:
         # if we ran into an error while setting up the PlayContext, raise it now, unless is known issue with delegation
         # and undefined vars (correct values are in cvars later on and connection plugins, if still error, blows up there)
 
-        # FIXME: this should probably be declaratively handled in post_validate (or better, get rid of play_context)
+        # DTFIX-U: this should probably be declaratively handled in post_validate (or better, get rid of play_context)
         if context_validation_error is not None:
             raiseit = True
             if self._task.delegate_to:
@@ -511,7 +511,7 @@ class TaskExecutor:
                     if isinstance(context_validation_error.__cause__, AnsibleUndefinedVariable):
                         raiseit = False
                 elif isinstance(context_validation_error, AnsibleUndefinedVariable):
-                    # FIXME: should not be possible to hit this now (all are AnsibleFieldAttributeError)?
+                    # DTFIX-U: should not be possible to hit this now (all are AnsibleFieldAttributeError)?
                     raiseit = False
             if raiseit:
                 raise context_validation_error  # pylint: disable=raising-bad-type
@@ -630,8 +630,8 @@ class TaskExecutor:
                     old_sig = signal.signal(signal.SIGALRM, task_timeout)
                     signal.alarm(self._task.timeout)
                 result = self._handler.run(task_vars=vars_copy)
-                # FIXME: Actions that don't handle their own exceptions kill loops.
-            # FIXME: nuke this, it hides a lot of error detail
+                # DTFIX-U: Actions that don't handle their own exceptions kill loops.
+            # DTFIX-U: nuke this, it hides a lot of error detail
             except (AnsibleActionFail, AnsibleActionSkip) as e:
                 return e.result
             except AnsibleConnectionFailure as e:
@@ -784,7 +784,7 @@ class TaskExecutor:
                 af = result['ansible_facts']
                 variables['ansible_facts'] = combine_vars(variables.get('ansible_facts', {}), namespace_facts(af))
                 if C.INJECT_FACTS_AS_VARS:
-                    # FIXME: why is this happening twice, esp since we're post-fork and these will be discarded?
+                    # DTFIX-U: why is this happening twice, esp since we're post-fork and these will be discarded?
                     variables.update(cleaned_toplevel)
 
         # save the notification target in the result, if it was specified, as

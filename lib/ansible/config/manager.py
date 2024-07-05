@@ -363,7 +363,7 @@ class ConfigManager(object):
             # template default values if possible
             # NOTE: cannot use is_template due to circular dep
             try:
-                # FIXME: This really should be using an immutable sandboxed native environment, not just native environment
+                # DTFIX-U: This really should be using an immutable sandboxed native environment, not just native environment
                 t = NativeEnvironment().from_string(value)
                 value = t.render(variables)
             except Exception:

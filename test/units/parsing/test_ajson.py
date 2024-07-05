@@ -37,7 +37,7 @@ def test_AnsibleJSONDecoder_vault():
     assert UndecryptableVaultedValue.is_tagged_on(data['foo']['password'])
 
 
-# FIXME: rewrite this with a current tag
+# DTFIX-U: rewrite this with a current tag
 # def test_encode_decode_unsafe():
 #     data = {
 #         'key_value': FIXMEAnotherTag().tag('{#NOTACOMMENT#}'),

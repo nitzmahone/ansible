@@ -12,7 +12,7 @@ export ANSIBLE_VARS_ENABLED=testns.content_adj.custom_adj_vars
 
 ansible-inventory -i a.statichost.yml --list --playbook-dir=./ 2>&1 | tee out.txt
 
-# FIXME: a number of the `grep -v` tests are broken- untrusted values are split across multiple lines and will not match the pattern.
+# DTFIX-U: a number of the `grep -v` tests are broken- untrusted values are split across multiple lines and will not match the pattern.
 # These tests should probably be moved to a playbook and/or recorded diff outputs to more accurately inspect behavior.
 
 grep '"collection":' -A1 out.txt | grep '"adjacent"'
@@ -27,7 +27,7 @@ ansible-inventory -i a.statichost.yml --list --playbook-dir=./ 2>&1 | tee out.tx
 
 grep '"collection":' -A1 out.txt | grep '"collection_root_user"'
 
-# FIXME: -v test is broken
+# DTFIX-U: -v test is broken
 grep -v '"adj_var": "value"' out.txt
 grep "REQUIRES_ENABLED is not supported" out.txt
 
@@ -39,7 +39,7 @@ ansible-inventory -i a.statichost.yml --list --playbook-dir=./ | tee out.txt
 grep '"collection":' -A1 out.txt | grep '"collection_root_user"'
 grep '"adj_var":' -A1 out.txt | grep '"value"'
 
-# FIXME: -v test is broken
+# DTFIX-U: -v test is broken
 grep -v '"collection": "adjacent"' out.txt
 
 # Test that 3rd party plugins in plugin_path do not need to require enabling by default

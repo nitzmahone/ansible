@@ -85,7 +85,7 @@ class TemplateOverrides:
         Return a dictionary of arguments for passing to Environment.overlay.
         The dictionary will be empty if all fields have their default value.
         """
-        # FIXME: calculate default/non-default during __post_init__
+        # DTFIX-U: calculate default/non-default during __post_init__
         fields = [(field, getattr(self, field.name)) for field in dataclasses.fields(self)]
         kwargs = {field.name: value for field, value in fields if value != field.default}
 
@@ -93,7 +93,7 @@ class TemplateOverrides:
 
     def contains_start_string(self, value: str) -> bool:
         """Returns True if the given value contains a variable, block or comment start string."""
-        # FIXME: this is inefficient, use a compiled regex instead
+        # DTFIX-U: this is inefficient, use a compiled regex instead
         #        when fixing this, rename this function and include the line statement and line comment prefixes too (even though we don't yet need them)
 
         for marker in (self.block_start_string, self.variable_start_string, self.comment_start_string):
@@ -104,7 +104,7 @@ class TemplateOverrides:
 
     def starts_and_ends_with_jinja_delimiters(self, value: str) -> bool:
         """Returns True if the given value starts and ends with Jinja variable, block or comment delimiters."""
-        # FIXME: this is inefficient, use a compiled regex instead
+        # DTFIX-U: this is inefficient, use a compiled regex instead
         #        when fixing this, rename this function and include the line statement and line comment prefixes too (even though we don't yet need them)
 
         for marker in (self.block_start_string, self.variable_start_string, self.comment_start_string):
@@ -175,7 +175,7 @@ class AnsibleContext(Context):
         return AnsibleAccessContext.current().access(val)
 
     def get_all(self):
-        # FIXME: explanatory docstring
+        # DTFIX-U: explanatory docstring
 
         layers = []
 
@@ -204,7 +204,7 @@ class AnsibleContext(Context):
         context.blocks.update((k, list(v)) for k, v in self.blocks.items())
         return context
 
-    # FIXME: the base class sources these directly from their `dict` implementations, which is incorrect in our ChainMap cases; are these even used/needed?
+    # DTFIX-U: the base class sources these directly from their `dict` implementations, which is incorrect in our ChainMap cases; are these even used/needed?
     def keys(self, *args, **kwargs):
         raise NotImplementedError()
 
@@ -263,7 +263,7 @@ class AnsibleTemplate(Template):
 
     _source_tempfile = None
 
-    # FIXME: this still isn't working reliably; something else must be keeping the template object alive
+    # DTFIX-U: this still isn't working reliably; something else must be keeping the template object alive
     def __del__(self):
         if self._source_tempfile:
             os.unlink(self._source_tempfile.name)
@@ -289,7 +289,7 @@ class AnsibleTemplate(Template):
         )
 
 
-# FIXME: this is no longer used (previously part of J2Vars init to filter locals), should we still do this? Probably not...
+# DTFIX-U: this is no longer used (previously part of J2Vars init to filter locals), should we still do this? Probably not...
 def _process_locals(_l):
     if _l is None:
         return {}
@@ -378,7 +378,7 @@ class _CompileStateSmugglingCtx(_ambient_context.AmbientContextBase):
     template_source: str | None = None
     python_source: str | None = None
     filename: str | None = None
-    tempfile: t.Any = None  # FIXME: what should this type hint be?
+    tempfile: t.Any = None  # DTFIX-U: what should this type hint be?
 
 
 class AnsibleLexer(Lexer):
@@ -477,13 +477,13 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # See also optimizeconst impl: https://github.com/pallets/jinja/blob/3.1.0/src/jinja2/compiler.py#L48-L49
         self.optimized = False
 
-        self.template_class.environment_class = AnsibleEnvironment  # FIXME: why is this here? -- it was moved from Templar.__init__ (environment creation)
+        self.template_class.environment_class = AnsibleEnvironment  # DTFIX-U: why is this here? -- it was moved from Templar.__init__ (environment creation)
 
     @property
     def lexer(self):
         """Return/cache an AnsibleLexer with settings from the current AnsibleEnvironment"""
-        # FIXME: we should pre-generate the default cached lexer before forking, not leave it to chance (e.g. simple playbooks)
-        # FIXME: more efficient key calculation
+        # DTFIX-U: we should pre-generate the default cached lexer before forking, not leave it to chance (e.g. simple playbooks)
+        # DTFIX-U: more efficient key calculation
         key = tuple(getattr(self, name) for name in _TEMPLATE_OVERRIDE_FIELD_NAMES)
 
         lex = self._lexer_cache.get(key)
@@ -496,7 +496,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = False
 
     def from_string(self, *args, **kwargs):
-        # FIXME: sane way to make this work outside from_string?
+        # DTFIX-U: sane way to make this work outside from_string?
         with _CompileStateSmugglingCtx.maybe(create=self._FIXME_DEBUGGABLE_TEMPLATE_SOURCE) as ctx:
             template_obj = super().from_string(*args, **kwargs)
 
@@ -539,7 +539,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # this code is complemented by our tweaked CodeGenerator _output_const_repr that ensures that literal constants
         # in templates aren't double-repr'd in the generated code
         if len(node_list) == 1:
-            # FIXME: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
+            # DTFIX-U: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
             return node_list[0]
 
         # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc.), do a recursive finalize before we repr (otherwise we can end up
@@ -584,7 +584,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         return TemplateContext.current().templar.proxy_or_render_template(TrustedAsTemplate().tag(const_template))
 
     def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
-        # FIXME: do we actually need to managed-access both sides of templates/strings here?
+        # DTFIX-U: do we actually need to managed-access both sides of templates/strings here?
         # example: "{{ some['thing'] }}" -- obj is the "some" dict, argument is "thing"
         # access on the result of super().getitem is necessary
         return TemplateContext.current().templar.proxy_or_render_template(super().getitem(obj, argument))
@@ -627,11 +627,11 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             # Performing either before calling them will interfere with that processing.
             return super().call(__context, __obj, *args, **kwargs)
 
-        # FIXME: consider replacing this with split decorators?
+        # DTFIX-U: consider replacing this with split decorators?
         if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
             return first_undefined
 
-        # FIXME: There is currently no way for callables to avoid tripping undefined values, is there a case where that's needed?
+        # DTFIX-U: There is currently no way for callables to avoid tripping undefined values, is there a case where that's needed?
         #        The only callables should be global functions and methods on supported types -- we shouldn't need to worry about arbitrary types/methods.
         try:
             with JinjaCallContext(eager_trip_undefined=True):
@@ -654,7 +654,7 @@ _DEFAULT_UNDEF = AnsibleUndefined("Mandatory variable has not been overridden", 
 _sentinel: t.Final[object] = object()
 
 
-# FIXME: give this a proper name
+# DTFIX-U: give this a proper name
 def _undef(hint=None):
     """Jinja2 global function (undef) for creating custom undefined defaults with custom hints."""
     if hint is None or isinstance(hint, Undefined) or hint == '':
@@ -700,7 +700,7 @@ def _flatten_and_lazify_vars(mapping: c.Mapping) -> t.Iterable[c.Mapping]:
             yield from _flatten_and_lazify_vars(m)
     elif mapping_type is _AnsibleLazyTemplateDict:
         if not mapping:
-            # FIXME: handle or remove?
+            # DTFIX-U: handle or remove?
             raise Exception("FIXME: we didn't think it was possible to have an empty lazy here...")
         yield mapping
     elif mapping_type in (dict, _AnsibleTaggedDict):
@@ -725,7 +725,7 @@ def _new_context(
     layers = []
 
     if jinja_locals:
-        # FIXME: if we can't trip this in coverage, kill it off?
+        # DTFIX-U: if we can't trip this in coverage, kill it off?
         if type(jinja_locals) is not dict:  # pylint: disable=unidiomatic-typecheck
             raise NotImplementedError("locals must be a dict")
 
@@ -775,20 +775,20 @@ class FinalizeMode(enum.Enum):
     POST_FINALIZE = enum.auto()
 
 
-# FIXME: add tests to ensure this doesn't drift from allowed types
+# DTFIX-U: add tests to ensure this doesn't drift from allowed types
 def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
     """
     Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions.
     """
     o_type = type(o)
 
-    from ansible.vars.hostvars import HostVars, HostVarsVars  # FIXME: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
+    from ansible.vars.hostvars import HostVars, HostVarsVars  # DTFIX-U: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
 
     value_type: type[dict | list | tuple | set]
 
     if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
         return o
-    # FIXME: delazifying HostVars/HostVarsVars here is correct but expensive- look at ways to do deferred lazy outside of templating or ?
+    # DTFIX-U: delazifying HostVars/HostVarsVars here is correct but expensive- look at ways to do deferred lazy outside of templating or ?
     elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict, HostVars, HostVarsVars):
         value_expression = ((
             _finalize_template_result(k, mode),

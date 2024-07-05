@@ -655,7 +655,7 @@ class CLI(ABC):
             display.error("User interrupted execution")
             exit_code = ExitCode.KEYBOARD_INTERRUPT
         except Exception as ex:
-            # FIXME: this should be very rare, always show traceback, or re-wrap in an AnsibleCLIUnhandledError that always shows TB, or?
+            # DTFIX-U: this should be very rare, always show traceback, or re-wrap in an AnsibleCLIUnhandledError that always shows TB, or?
             try:
                 raise AnsibleError("Unexpected Exception, this is probably a bug.") from ex
             except AnsibleError as ex2:

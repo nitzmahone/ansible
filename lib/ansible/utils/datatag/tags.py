@@ -13,9 +13,9 @@ class AnsibleSourcePosition(AnsibleDatatagBase):
     A tag that stores origin location information of a string.
     Since these are created very frequently, we do not ensure the validity of the inputs at creation-time.
     """
-    # FIXME: come up with a standard non-magic-string way to denote non-file sources (eg, CLI extra args, envvar, `<string>`)
+    # DTFIX-U: come up with a standard non-magic-string way to denote non-file sources (eg, CLI extra args, envvar, `<string>`)
     src: str
-    # FIXME: should these end with no/num/_no/_num?
+    # DTFIX-U: should these end with no/num/_no/_num?
     line: t.Optional[int] = None
     col: t.Optional[int] = None
 

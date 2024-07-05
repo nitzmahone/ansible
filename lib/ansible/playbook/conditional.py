@@ -56,7 +56,7 @@ class Conditional:
 
     def evaluate_conditional_with_result(self, templar: Templar, all_vars: dict[str, t.Any]) -> tuple[bool, t.Optional[str]]:
         """Loops through the conditionals set on this object, returning False if any of them evaluate as such, as well as the condition that was False."""
-        # FIXME: need a better API pattern for this (previously directly patching available_variables)
+        # DTFIX-U: need a better API pattern for this (previously directly patching available_variables)
         conditional_templar = Templar(templar._loader, all_vars)
 
         for conditional in self.when:

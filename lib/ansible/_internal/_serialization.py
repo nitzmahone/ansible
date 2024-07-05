@@ -53,7 +53,7 @@ class StateTrackingMixIn(HasCurrent):
         return self._stack[1:] + [self._current]
 
 
-# FIXME: bikeshed name and home (what's our public API going to be?)
+# DTFIX-U: bikeshed name and home (what's our public API going to be?)
 class AnsibleVariableVisitor:
     """Utility visitor base class to recursively apply various behaviors and checks to variable object graphs."""
 
@@ -69,7 +69,7 @@ class AnsibleVariableVisitor:
         self.trusted_as_template = trusted_as_template
         self.source_position = source_position
         self.allow_mapping = allow_mapping
-        # FIXME: do we need a allow_sequence option for compatibility scenarios other than JSON (it only supported mapping)?
+        # DTFIX-U: do we need a allow_sequence option for compatibility scenarios other than JSON (it only supported mapping)?
 
         self._current: t.Any = None  # supports StateTrackingMixIn
 

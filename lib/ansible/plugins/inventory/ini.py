@@ -349,7 +349,7 @@ class InventoryModule(BaseFileInventoryPlugin):
             # NB: intentional coercion of tuple/set to list, deal with it
             return self._source_pos.tag([self._recursive_apply_tags(v) for v in value])
         if isinstance(value, dict):
-            # FIXME: enforce keys are strings
+            # DTFIX-U: enforce keys are strings
             return self._source_pos.tag({self._source_pos.tag(k): self._recursive_apply_tags(v) for k, v in value.items()})
         return self._source_pos.tag(value)
 

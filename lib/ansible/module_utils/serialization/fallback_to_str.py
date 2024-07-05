@@ -21,7 +21,7 @@ class _Profile(_json._JSONSerializationProfile):
     @classmethod
     def post_init(cls) -> None:
         cls.serialize_map = {
-            # FIXME: support serialization of every type that is supported in the Ansible variable type system
+            # DTFIX-U: support serialization of every type that is supported in the Ansible variable type system
             bytes: cls.serialize_bytes_as_str,
             set: cls.serialize_as_list,
             tuple: cls.serialize_as_list,
@@ -47,7 +47,7 @@ class _Profile(_json._JSONSerializationProfile):
 
     @classmethod
     def handle_key(cls, k: _t.Any) -> _t.Any:
-        # FIXME: is this the correct way to handle container keys? special processing will be skipped on the container contents
+        # DTFIX-U: is this the correct way to handle container keys? special processing will be skipped on the container contents
 
         while mapped_callable := cls.serialize_map.get(type(k)):
             k = mapped_callable(k)
@@ -59,8 +59,8 @@ class _Profile(_json._JSONSerializationProfile):
 
     @classmethod
     def default(cls, o: _t.Any) -> _t.Any:
-        # FIXME: what error handling should be used here?
-        # FIXME: tests needed for error handling scenarios
+        # DTFIX-U: what error handling should be used here?
+        # DTFIX-U: tests needed for error handling scenarios
 
         if isinstance(o, _c.Mapping):
             return dict(o)

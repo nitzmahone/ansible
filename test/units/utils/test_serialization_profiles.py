@@ -1,4 +1,4 @@
-# FIXME: these tests need to be split so they can run under both module_utils and controller contexts
+# DTFIX-U: these tests need to be split so they can run under both module_utils and controller contexts
 
 from __future__ import annotations
 
@@ -246,7 +246,7 @@ class ProfileHelper:
 
 additional_test_parameters: list[TestParameters] = []
 
-# FIXME: need better testing for containers, especially for tagged values in containers
+# DTFIX-U: need better testing for containers, especially for tagged values in containers
 
 additional_test_parameters.extend(ProfileHelper(fallback_to_str._Profile.profile_name).create_parameters_from_values(
     b'\x00',  # valid utf-8 strict, JSON escape sequence required

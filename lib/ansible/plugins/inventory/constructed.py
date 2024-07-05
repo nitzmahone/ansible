@@ -101,7 +101,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
 
         super(InventoryModule, self).__init__()
 
-        # FIXME: variables that traverse the fact cache likely lost some tags (eg TrustedAsTemplate); did unsafe preservation work in devel?
+        # DTFIX-U: variables that traverse the fact cache likely lost some tags (eg TrustedAsTemplate); did unsafe preservation work in devel?
         self._cache = FactCache()
 
     def verify_file(self, path):

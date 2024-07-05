@@ -158,7 +158,7 @@ class Play(Base, Taggable, CollectionSearch):
 
         return super(Play, self).preprocess_data(ds)
 
-    # FIXME: these do nothing but augment the exception message; DRY and nuke
+    # DTFIX-U: these do nothing but augment the exception message; DRY and nuke
 
     def _load_tasks(self, attr, ds):
         '''

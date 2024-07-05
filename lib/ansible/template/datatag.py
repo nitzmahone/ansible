@@ -17,7 +17,7 @@ display = Display()
 @dataclasses.dataclass(**_tag_dataclass_kwargs)
 class _JinjaConstTemplate(AnsibleSingletonTagBase):
     # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
-    # FIXME: this isn't covered by ansible-test unit tests (PyCharm finds it by accident)
+    # DTFIX-U: this isn't covered by ansible-test unit tests (PyCharm finds it by accident)
     pass
 
 
@@ -40,12 +40,12 @@ class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):
 
         if deprecated:
             template_ctx = TemplateContext.current(optional=True)
-            # FIXME: in cases of indirection/lazy, we need to walk back up to a string template, not a data structure
+            # DTFIX-U: in cases of indirection/lazy, we need to walk back up to a string template, not a data structure
             template = template_ctx.template_value if template_ctx else None
 
             # when the current template input is a container, provide a descriptive string with source position propagated (if possible)
             if not isinstance(template, str):
-                # FIXME: ascend the template stack to try and find the nearest string source template
+                # DTFIX-U: ascend the template stack to try and find the nearest string source template
                 src_pos = AnsibleSourcePosition.get_tag(template)
 
                 template = '<<container>>'
@@ -53,7 +53,7 @@ class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):
                 if src_pos:
                     src_pos.tag(template)
 
-            # FIXME: use something better than a tuple here, once we have proper intermediate object/template contexts to reference
+            # DTFIX-U: use something better than a tuple here, once we have proper intermediate object/template contexts to reference
             self._tripped_deprecation_info.append((NotATemplate().tag(template), deprecated))
 
         return POORLY_NAMED_SENTINEL

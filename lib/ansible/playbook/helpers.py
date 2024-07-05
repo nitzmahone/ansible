@@ -125,7 +125,7 @@ def load_list_of_tasks(ds, play, block=None, role=None, task_include=None, use_h
                 if ex.obj:
                     raise
                 # But if it wasn't, we can add the yaml object now to get more detail
-                # FIXME: this *should* be unnecessary- check code coverage...
+                # DTFIX-U: this *should* be unnecessary- check code coverage...
                 raise AnsibleParserError("Error loading tasks.", obj=task_ds) from ex
 
             if action in C._ACTION_ALL_INCLUDE_IMPORT_TASKS:

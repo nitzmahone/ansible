@@ -6,7 +6,7 @@ from ansible.template.templar import Templar
 trust = TrustedAsTemplate()
 
 
-# FIXME: this is a work-in-progress to explore access, complete it or rip it out
+# DTFIX-U: this is a work-in-progress to explore access, complete it or rip it out
 
 
 def test_scalar_indirect() -> None:

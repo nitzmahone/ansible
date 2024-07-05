@@ -400,7 +400,7 @@ class FileVaultSecret(VaultSecret):
     def load(self):
         self._bytes = self._read_file(self.filename)
 
-    # FIXME: this seems to suffer from inception issues- how are multiple vault passwords handled?
+    # DTFIX-U: this seems to suffer from inception issues- how are multiple vault passwords handled?
     def _read_file(self, filename):
         """
         Read a vault password from a file or if executable, execute the script and
@@ -658,7 +658,7 @@ class VaultLib:
         :returns: a byte string containing the decrypted data and the vault-id vault-secret that was used
 
         """
-        # FIXME: deprecate/fail on filename/obj; should never have been plumbed here in the first place
+        # DTFIX-U: deprecate/fail on filename/obj; should never have been plumbed here in the first place
 
         pos = AnsibleSourcePosition.get_tag(vaulttext)
 
@@ -1288,19 +1288,19 @@ CIPHER_MAPPING = {
 def _maybe_decrypt_ciphertext(ciphertext: str) -> str:
     vaults = VaultSecretsContext.current().secrets
 
-    # FIXME: bikeshed name and location
+    # DTFIX-U: bikeshed name and location
     # always tag ciphertext so we can round-trip re-serialize
     tags: list[AnsibleDatatagBase] = [VaultedValue(ciphertext=AnsibleTagHelper.as_untagged_type(ciphertext))]
 
     try:
-        # FIXME: vault-id support was never implemented for these, try all with secrets iteratively?
-        # FIXME: check the vault ID upfront?
+        # DTFIX-U: vault-id support was never implemented for these, try all with secrets iteratively?
+        # DTFIX-U: check the vault ID upfront?
         vault = vaults['default']
         value = to_text(vault.decrypt(ciphertext))
     except Exception as ex:
         value = ciphertext
-        # FIXME: consider combining VaultedValue and Undecryptable tags now that the latter is no longer a singleton
-        # FIXME: provide a better error when the default vault isn't present?
+        # DTFIX-U: consider combining VaultedValue and Undecryptable tags now that the latter is no longer a singleton
+        # DTFIX-U: provide a better error when the default vault isn't present?
         # specially tag things we aren't able to decrypt (cheaper than a flag in VaultedValue)
         tags.append(UndecryptableVaultedValue(reason=get_chained_message(ex)))
 

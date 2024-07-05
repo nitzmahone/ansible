@@ -52,7 +52,7 @@ EXAMPLES: |
 
 RETURN:
   _value:
-    # FIXME: how to represent null/None in prose?
+    # DTFIX-U: how to represent null/None in prose?
     description: Matched string or None if no match.
-    # FIXME: how to represent nullable string in `type`?
+    # DTFIX-U: how to represent nullable string in `type`?
     type: str

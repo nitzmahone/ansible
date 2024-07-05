@@ -81,7 +81,7 @@
     that:
       - result is skipped
 
-# FIXME: this capability works in devel; we'd need to have a special templating mode that propagates trust for all
+# DTFIX-U: this capability works in devel; we'd need to have a special templating mode that propagates trust for all
 # inline constant strings in visit_Const (vs just those with handlebars today)... If present, this allows some degree
 # of dynamic variable selection for `var` (eg ternary), but you could also just use `msg`.
 - name: templated var with trusted scalar works

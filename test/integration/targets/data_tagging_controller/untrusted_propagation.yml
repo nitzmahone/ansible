@@ -23,7 +23,7 @@
     failed_when: not sentinel.stat.exists
   - assert:
       that:
-      # FIXME: this is likely the result of recursive templating of the arg to the tagged_with test- need to fully understand what's happening here
+      # DTFIX-U: this is likely the result of recursive templating of the arg to the tagged_with test- need to fully understand what's happening here
       - trusted_pipe_lookup.sub1.sub2 == 'rendered'
 
   - name: ensure sentinel file is absent before test

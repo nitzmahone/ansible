@@ -32,7 +32,7 @@ from ansible.vars.manager import VariableManager
 __all__ = ['HostVars', 'HostVarsVars']
 
 
-# FIXME: why isn't this dict-ish enough to render eg `debug: var=hostvars`?
+# DTFIX-U: why isn't this dict-ish enough to render eg `debug: var=hostvars`?
 class HostVars(Mapping):
     """A read-only wrapper to enable on-demand templating of a specific host's variables under that host's variable context."""
 
@@ -50,7 +50,7 @@ class HostVars(Mapping):
         if host is None:
             return _undef(f"hostvars['{key}']")
 
-        # FIXME: this should be able to fetch play/task from a context so that vars defined at those layers are available within hostvarsvars
+        # DTFIX-U: this should be able to fetch play/task from a context so that vars defined at those layers are available within hostvarsvars
         data = self._variable_manager.get_vars(host=host, include_hostvars=False)
 
         return HostVarsVars(data, loader=self._loader, host=key)
@@ -100,6 +100,6 @@ class HostVarsVars(Mapping):
         return self
 
 
-# FIXME: is there a better way to add this to the ignorable types in the module_utils code
+# DTFIX-U: is there a better way to add this to the ignorable types in the module_utils code
 from ansible.module_utils import datatag
 datatag._untaggable_types |= {HostVars, HostVarsVars}

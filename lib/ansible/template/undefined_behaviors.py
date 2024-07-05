@@ -35,7 +35,7 @@ class FailOnUndefined(UndefinedBehavior):
     def handle_undefined(self, value: AnsibleUndefined, mode: FinalizeMode) -> t.Any:
         """Handle the given undefined value."""
         if TemplateContext.current().is_top_level:
-            # FIXME: we might not always have the template source?
+            # DTFIX-U: we might not always have the template source?
             # exiting the templating system, use the external exception type
             raise AnsibleUndefinedVariable(value._undefined_message, obj=value._undefined_template_source)
 

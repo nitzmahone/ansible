@@ -46,7 +46,7 @@ def read_docstring_from_yaml_file(filename, verbose=True, ignore_errors=True):
             file_data = AnsibleLoader(yamlfile.read(), file_name=filename).get_single_data()
     except Exception as ex:
         msg = f"Unable to parse yaml file {filename}"
-        # FIXME: find a better pattern for this
+        # DTFIX-U: find a better pattern for this
         if not ignore_errors:
             raise AnsibleParserError(f'{msg}.') from ex
         elif verbose:
@@ -107,7 +107,7 @@ def read_docstring_from_python_module(filename, verbose=True, ignore_errors=True
                         data[next_string] = AnsibleLoader(value, file_name=filename).get_single_data()
                     except Exception as ex:
                         msg = f"Unable to parse docs {_var2string(next_string)!r} in python file {filename!r}"
-                        # FIXME: use a better pattern to just conditionally send augmented exception to display.error or raise
+                        # DTFIX-U: use a better pattern to just conditionally send augmented exception to display.error or raise
                         if not ignore_errors:
                             raise AnsibleParserError(f'{msg}.') from ex
                         elif verbose:
@@ -161,7 +161,7 @@ def read_docstring_from_python_file(filename, verbose=True, ignore_errors=True):
 
     except Exception as ex:
         msg = f"Unable to parse documentation in python file {filename!r}"
-        # FIXME: better pattern to conditionally raise/display
+        # DTFIX-U: better pattern to conditionally raise/display
         if not ignore_errors:
             raise AnsibleParserError(f'{msg}.') from ex
         elif verbose:

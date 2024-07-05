@@ -67,11 +67,11 @@ class InventoryData:
         self.add_child('all', 'ungrouped')
 
     def __deepcopy__(self, memodict):
-        raise Exception("deepcopy was not properly implemented on data")  # FIXME: ensure this is unneeded and remove
+        raise Exception("deepcopy was not properly implemented on data")  # DTFIX-U: ensure this is unneeded and remove
 
     def serialize(self):
         if bool(1):
-            raise Exception("is this getting hit?")  # FIXME: ensure this is dead code and remove
+            raise Exception("is this getting hit?")  # DTFIX-U: ensure this is dead code and remove
 
         self._groups_dict_cache = None
         data = {
@@ -85,7 +85,7 @@ class InventoryData:
 
     def deserialize(self, data):
         if bool(1):
-            raise Exception("is this getting hit?")  # FIXME: ensure this is dead code and remove
+            raise Exception("is this getting hit?")  # DTFIX-U: ensure this is dead code and remove
 
         self._groups_dict_cache = {}
         self.hosts = data.get('hosts')
@@ -306,7 +306,7 @@ class InventoryData:
 
 
 class _InventoryDataWrapper(ObjectProxy):
-    # FIXME: bikeshed name and location of this class
+    # DTFIX-U: bikeshed name and location of this class
 
     # declared as class attrs to signal ObjectProxy that we want them stored on the proxy, not the wrapped value
     _target_plugin = None

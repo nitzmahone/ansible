@@ -18,7 +18,7 @@ from ...module_utils import basic
 @contextlib.contextmanager
 def patch_module_args(args: str | bytes | dict[str, t.Any] | None, profile: str) -> t.Iterator[None]:
     """Expose the given module args and serialization profile to AnsibleModule instances created within this context."""
-    # FIXME: can we eliminate str and bytes inputs here? a dict is really all we should need
+    # DTFIX-U: can we eliminate str and bytes inputs here? a dict is really all we should need
     if not isinstance(profile, str):
         raise TypeError()
 

@@ -68,7 +68,7 @@ def probe_interpreters_for_module(interpreter_paths, module_name):
 
 
 def _create_payload():
-    # FIXME: move this into _ansiballz and skip the template
+    # DTFIX-U: move this into _ansiballz and skip the template
     from ansible.module_utils import basic
 
     module_fqn = sys.modules['__main__']._module_fqn

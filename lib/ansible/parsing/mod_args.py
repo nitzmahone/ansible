@@ -161,7 +161,7 @@ class ModuleArgsParser:
         final_args = dict()
         if additional_args:
             if isinstance(additional_args, str):
-                # FIXME: should this be is_possibly_template?
+                # DTFIX-U: should this be is_possibly_template?
                 if Templar().is_template(additional_args):
                     final_args['_variable_params'] = additional_args
                 else:
@@ -328,7 +328,7 @@ class ModuleArgsParser:
                 is_action_candidate = True
             else:
                 try:
-                    # FIXME: extract to a helper method, shared with Task.post_validate_args
+                    # DTFIX-U: extract to a helper method, shared with Task.post_validate_args
                     context = _get_action_context(item, self._collection_list)
                 except AnsibleError as e:
                     if e.obj is None:
@@ -361,7 +361,7 @@ class ModuleArgsParser:
                                          obj=self._task_ds)
         elif args.get('_raw_params', '') != '' and action not in RAW_PARAM_MODULES:
             raw_params = args.pop('_raw_params')
-            # FIXME: should this be is_possibly_template?
+            # DTFIX-U: should this be is_possibly_template?
             if Templar().is_template(raw_params):
                 args['_variable_params'] = raw_params
             else:

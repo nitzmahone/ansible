@@ -35,7 +35,7 @@ def test_source_context(filename: str, line: int | None, col: int | None, expect
 
     pos = AnsibleSourcePosition(src=str(fixture_path / 'inputs' / filename), line=line, col=col)
 
-    # FIXME: assert target_line contents as well?
+    # DTFIX-U: assert target_line contents as well?
     source_context = SourceContext.from_source_position(pos)
     result = '\n'.join(source_context.annotated_source_lines) + '\n'
 

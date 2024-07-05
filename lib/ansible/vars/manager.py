@@ -42,7 +42,7 @@ from ansible.vars.plugins import get_vars_from_inventory_sources, get_vars_from_
 display = Display()
 
 # share a single instance of this tag to avoid having an excessively large number of instances (hosts * top-level facts)
-# FIXME: need to make template stack navigable to be able to tell someone *which* fact tripped when, eg, rendering a captured dict of facts via debug: var
+# DTFIX-U: need to make template stack navigable to be able to tell someone *which* fact tripped when, eg, rendering a captured dict of facts via debug: var
 _TOP_LEVEL_FACTS_DEPRECATED = Deprecated(msg='Top-level facts are deprecated, use `ansible_facts` instead.', removal_version='2.22')
 
 
@@ -53,7 +53,7 @@ def preprocess_vars(a):
     that vars loaded from a file conform to an expected state.
     '''
 
-    # FIXME: this does not properly handle omit, undefined, or dynamic structure from templated `vars` ; templating should be done earlier
+    # DTFIX-U: this does not properly handle omit, undefined, or dynamic structure from templated `vars` ; templating should be done earlier
     if a is None:
         return None
     elif not isinstance(a, list):
@@ -184,7 +184,7 @@ class VariableManager:
 
         _vars_sources = {}
 
-        # FIXME: this no longer has any effect and can be switched back to regular combine
+        # DTFIX-U: this no longer has any effect and can be switched back to regular combine
         def _combine_and_track(data, new_data, source):
             if new_data == {}:
                 return data

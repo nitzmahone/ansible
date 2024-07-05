@@ -10,13 +10,13 @@
           - value_float == 1.2
           - value_str_single_quote == 'single'
           - value_str_double_quote == "double"
-          - value_bytes_single_quote == 'single'  # FIXME: should we preserve bytes?
-          - value_bytes_double_quote == "double"  # FIXME: should we preserve bytes?
-#          - value_ellipsis == ...  # FIXME: how do we want to handle this?
+          - value_bytes_single_quote == 'single'  # DTFIX-U: should we preserve bytes?
+          - value_bytes_double_quote == "double"  # DTFIX-U: should we preserve bytes?
+#          - value_ellipsis == ...  # DTFIX-U: how do we want to handle this?
           - 'value_dict == {"a": "b" }'
           - value_list == [1, 2]
-          - value_tuple == [1, 2]  # FIXME: should we preserve tuples?
-          - value_set == [1, 2]  # FIXME: should we preserve sets?
-          - value_empty_set == []  # FIXME: should we preserve sets?
+          - value_tuple == [1, 2]  # DTFIX-U: should we preserve tuples?
+          - value_set == [1, 2]  # DTFIX-U: should we preserve sets?
+          - value_empty_set == []  # DTFIX-U: should we preserve sets?
           - value_none is none
           - value_invalid == 'invalid'

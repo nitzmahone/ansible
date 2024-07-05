@@ -139,22 +139,22 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         return task.load_data(data, variable_manager=variable_manager, loader=loader)
 
     def _post_validate_args(self, attr, value, templar):
-        # FIXME: the args dict should be tagged with the source position of the task
+        # DTFIX-U: the args dict should be tagged with the source position of the task
         # smuggle an untemplated copy of the task args for actions that need more control over the templating of their
         # input (eg, debug's var/msg, assert's "that" conditional expressions)
-        # FIXME: should the _variable_params splat be stored here or not? Probably...
+        # DTFIX-U: should the _variable_params splat be stored here or not? Probably...
         self.untemplated_args = value
 
-        # FIXME: this is None for pseudo-actions like include_tasks, should it be?
-        # FIXME: this is None for anything using old `action: assert` or `action: module: assert`, should it be?
-        # FIXME: this may still be insufficient to ensure that resolved_action on `action:` and `action: module` cases
+        # DTFIX-U: this is None for pseudo-actions like include_tasks, should it be?
+        # DTFIX-U: this is None for anything using old `action: assert` or `action: module: assert`, should it be?
+        # DTFIX-U: this may still be insufficient to ensure that resolved_action on `action:` and `action: module` cases
         #        (which have undocumented deferral behavior)
         if not self.resolved_action and self.action:
-            # FIXME: omit/undefined handling?
+            # DTFIX-U: omit/undefined handling?
             if is_possibly_template(self.action):
                 self.action = templar.template(self.action)
 
-            # FIXME: extract to a helper method, shared with Task.post_validate_args
+            # DTFIX-U: extract to a helper method, shared with Task.post_validate_args
             context = action_loader.find_plugin_with_context(self.action, collection_list=self.collections)
             if not context.resolved:
                 context = module_loader.find_plugin_with_context(self.action, collection_list=self.collections)
@@ -167,10 +167,10 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         if self.resolved_action:
             ctx = action_loader.get_with_context(self.resolved_action, collection_list=self.collections, class_only=True)
 
-            # FIXME: decide the final name for this class attribute
-            # FIXME: need to preserve resolved action and resolved as module separately to handle action subsystems that want to do their own templating?
-            # FIXME: centralized k=v handling?
-            # FIXME: verify module_defaults behavior; looks like {{ my_args }} does not merge properly; handling embedded omit fallbacks is also "fun"
+            # DTFIX-U: decide the final name for this class attribute
+            # DTFIX-U: need to preserve resolved action and resolved as module separately to handle action subsystems that want to do their own templating?
+            # DTFIX-U: centralized k=v handling?
+            # DTFIX-U: verify module_defaults behavior; looks like {{ my_args }} does not merge properly; handling embedded omit fallbacks is also "fun"
             if ctx.plugin_load_context.resolved and getattr(ctx.object, 'FIXME_DOES_OWN_TEMPLATING', False):
                 # template _variable_params, but stop if we encounter a container, let plugin template from there
                 if vp := value.pop('_variable_params', None):
@@ -178,7 +178,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
                     # merge any explicitly-defined args back on top
                     if isinstance(value, dict):
                         value.update(self.untemplated_args)
-                    # FIXME: raw_params handling- we should
+                    # DTFIX-U: raw_params handling- we should
                 return value
 
         # if we didn't resolve, it's probably a module, just move along like normal
@@ -186,7 +186,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         # now recursively template the args dict
         args = templar.template(value)
 
-        # FIXME: could we just nuke this entirely and/or wrap it up in ModuleArgsParser or something?
+        # DTFIX-U: could we just nuke this entirely and/or wrap it up in ModuleArgsParser or something?
         if '_variable_params' in args:
             variable_params = args.pop('_variable_params')
             if isinstance(variable_params, dict):
@@ -267,7 +267,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         try:
             (action, args, delegate_to) = args_parser.parse()
         except AnsibleParserError as ex:
-            # FIXME: find a better pattern
+            # DTFIX-U: find a better pattern
             # if the raises exception was created with obj=ds args, then it includes the detail
             # so we dont need to add it so we can just re raise.
             if ex.obj:
@@ -350,7 +350,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         if self._parent:
             self._parent.post_validate(templar)
 
-        # FIXME: why is this here, dump it?
+        # DTFIX-U: why is this here, dump it?
         if AnsibleCollectionConfig.default_collection:
             pass
 
@@ -370,7 +370,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         '''
         env = {}
 
-        # FIXME: move this into an integration test for environment
+        # DTFIX-U: move this into an integration test for environment
         #     """
         # - shell: echo "IAMHERE = $IAMHERE; NOTHERE = $NOTHERE; ANOTHER = $ANOTHER"
         #   environment:
@@ -388,7 +388,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         #
         #     """
 
-        # FIXME: kill this with fire
+        # DTFIX-U: kill this with fire
         def _parse_env_kv(k, v):
             try:
                 env[k] = templar.template(v)

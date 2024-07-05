@@ -56,7 +56,7 @@ def _is_patch_needed() -> bool:
     @dataclasses.dataclass
     class CheckClassVar:
         # this is the broken case requiring patching: ClassVar dot-referenced from a module that is not `typing` is treated as an instance field
-        # FIXME: add link to CPython bug report to-be-filed
+        # DTFIX-U: add link to CPython bug report to-be-filed
         a_classvar: _ts.ClassVar[int]  # type: ignore[name-defined]
         a_field: int
 

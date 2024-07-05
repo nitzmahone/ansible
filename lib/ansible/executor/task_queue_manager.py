@@ -122,7 +122,7 @@ class TaskQueueManager:
     which dispatches the Play's tasks to hosts.
     '''
 
-    # FIXME: figure out to line these up with ansible.errors.ExitCodes
+    # DTFIX-U: figure out to line these up with ansible.errors.ExitCodes
     RUN_OK = 0
     RUN_ERROR = 1
     RUN_FAILED_HOSTS = 2

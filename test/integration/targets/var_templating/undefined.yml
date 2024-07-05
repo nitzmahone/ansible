@@ -7,8 +7,8 @@
         override_value: '{{ not_defined }}'
       register: var_undefined_overridden
 
-    # FIXME: ensure that debug issues the undefined warning
-    # FIXME: should some warnings (like this one) skip dedupe?
+    # DTFIX-U: ensure that debug issues the undefined warning
+    # DTFIX-U: should some warnings (like this one) skip dedupe?
     - name: debug a templated var that is actually undefined
       debug: var=undefined_template
       vars:

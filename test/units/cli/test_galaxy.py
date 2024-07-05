@@ -84,7 +84,7 @@ class TestGalaxy(unittest.TestCase):
         with open(cls.role_req, "w") as fd:
             fd.write("- 'src': '%s'\n  'name': '%s'\n  'path': '%s'" % (cls.role_tar, cls.role_name, cls.role_path))
 
-        # FIXME: use a proper fixture for all of this
+        # DTFIX-U: use a proper fixture for all of this
         from ansible.utils.collection_loader._collection_finder import _AnsibleCollectionFinder
         _AnsibleCollectionFinder._remove()
 
@@ -294,7 +294,7 @@ class ValidRoleTests(object):
         if skeleton_path is None:
             cls.role_skeleton_path = gc.galaxy.default_role_skeleton_path
 
-        # FIXME: use a proper fixture for all of this
+        # DTFIX-U: use a proper fixture for all of this
         from ansible.utils.collection_loader._collection_finder import _AnsibleCollectionFinder
         _AnsibleCollectionFinder._remove()
 

@@ -40,7 +40,7 @@ class TaskResult:
         else:
             self._result = DataLoader().load(return_data)
 
-        # FIXME: do this inline and on everything (or more things)?
+        # DTFIX-U: do this inline and on everything (or more things)?
         if msg := self._result.get('msg'):
             if isinstance(msg, str):
                 msg = NotATemplate().tag(msg)
@@ -137,7 +137,7 @@ class TaskResult:
                     if key in self._result[sub]:
                         subset[sub][key] = self._result[sub][key]
 
-        # FIXME: is checking no_log here redundant now that we use _ansible_no_log everywhere?
+        # DTFIX-U: is checking no_log here redundant now that we use _ansible_no_log everywhere?
         if isinstance(self._task.no_log, bool) and self._task.no_log or self._result.get('_ansible_no_log'):
             censored_result = censor_result(self._result)
 
