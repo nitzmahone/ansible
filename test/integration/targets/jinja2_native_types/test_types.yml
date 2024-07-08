@@ -2,10 +2,8 @@
     that:
         - 'i_one|type_debug == "_AnsibleTaggedInt"'
         - 's_one|type_debug == "_AnsibleTaggedStr"'
-        # DTFIX-U: should we be exposing/testing this?
         - 'dict_one|type_debug == "_AnsibleLazyTemplateDict"'
         - 'dict_one is mapping'
-        # DTFIX-U: should we be exposing/testing this?
         - 'list_one|type_debug == "_AnsibleLazyTemplateList"'
         - 'b_true|type_debug == "bool"'
         - 's_true|type_debug == "_AnsibleTaggedStr"'
@@ -15,7 +13,6 @@
 
 - assert:
     that:
-        # DTFIX-U: should we be exposing/testing this?
         - 'a_list|type_debug == "_AnsibleLazyTemplateList"'
         - 'a_list[0] == 1'
         - 'a_list[0]|type_debug == "_AnsibleTaggedInt"'

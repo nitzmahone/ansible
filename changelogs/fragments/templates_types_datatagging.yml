@@ -1,19 +1,19 @@
 major_changes:
   - variables - The type system underlying Ansible's variable storage has been significantly overhauled and formalized.
-    Attempts to store unsupported Python object types in variables will now result in an error.  # DTFIX-U: link to type system docs TBD
+    Attempts to store unsupported Python object types in variables will now result in an error.  # DTFIX-RELEASE: link to type system docs TBD
   - variables - To support new Ansible features, many variable objects are now represented by subclasses of their respective native Python types.
     In most cases, they behave indistinguishably from their original types, but some Python libraries do not handle builtin object subclasses properly.
-    Custom plugins that interact with such libraries may require changes to convert and pass the native types.  # DTFIX-U: link to plugin/data tagging API docs TBD
+    Custom plugins that interact with such libraries may require changes to convert and pass the native types.  # DTFIX-RELEASE: link to plugin/data tagging API docs TBD
   - ansible-test - Packages beneath ``module_utils`` can now contain ``__init__.py`` files.
 
 minor_changes:
-  - debug - # DTFIX-U: Explain how debug handles templating on its own now.
+  - debug - # DTFIX-RELEASE: Explain how debug handles templating on its own now.
   - templating - Templating errors now provide more information about both the location and context of the error, especially for deeply-nested and/or indirected templating scenarios.
   - templating - Handling of omitted values is now a first-class feature of the template engine, and is usable in all Ansible Jinja template contexts.
-    Any template that resolves to ``omit`` is automatically removed from its parent container during templating.  # DTFIX-U: porting guide entry?
+    Any template that resolves to ``omit`` is automatically removed from its parent container during templating.  # DTFIX-RELEASE: porting guide entry?
   - templating - Unified ``omit`` behavior now requires that plugins calling ``Templar.template()`` handle cases where the entire template result is omitted, either by
     setting ``value_for_omit`` to a suitable substitute value (e.g., ``None``) or catching the ``AnsibleValueOmittedError`` that is raised by default.
-    Previously, this condition caused a randomly-generated string marker to appear in the template result.  # DTFIX-U: porting guide entry?
+    Previously, this condition caused a randomly-generated string marker to appear in the template result.  # DTFIX-RELEASE: porting guide entry?
   - vault - Vault-encrypted strings are now decrypted immediately when loaded (if the relevant secrets are available), instead of being repeatedly decrypted on each access.
   - templating - Template evaluation is lazier than in previous versions.
     Template expressions which resolve only portions of a data structure no longer result in the entire structure being templated.
@@ -22,17 +22,17 @@ minor_changes:
     except when the undefined value is the default of ``undef()`` with no arguments. Previously, any existing undefined hint would be ignored.
   - templating - Embedding ``range()`` values in containers such as lists will result in an error on use.
     Previously the value would be converted to a string representing the range parameters, such as ``range(0, 3)``.
-  - Jinja plugins - Plugins can declare support for undefined values.  # DTFIX-U: examples, porting guide entry
-  - plugins - Lookup plugins can declare support for ``ansible_lookup_context`` to receive an additional keyword argument with extra information.  # DTFIX-U: examples
+  - Jinja plugins - Plugins can declare support for undefined values.  # DTFIX-RELEASE: examples, porting guide entry
+  - plugins - Lookup plugins can declare support for ``ansible_lookup_context`` to receive an additional keyword argument with extra information.  # DTFIX-RELEASE: examples
   - templating - Variables of type ``set`` and ``tuple`` are now converted to ``list`` when encountered.
     This simplifies plugin implementations which are usually not written with these additional types in mind.
   - templating - Access to an undefined variable from inside a lookup, filter, or test (which raises AnsibleUndefinedError) no longer ends processing of the current template.
-    The triggering undefined value is returned as the result of the offending plugin invocation, and the template continues to execute. # DTFIX-U: porting guide entry, samples needed
+    The triggering undefined value is returned as the result of the offending plugin invocation, and the template continues to execute. # DTFIX-RELEASE: porting guide entry, samples needed
   - plugin error handling - When raising exceptions in an exception handler, be sure to use ``raise ... from`` as appropriate.
     This supersedes the use of the ``AnsibleError`` arg ``orig_exc`` to represent the cause.
     Specifying ``orig_exc`` as the cause is still permitted.
     Failure to use ``raise ... from`` when ``orig_exc`` is set will result in a warning.
-    Additionally, if the two cause exceptions do not match, a warning will be issued.  # DTFIX-U: this needs a porting guide entry
+    Additionally, if the two cause exceptions do not match, a warning will be issued.  # DTFIX-RELEASE: this needs a porting guide entry
   - ansible-test - The ``yamllint`` sanity test now enforces string values for the ``!vault`` tag.
   - display - The ``removed`` argument to ``Display.deprecated`` has been removed.
               Setting it to ``False`` had no effect and setting it to ``True`` always raised an exception.
@@ -70,20 +70,20 @@ breaking_changes:
     Lookup plugins are responsible for tagging strings containing templates to allow evaluation as a template.
   - assert - The ``quiet`` argument must be a commonly-accepted boolean value.
     Previously, unrecognized values were silently treated as False.
-  - plugins - Any plugin that sources or creates templates must properly tag them as trusted. # DTFIX-U: porting guide entry for "how?" Don't forget to mention inventory plugin ``trusted_by_default`` config.
+  - plugins - Any plugin that sources or creates templates must properly tag them as trusted. # DTFIX-RELEASE: porting guide entry for "how?" Don't forget to mention inventory plugin ``trusted_by_default`` config.
   - first_found lookup - When specifying ``files`` or ``paths`` as a templated list containing undefined values, the undefined list elements will be discarded with a warning.
     Previously, the entire list would be discarded without any warning.
   - templating - The result of the ``range()`` global function cannot be returned from a template- it should always be passed to a filter (e.g., ``random``).
     Previously, range objects returned from an intermediate template were always converted to a list, which is inconsistent with inline consumption of range objects.
-  - plugins - Custom Jinja plugins that accept undefined top-level arguments must opt in to receiving them.  # DTFIX-U: porting guide entry + backcompat behavior description
+  - plugins - Custom Jinja plugins that accept undefined top-level arguments must opt in to receiving them.  # DTFIX-RELEASE: porting guide entry + backcompat behavior description
   - plugins - Custom Jinja plugins that use ``environment.getitem`` to retrieve undefined values will now trigger an ``AnsibleUndefinedError`` exception.
     This exception must be handled to allow the plugin to return an ``AnsibleUndefined`` value, or the plugin must opt-in to accepting ``AnsibleUndefined`` values.
   - templating - Many Jinja plugins (filters, lookups, tests) and methods previously silently ignored undefined inputs, which often masked subtle errors.
-    Passing an undefined argument to a Jinja plugin or method that does not declare undefined support now results in an undefined value.  # DTFIX-U: common examples, porting guide, `is defined`, `is undefined`, etc; porting guide should also mention that overly-broad exception handling may mask Undefined errors; also that lazy handling of Undefined can invoke a plugin and bomb out in the middle where it was previously never invoked (plugins with side effects, just don't)
-  - lookup plugins - Lookup plugins called as `with_(lookup)` will no longer have the `_subdir` attribute set. # DTFIX-U: porting guide re: `ansible_lookup_context`
+    Passing an undefined argument to a Jinja plugin or method that does not declare undefined support now results in an undefined value.  # DTFIX-RELEASE: common examples, porting guide, `is defined`, `is undefined`, etc; porting guide should also mention that overly-broad exception handling may mask Undefined errors; also that lazy handling of Undefined can invoke a plugin and bomb out in the middle where it was previously never invoked (plugins with side effects, just don't)
+  - lookup plugins - Lookup plugins called as `with_(lookup)` will no longer have the `_subdir` attribute set. # DTFIX-RELEASE: porting guide re: `ansible_lookup_context`
   - lookup plugins - Lookup plugins that relied on the ``run`` method's ``terms`` argument being a non-list when invoked using ``with_`` syntax will now always receive it as a list.
   - lookup plugins - ``terms`` will always be passed to ``run`` as the first positional arg, where previously it was sometimes passed as a keyword arg when using ``with_`` syntax.
-  - callback plugins - The structure of the ``exception``, ``warnings`` and ``deprecations`` values visible to callbacks has changed. # DTFIX-U: porting guide re ErrorDetail/WarningMessageDetail/DeprecationMessageDetail
+  - callback plugins - The structure of the ``exception``, ``warnings`` and ``deprecations`` values visible to callbacks has changed. # DTFIX-RELEASE: porting guide re ErrorDetail/WarningMessageDetail/DeprecationMessageDetail
   - modules - Ansible modules using ``sys.excepthook`` must use a standard ``try/except`` instead.
   - templating - Access to ``_`` prefixed attributes and methods, and methods with known side effects, is no longer permitted.
     In cases where a matching mapping key is present, the associated value will be returned instead of an error. 
@@ -99,7 +99,7 @@ security_fixes:
 
 known_issues:
   - variables - The values ``None``, ``True`` and ``False`` cannot be tagged because they are singletons. Attempts to apply tags to these values will be silently ignored.
-  - variables - Tagged values cannot be used for dictionary keys in many circumstances. # DTFIX-U: Explain this in more detail.
+  - variables - Tagged values cannot be used for dictionary keys in many circumstances. # DTFIX-RELEASE: Explain this in more detail.
   - templating - Any string value starting with ``#jinja2:`` which is templated will always be interpreted as Jinja2 configuration overrides.
                  To include this literal value at the start of a string, a space or other character must precede it.
 
@@ -129,7 +129,7 @@ deprecated_features:
   - templating - The ``disable_lookups`` option has no effect, since plugins must be updated to apply trust before any templating can be performed.
   - to_yaml/to_nice_yaml filters - Implicit YAML dumping of vaulted value ciphertext is deprecated.
     Set `dump_vault_tags` to explicitly specify the desired behavior.
-  - plugins - The ``listify_lookup_plugin_terms`` function is obsolete and in most cases no longer needed.  # DTFIX-U: add a porting guide entry for this
+  - plugins - The ``listify_lookup_plugin_terms`` function is obsolete and in most cases no longer needed.  # DTFIX-RELEASE: add a porting guide entry for this
   - templating - Values of type ``set`` and ``tuple`` are deprecated, use ``list`` instead.
     They are automatically converted to ``list`` on access with a deprecation warning, but their use will be an error in a future version.
   - plugin error handling - The ``AnsibleError`` constructor arg ``suppress_extended_error`` is deprecated.

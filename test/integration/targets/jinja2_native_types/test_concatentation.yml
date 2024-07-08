@@ -1,6 +1,3 @@
-# DTFIX-U: these tests should be using an isinstance-based test instead of string-compared type_debug
-# whether here or somewhere else, we *also* need to assert that Jinja didn't eat our tags.
-
 - name: add two ints
   set_fact:
       integer_sum: "{{ i_one + i_two }}"

@@ -128,7 +128,7 @@
   failed_when: debug.msg is not contains('{')
 
 
-# DTFIX-U: move to templating integration test
+# DTFIX-FUTURE: move to templating integration test
 - name: templated strings in lookup/query args are processed in a conditional
   assert:
     that:
@@ -139,7 +139,7 @@
         {{ query('pipe', 'echo {{ "dude" }}') == ["dude"] }}
       - query('pipe', 'echo {{ "dude" }}') == ["dude"]
 
-# DTFIX-U: move to templating integration test
+# DTFIX-FUTURE: move to templating integration test
 - name: templated strings in lookup/query args are processed in a non-conditional
   debug:
     msg:
@@ -177,4 +177,5 @@
     - result is failed
     - result.msg is contains("must have a boolean result")
 
-# DTFIX-U: restore tests for `quiet` arg with a custom callback or output validation test
+# DTFIX-FUTURE: restore tests for `quiet` arg with a custom callback or output validation test
+# see: https://github.com/ansible/ansible/tree/d2bdbadb0327d519c1c353bf3e28f83ba1b59485/test/integration/targets/assert

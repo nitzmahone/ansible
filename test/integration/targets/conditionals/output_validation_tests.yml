@@ -1,4 +1,4 @@
-# DTFIX-U: de-dupe with tests in play.yml that are not warning/output-dependent
+# DTFIX-FUTURE: de-dupe with tests in play.yml that are not warning/output-dependent
 
 - hosts: localhost
   gather_facts: no
@@ -77,7 +77,9 @@
     failed_when: result is success
 
 
-# DTFIX-U: this is broken because we'd need an explicit var-as-expression in assert
+# DTFIX-FUTURE: indirected expressions like these never worked (truthy-only expression tests masked the failure).
+# Convert these to tests that assert a broken conditional error.
+#
 #  - name: assert false scalar expression as loop arg
 #    assert:
 #      that: item
@@ -85,15 +87,13 @@
 #    - 1 == 0
 #    register: result
 #    failed_when: result is success
-
-# DTFIX-U: this is broken because we'd need an explicit var-as-expression (though it "works" because the result is truthy)
+#
 #  - name: assert list of true expressions as loop arg
 #    assert:
 #      that: item
 #    loop:
 #    - [1 == 1]
-
-# DTFIX-U: this is broken because we'd need am explicit var-as-expression in assert
+#
 #  - name: assert list of false expressions as loop arg
 #    assert:
 #      that: item
@@ -101,9 +101,7 @@
 #    - [1 == 0]
 #    register: result
 #    failed_when: result is success
-
-
-# DTFIX-U: this is broken because we'd need a loop var lookup in assert
+#
 #  - name: assert true scalar expression as loop arg
 #    assert:
 #      that: item

@@ -4,10 +4,10 @@
     sentinel_path: '{{ output_dir }}/uhoh.txt'
     untrusted_pipe_lookup: !unsafe
       sub1:
-        sub2: '{{ lookup("pipe", "touch " + sentinel_path + " && echo rendered") }}'
+        sub2: '{{ lookup("pipe", "touch " + sentinel_path + " && echo should not be rendered") }}'
     trusted_pipe_lookup:
       sub1:
-        sub2: '{{ lookup("pipe", "touch " + sentinel_path + " && echo rendered") }}'
+        sub2: '{{ lookup("pipe", "touch " + sentinel_path + " && echo should be rendered") }}'
   tasks:
   - name: ensure sentinel file is absent before test
     file:
@@ -23,8 +23,7 @@
     failed_when: not sentinel.stat.exists
   - assert:
       that:
-      # DTFIX-U: this is likely the result of recursive templating of the arg to the tagged_with test- need to fully understand what's happening here
-      - trusted_pipe_lookup.sub1.sub2 == 'rendered'
+      - trusted_pipe_lookup.sub1.sub2 == 'should be rendered'
 
   - name: ensure sentinel file is absent before test
     file:
@@ -40,4 +39,4 @@
     failed_when: sentinel.stat.exists
   - assert:
       that:
-      - untrusted_pipe_lookup.sub1.sub2 != 'rendered'
+      - untrusted_pipe_lookup.sub1.sub2 is contains 'echo should not be rendered'

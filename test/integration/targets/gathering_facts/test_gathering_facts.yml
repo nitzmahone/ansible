@@ -1,5 +1,5 @@
 ---
-# DTFIX-U: add test to ensure that top-level fact deprecation warnings are being issued properly on access
+# DTFIX-RELEASE: add test to ensure that top-level fact deprecation warnings are being issued properly on access
 
 - hosts: facthost7
   tags: [ 'fact_negation' ]

@@ -566,7 +566,7 @@
   assert:
     that:
       - fail_default is failed
-      - fail_default.msg is contains('Mandatory variable has not been overridden')  # DTFIX-U: this message should indicate the variable name
+      - fail_default.msg is contains('Mandatory variable has not been overridden')
       - fail_1 is failed
       - fail_1.msg is contains('Expected failure')
       - not (fail_2 is failed)

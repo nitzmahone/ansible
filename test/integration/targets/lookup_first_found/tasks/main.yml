@@ -141,7 +141,7 @@
         - item|basename == 'itworks.yml'
     with_first_found:
       - files:
-          # DTFIX-U: these variables are misleading for the test; use "bogus" or something for the ones that are not
+          # DTFIX-FUTURE: these variables are misleading for the test; use "bogus" or something for the ones that are not
           #  expected to exist
           - "{{ansible_id}}-{{ansible_lsb.major_release}}.yml"  # invalid var, should be skipped
           - "{{ansible_lsb.id}}-{{ansible_lsb.major_release}}.yml"  # does not exist, but should try
@@ -179,10 +179,10 @@
           - "{{role_path}}/vars"
 
   - name: ensure vars subdir is searched for var-named actions
-    # DTFIX-U: the following *should* work, but since task.action is not templated by TE, it does not
-    # action: '{{ "debug_v" ~ "ar_alias" }}'
-    # args:
-    #  var: item
+    # DTFIX-RELEASE: the following *should* work, but since task.action is not templated by TE, it does not
+#    action: '{{ "debug_v" ~ "ar_alias" }}'
+#    args:
+#      var: item
     debug_var_alias:
       var: item
     with_first_found:
