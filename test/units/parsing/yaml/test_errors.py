@@ -64,7 +64,7 @@ from ansible.utils.display import Display
     ('{}: bad', 'While constructing a mapping found unhashable key.', False, 1, 1),
     ('"\\"', 'While scanning a quoted scalar found unexpected end of stream.', False, 1, 4),
 
-    # DTFIX-U: missing tests that use comments
+    # DTFIX-FUTURE: add tests that use comments
 ))
 def test_yaml_parser_error(
         content: t.Any,
@@ -93,7 +93,7 @@ def test_yaml_parser_error(
     assert AnsibleSourcePosition.get_tag(error.value.obj) == AnsibleSourcePosition(src=str(source_path), line=line, col=col)
 
     if expect_help_text:
-        assert error.value.help_text is not None  # DTFIX-U: check the content later once it's less volatile
+        assert error.value.help_text is not None  # DTFIX-FUTURE: check the content later once it's less volatile
     else:
         assert error.value.help_text is None
 

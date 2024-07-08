@@ -1,4 +1,4 @@
-# DTFIX-U: more thorough tests are needed here, this is just a starting point
+# DTFIX-MERGE: more thorough tests are needed here, this is just a starting point
 
 from __future__ import annotations
 
@@ -285,8 +285,8 @@ def test_lazy_list_adapter_operators(template, variables, expected) -> None:
     ('type(l1)()', list(), _AnsibleLazyTemplateList),  # _AnsibleLazyTemplateList.__init__ no args
     ('copy.copy(l1)', [_LazyValue(1)], _AnsibleLazyTemplateList),
     ('copy.copy(d1)', dict(a=_LazyValue(1), c=_LazyValue(1)), _AnsibleLazyTemplateDict),
-    ('copy.deepcopy(l1)', 'Deep copy of Ansible lazy types is not supported.', NotImplementedError),  # DTFIX-U: this should be implemented
-    ('copy.deepcopy(d1)', 'Deep copy of Ansible lazy types is not supported.', NotImplementedError),  # DTFIX-U: this should be implemented
+    ('copy.deepcopy(l1)', 'Deep copy of Ansible lazy types is not supported.', NotImplementedError),  # DTFIX-MERGE: this should be implemented
+    ('copy.deepcopy(d1)', 'Deep copy of Ansible lazy types is not supported.', NotImplementedError),  # DTFIX-MERGE: this should be implemented
     ('ExampleSingletonTag().tag(l1)', [_LazyValue(1)], _AnsibleLazyTemplateList),
     ('ExampleSingletonTag().tag(d1)', dict(a=_LazyValue(1), c=_LazyValue(1)), _AnsibleLazyTemplateDict),
     ('list(reversed(l1))', [1], list),  # _AnsibleLazyTemplateList.__reversed__
@@ -358,8 +358,7 @@ def test_lazy_container_operators(expression: str, expected_value: t.Any, expect
     When the result is a container, items in the container are checked to see if they're lazy as appropriate.
     This test uses a function to simulate Jinja plugin behavior, since plugins can use operators and methods that Jinja expressions cannot.
     """
-    # DTFIX-U: add a unit test to ensure every list/dict method has been overridden or on a list we can safely ignore
-    # DTFIX-U: add omit testing to ensure values are omitted before overwriting other values (such as dict.update)
+    # DTFIX-RELEASE: add a unit test to ensure every list/dict method has been overridden or on a list we can safely ignore
     variables = dict(
         one=1,
         two=2,

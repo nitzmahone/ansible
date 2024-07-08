@@ -33,7 +33,7 @@ class TestDatatagController(_TestDatatagTarget):
         (VaultedValue, dict(ciphertext='')),
     ]
 
-    # DTFIX-U: ensure we're calculating the correct set of values for this context
+    # DTFIX-MERGE: ensure we're calculating the correct set of values for this context
     container_test_cases = []
 
 

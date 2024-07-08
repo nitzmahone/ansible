@@ -1,5 +1,6 @@
-# DTFIX-U: review this test for removal, should have been superseded by test_serialiation_profiles.py
-
+# DTFIX-RELEASE: review this test for removal, should have been superseded by test_serialization_profiles.py
+#  some tests will need to be under module_utils to verify target-only Python versions
+#  if kept, de-dupe
 from __future__ import annotations
 
 import json
@@ -13,9 +14,6 @@ from ansible.module_utils.datatag.tags import Deprecated
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
 from ansible.module_utils.serialization import module_legacy_c2m, module_legacy_m2c, module_modern_c2m, module_modern_m2c, get_encoder, get_decoder, tagless
 from ansible.utils.serialization import legacy
-
-# DTFIX-U: some tests will need to be under module_utils to verify target-only Python versions
-# DTFIX-U: update these tests to no be so repetitive
 
 _simple_json_values = (
     'hello',
@@ -83,7 +81,7 @@ def test_modern_module_to_controller_converted_types(value: t.Any, expected: t.A
 
     assert_has_no_tags(untagged_value)
 
-    if type(value) not in _untaggable_types:  # DTFIX-U: expose this as a utility method along the lines of AnsibleTaggedObject.is_taggable?
+    if type(value) not in _untaggable_types:
         tags = AnsibleTagHelper.tags(tagged_value)
 
         assert tags == {deprecation_tag}
@@ -161,7 +159,7 @@ def test_modern_module_to_controller(value: t.Any) -> None:
     assert_has_no_tags(untagged_value)
     # assert_has_no_tags(tagged_with_unwanted_tag_only)
 
-    if type(value) not in _untaggable_types:  # DTFIX-U: expose this as a utility method along the lines of AnsibleTaggedObject.is_taggable?
+    if type(value) not in _untaggable_types:
         tags = AnsibleTagHelper.tags(tagged_value)
 
         assert tags == {deprecation_tag}
@@ -220,7 +218,7 @@ def test_legacy(value: t.Any) -> None:
 
 @pytest.mark.parametrize("value, expected", (
     ((1,), [1]),
-    # ({1}, [1]),  # DTFIX-U: this is an error, should be covered by new tests
+    ({1}, [1]),
 ), ids=str)
 def test_legacy_converted_types(value: t.Any, expected: t.Any) -> None:
     source_position = AnsibleSourcePosition(src='x')

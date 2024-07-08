@@ -403,8 +403,6 @@ def test_vault_tag_type_validation(value: str) -> None:
 
     assert "requires a string value" in str(error.value)
 
-# DTFIX-U: add unit tests for vaulted value loads and round-trips (mostly covered by ansible-inventory integration already)
-
 
 class CustomMapping(c.Mapping):
     def __init__(self, data: dict) -> None:

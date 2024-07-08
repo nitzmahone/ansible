@@ -417,7 +417,7 @@ def test_evaluate_expression_errors(expr: str, error_type: type[Exception]):
 @pytest.mark.parametrize("conditional,expected,variables", [
     ("1 == 2", False, None),
     ("test2_name | default(True)", True, None),
-    # DTFIX-U: more success cases?
+    # DTFIX-RELEASE: more success cases?
 ])
 def test_evaluate_conditional(conditional: str, expected: t.Any, variables: dict[str, t.Any] | None):
     assert Templar().evaluate_conditional(TRUST.tag(conditional)) == expected
@@ -505,7 +505,7 @@ def test_is_possibly_template_false(value: str) -> None:
 
 
 def test_stop_on_container() -> None:
-    # DTFIX-U: add more test cases
+    # DTFIX-RELEASE: add more test cases
     assert Templar().template(TRUST.tag('{{ [ 1 ] }}'), mode=TemplateMode.STOP_ON_CONTAINER) == [1]
 
 
@@ -571,7 +571,7 @@ def test_finalize_generator(value: t.Any, expected: t.Any) -> None:
         yielder=yielder,
     ))
 
-    # DTFIX-U: we still need to deal with the "Encountered unsupported" warnings these generate
+    # DTFIX-RELEASE: we still need to deal with the "Encountered unsupported" warnings these generate
     assert templar.template(TRUST.tag(value)) == expected
 
 

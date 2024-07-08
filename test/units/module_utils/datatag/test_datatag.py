@@ -185,7 +185,7 @@ _str_override_method_args: t.Dict[str, t.Tuple[tuple, t.Dict[str, t.Any]]] = {
 }
 
 
-# DTFIX-U: query all available str methods and ensure they're implemented and tested or on an ignore list
+# DTFIX-RELEASE: query all available str methods and ensure they're implemented and tested or on an ignore list
 @pytest.mark.parametrize('method_name', _AnsibleTaggedStr._scalar_str_methods + _AnsibleTaggedStr._iterable_str_methods)
 def test_tagged_str_overrides(method_name: str) -> None:
     plain_value = ' hi mom '
@@ -405,16 +405,15 @@ class TestDatatagTarget(AutoParamSupport):
     @classmethod
     def post_init(cls) -> None:
         cls.datatag_instances = [value for value, _repr in cls.tag_instances_with_reprs]
-        # DTFIX-U: is this actually useful, or should we limit it to tagged types?
         cls.serializable_instances = [value for value in (
-            cls.datatag_instances + cls.tagged_object_instances + message_instances) if cls.is_FIXME_type_applicable(value)]
+            cls.datatag_instances + cls.tagged_object_instances + message_instances) if cls.is_type_applicable(value)]
         cls.serializable_instances_with_instance_copy = [t.cast(CopyProtocol, item) for item in cls.serializable_instances if hasattr(item, 'copy')]
         # NOTE: this doesn't include the lazy template types, those are tested separately
         cls.serializable_types = [value for value in (
-            list(AnsibleSerializable._known_type_map.values()) + [AnsibleSerializable]) if cls.is_FIXME_type_applicable(value)]
+            list(AnsibleSerializable._known_type_map.values()) + [AnsibleSerializable]) if cls.is_type_applicable(value)]
 
     @classmethod
-    def is_FIXME_type_applicable(cls, type_obj) -> bool:
+    def is_type_applicable(cls, type_obj) -> bool:
         return (
             type_obj.__module__ != __name__ and  # exclude test-only tags/objects
             cls.is_controller_only_type(type_obj) == cls.is_controller_only_test()
@@ -438,8 +437,6 @@ class TestDatatagTarget(AutoParamSupport):
         test_cases = []
 
         for test_case in create_container_test_cases(_ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES):
-
-            # DTFIX-U: need to move this into the test class so it can override?
             instances = cls.taggable_instances + cls.tagged_object_instances
 
             # pylint: disable=unidiomatic-typecheck
@@ -504,8 +501,8 @@ class TestDatatagTarget(AutoParamSupport):
             not inspect.isabstract(instance_type) and
             not instance_type.__name__.endswith('Base') and
             'Lazy' not in instance_type.__name__ and  # lazy types use the same input data
-            'VaultBomb' not in instance_type.__name__ and  # DTFIX-U: recalculate the source data list in the template tests to avoid this exclusion
-            'JinjaConstTemplate' not in instance_type.__name__ and  # DTFIX-U: recalculate the source data list in the template tests to avoid this exclusion
+            'VaultBomb' not in instance_type.__name__ and
+            'JinjaConstTemplate' not in instance_type.__name__ and
             instance_type is not AnsibleTaggedObject and
             instance_type is not AnsibleSerializableDataclass and
             not issubclass(instance_type, AnsibleSerializableWrapper)
@@ -525,32 +522,26 @@ class TestDatatagTarget(AutoParamSupport):
         payload = json.dumps(value, cls=RoundTripEverythingEncoder)
         round_tripped_value = json.loads(payload, cls=RoundTripEverythingDecoder)
 
-        # DTFIX-U: ensure items in collections are copies
-
         assert_round_trip(value, round_tripped_value)
 
     @pytest.mark.autoparam(later.serializable_instances)
     def test_pickle_roundtrip(self, value: object):
-        # DTFIX-U: better way to mark this on the derived test impl?
         if "Lazy" in type(value).__name__:
             pytest.xfail("pickle prohibited on lazies")
 
         pickled_value = pickle.dumps(value)
         round_tripped_value = pickle.loads(pickled_value)
 
-        # DTFIX-U: ensure items in collections are copies
-
         assert_round_trip(value, round_tripped_value)
 
     @pytest.mark.autoparam(later.serializable_instances)
     def test_deepcopy_roundtrip(self, value: object):
-        # DTFIX-U: better way to mark this on the derived test impl?
         if "Lazy" in type(value).__name__:
             pytest.xfail("deepcopy not supported on lazies yet")
 
         round_tripped_value = copy.deepcopy(value)
 
-        # DTFIX-U: ensure items in collections are copies
+        # DTFIX-RELEASE: ensure items in collections are copies
 
         assert_round_trip(value, round_tripped_value)
 
@@ -564,18 +555,19 @@ class TestDatatagTarget(AutoParamSupport):
         if not isinstance(native_copy, int):
             assert native_copy is not value._native_copy()
 
+        # DTFIX-RELEASE: ensure items in collections are not copies
+
         assert native_copy == value
         assert native_copy == value._native_copy()
 
     @pytest.mark.autoparam(later.serializable_instances)
     def test_copy_roundtrip(self, value: object):
-        # DTFIX-U: better way to mark this on the derived test impl?
         if "Lazy" in type(value).__name__:
             pytest.xfail("copy prohibited on lazies")
 
         round_tripped_value = copy.copy(value)
 
-        # DTFIX-U: ensure items in collections are not copies
+        # DTFIX-RELEASE: ensure items in collections are not copies
 
         assert_round_trip(value, round_tripped_value)
 
@@ -583,7 +575,7 @@ class TestDatatagTarget(AutoParamSupport):
     def test_instance_copy_roundtrip(self, value: CopyProtocol):
         round_tripped_value = value.copy()
 
-        # DTFIX-U: ensure items in collections are not copies
+        # DTFIX-RELEASE: ensure items in collections are not copies
 
         assert_round_trip(value, round_tripped_value)
 

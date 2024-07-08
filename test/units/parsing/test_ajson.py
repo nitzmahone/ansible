@@ -37,25 +37,6 @@ def test_AnsibleJSONDecoder_vault():
     assert UndecryptableVaultedValue.is_tagged_on(data['foo']['password'])
 
 
-# DTFIX-U: rewrite this with a current tag
-# def test_encode_decode_unsafe():
-#     data = {
-#         'key_value': FIXMEAnotherTag().tag('{#NOTACOMMENT#}'),
-#         'list': [FIXMEAnotherTag().tag('{#NOTACOMMENT#}')],
-#         'list_dict': [{'key_value': FIXMEAnotherTag().tag('{#NOTACOMMENT#}')}]}
-#     json_with_tags = json.dumps(data, cls=AnsibleJSONEncoder, preserve_datatags=True)
-#     json_sans_tags = json.dumps(data, cls=AnsibleJSONEncoder, preserve_datatags=False)
-#
-#     rehydrated_with_tags = json.loads(json_with_tags, cls=AnsibleJSONDecoder)
-#     rehydrated_sans_tags = json.loads(json_sans_tags, cls=AnsibleJSONDecoder)
-#
-#     assert data == rehydrated_with_tags
-#     assert data == rehydrated_sans_tags
-#     assert FIXMEAnotherTag.is_tagged_on(rehydrated_with_tags['key_value'])
-#     assert FIXMEAnotherTag.is_tagged_on(rehydrated_with_tags['list'][0])
-#     assert FIXMEAnotherTag.is_tagged_on(rehydrated_with_tags['list_dict'][0]['key_value'])
-
-
 def vault_data():
     """
     Prepare AnsibleVaultEncryptedUnicode test data for AnsibleJSONEncoder.default().

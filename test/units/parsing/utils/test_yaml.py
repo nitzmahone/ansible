@@ -11,8 +11,8 @@ from ansible.parsing.utils.yaml import from_yaml
 
 
 def test_json_parser_error() -> None:
-    # DTFIX-U: This is basically a copy of test_yaml_parser_error in test/units/parsing/yaml/test_errors.py
-    #        Most of the coverage for parsing.utils.yaml is achieved while testing parsing.yaml.errors.
+    # This is basically a copy of test_yaml_parser_error in test/units/parsing/yaml/test_errors.py.
+    # Most of the coverage for parsing.utils.yaml is achieved while testing parsing.yaml.errors.
 
     content = 'x'
     expected_message = 'JSON parsing failed: Expecting value: line 1 column 1 (char 0)'
@@ -35,6 +35,6 @@ def test_json_parser_error() -> None:
     assert AnsibleSourcePosition.get_tag(error.value.obj) == AnsibleSourcePosition(src=str(source_path), line=line, col=col)
 
     if expect_help_text:
-        assert error.value.help_text is not None  # DTFIX-U: check the content later once it's less volatile
+        assert error.value.help_text is not None  # DTFIX-FUTURE: check the content later once it's less volatile
     else:
         assert error.value.help_text is None

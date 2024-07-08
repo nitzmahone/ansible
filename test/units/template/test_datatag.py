@@ -38,7 +38,6 @@ class TestDatatagTemplar(_TestDatatagTarget):
     @classmethod
     def post_init(cls, **kwargs):
         cls.serializable_types = t.cast(list[type[AnsibleSerializable]], cls.lazy_serializable_types)
-        # DTFIX-U: ensure we're calculating the correct set of values for this context
         cls.serializable_instances = [(obj, ) for obj in cls.taggable_container_instances]
 
     @classmethod
@@ -70,18 +69,15 @@ class TestDatatagTemplar(_TestDatatagTarget):
 
             out_values.append((candidates[0], type_under_test))
 
-        # DTFIX-U: do generator explosion here or as an opt-in parameterizing fixture?
-
         return out_values
 
-    # DTFIX-U: move to base class once generator parameterization is implemented there?
     @pytest.fixture(name="value_type", params=["as_value", "as_generator"])
     def generator_or_no(self, request, type_under_test: type) -> type | None:
         return type_under_test if request.param == "as_generator" else None
 
     @pytest.fixture(name="value")
     def lazy_value(self, non_lazy_value, request: pytest.FixtureRequest, with_template_context):
-        value_type = None  # DTFIX-U: get from request if needed
+        value_type = None  # DTFIX-PR: get from request when needed, can't easily add to the static fixture list
         if value_type:
             if isinstance(non_lazy_value, c.Mapping):
                 generator = ((k, v) for k, v in non_lazy_value.items())
