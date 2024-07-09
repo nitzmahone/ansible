@@ -352,14 +352,12 @@ class RoleMixin(object):
             try:
                 meta = self._load_metadata(role, role_path, collection)
             except Exception as e:
-                # DTFIX-U: ensure we have source position and __cause__ available, use warn instead?
                 display.vvv('No metadata for role (%s) due to: %s' % (role, to_native(e)), True)
                 meta = {}
 
             argspec = self._load_argspec(role, role_path, collection)
             if 'error' in argspec:
                 if fail_on_errors:
-                    # DTFIX-U: ensure we have source position and __cause__ available
                     raise argspec['exception']
                 else:
                     display.warning('Skipping role (%s) due to: %s' % (role, argspec['error']), True)
@@ -408,7 +406,6 @@ def _format(string, *args):
     for style in args:
 
         if style not in ref_style and style.upper() not in STYLE and style not in C.COLOR_CODES:
-            # DTFIX-U: raise an apropos AnsibleError subclass and include position-tagged obj
             raise KeyError("Invalid format value supplied: %s" % style)
 
         if C.ANSIBLE_NOCOLOR:
@@ -739,7 +736,6 @@ class DocCLI(CLI, RoleMixin):
                             fa = PB_LOADED[pobj].fattributes.get(keyword)
                             if getattr(fa, 'private'):
                                 kdata = {}
-                                # DTFIX-U: raise an apropos AnsibleError subclass and include position-tagged obj
                                 raise KeyError
 
                             kdata['type'] = getattr(fa, 'isa', 'string')
@@ -823,7 +819,6 @@ class DocCLI(CLI, RoleMixin):
                 msg = f"{plugin_type} {plugin} {msg}"
 
                 if fail_ok:
-                    # DTFIX-U: send the exception object to warning so we can show the traceback if enabled (once warning supports that)
                     display.warning(f'{msg}: {ex}')
                 else:
                     raise AnsibleError(f'{msg}.') from ex
@@ -1184,7 +1179,6 @@ class DocCLI(CLI, RoleMixin):
             # required is used as indicator and removed
             required = opt.pop('required', False)
             if not isinstance(required, bool):
-                # DTFIX-U: include position-tagged obj
                 raise AnsibleError("Incorrect value for 'Required', a boolean is needed.: %s" % required)
 
             opt_leadin = '  '
@@ -1200,7 +1194,6 @@ class DocCLI(CLI, RoleMixin):
 
             # description is specifically formated and can either be string or list of strings
             if 'description' not in opt:
-                # DTFIX-U: include position-tagged obj
                 raise AnsibleError("All (sub-)options and return values must have a 'description' field")
             text.append('')
 
@@ -1210,7 +1203,6 @@ class DocCLI(CLI, RoleMixin):
             if is_sequence(opt['description']):
                 for entry_idx, entry in enumerate(opt['description'], 1):
                     if not isinstance(entry, string_types):
-                        # DTFIX-U: include position-tagged obj
                         raise AnsibleError("Expected string in description of %s at index %s, got %s" % (o, entry_idx, type(entry)))
                     if entry_idx == 1:
                         text.append(key + DocCLI.warp_fill(DocCLI.tty_ify(entry), limit, initial_indent=inline_indent, subsequent_indent=sub_indent))
@@ -1218,7 +1210,6 @@ class DocCLI(CLI, RoleMixin):
                         text.append(DocCLI.warp_fill(DocCLI.tty_ify(entry), limit, initial_indent=sub_indent, subsequent_indent=sub_indent))
             else:
                 if not isinstance(opt['description'], string_types):
-                    # DTFIX-U: include position-tagged obj
                     raise AnsibleError("Expected string in description of %s, got %s" % (o, type(opt['description'])))
                 text.append(key + DocCLI.warp_fill(DocCLI.tty_ify(opt['description']), limit, initial_indent=inline_indent, subsequent_indent=sub_indent))
             del opt['description']
@@ -1508,7 +1499,6 @@ class DocCLI(CLI, RoleMixin):
                 try:
                     text.append(yaml_dump(doc.pop('plainexamples'), indent=2, default_flow_style=False))
                 except Exception as ex:
-                    # DTFIX-U: needs position-tagged obj ref
                     raise AnsibleParserError("Unable to parse examples section.") from ex
 
         if doc.get('returndocs', False):
@@ -1547,7 +1537,6 @@ def _do_yaml_snippet(doc):
 
         required = opt.get('required', False)
         if not isinstance(required, bool):
-            # DTFIX-U: raise an apropos AnsibleError subclass and include position-tagged obj
             raise ValueError("Incorrect value for 'Required', a boolean is needed: %s" % required)
 
         o = '%s:' % o
@@ -1582,7 +1571,6 @@ def _do_lookup_snippet(doc):
 
         required = opt.get('required', False)
         if not isinstance(required, bool):
-            # DTFIX-U: raise an apropos AnsibleError subclass and include position-tagged obj
             raise ValueError("Incorrect value for 'Required', a boolean is needed: %s" % required)
 
         if required:

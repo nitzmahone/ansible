@@ -77,9 +77,9 @@ class AdHocCLI(CLI):
         module_args = None
         if module_args_raw and module_args_raw.startswith('{') and module_args_raw.endswith('}'):
             try:
-                # DTFIX-U: do we want to make YAML/parse_kv/JSON other APIs consistent about accepting TrustedAsTemplate
-                # tagged input strings as a marker to propagate TrustedAsTemplate to their outputs? from_yaml does not
-                # do this, but parse_kv does
+                # DTFIX-MERGE: do we want to make YAML/parse_kv/JSON other APIs consistent about accepting TrustedAsTemplate
+                #  tagged input strings as a marker to propagate TrustedAsTemplate to their outputs? from_yaml does not
+                #  do this, but parse_kv does
                 module_args = from_yaml(module_args_raw.strip(), json_only=True, trusted_as_template=True)
             except AnsibleParserError:
                 pass

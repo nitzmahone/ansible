@@ -807,9 +807,18 @@ class CollectionModuleUtilLocator(ModuleUtilLocatorBase):
         resource_base_path = os.path.join(*name_parts[3:])
 
         src = None
+
         # look for package_dir first, then module
+        src_path = to_native(os.path.join(resource_base_path, '__init__.py'))
+
         try:
-            src = pkgutil.get_data(collection_pkg_name, to_native(os.path.join(resource_base_path, '__init__.py')))
+            collection_pkg = importlib.import_module(collection_pkg_name)
+            pkg_path = os.path.dirname(collection_pkg.__file__)
+        except (ImportError, AttributeError):
+            pkg_path = "<unknown>"
+
+        try:
+            src = AnsibleSourcePosition(src=os.path.join(pkg_path, src_path)).tag(pkgutil.get_data(collection_pkg_name, src_path))
         except ImportError:
             pass
 
@@ -818,15 +827,17 @@ class CollectionModuleUtilLocator(ModuleUtilLocatorBase):
         if src is not None:  # empty string is OK
             self.is_package = True
         else:
+            src_path = to_native(resource_base_path + '.py')
+
             try:
-                src = pkgutil.get_data(collection_pkg_name, to_native(resource_base_path + '.py'))
+                src = AnsibleSourcePosition(src=os.path.join(pkg_path, src_path)).tag(pkgutil.get_data(collection_pkg_name, src_path))
             except ImportError:
                 pass
 
         if src is None:  # empty string is OK
             return False
 
-        self.source_code = src  # DTFIX-U: ensure that source position is tagged here (for error messages in recursive_finder on compile errors)
+        self.source_code = src
         return True
 
     def _get_module_utils_remainder_parts(self, name_parts):
@@ -861,7 +872,7 @@ metadata_versions: dict[t.Any, type[ModuleMetadata]] = {
 
 
 def _get_module_metadata(module: ast.Module) -> ModuleMetadata:
-    # DTFIX-U: while module metadata works, this feature isn't fully baked and should be turned off before release
+    # DTFIX-RELEASE: while module metadata works, this feature isn't fully baked and should be turned off before release
     metadata_nodes: list[ast.Assign] = []
 
     for node in module.body:
@@ -1134,7 +1145,7 @@ class _BuiltModule:
 class _CachedModule:
     """Cached Python module created by AnsiballZ."""
 
-    # DTFIX-U: secure this (locked down pickle, don't use pickle, etc.)
+    # DTFIX-RELEASE: secure this (locked down pickle, don't use pickle, etc.)
 
     zip_data: bytes
     metadata: ModuleMetadata
@@ -1375,7 +1386,7 @@ def _find_module_utils(
         b_module_data = output.getvalue()
 
     elif module_substyle == 'powershell':
-        module_metadata = ModuleMetadataV1(serialization_profile='legacy')  # DTFIX-U: support serialization profiles for PowerShell modules
+        module_metadata = ModuleMetadataV1(serialization_profile='legacy')  # DTFIX-FUTURE: support serialization profiles for PowerShell modules
 
         # Powershell/winrm don't actually make use of shebang so we can
         # safely set this here.  If we let the fallback code handle this

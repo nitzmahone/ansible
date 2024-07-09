@@ -467,7 +467,6 @@ class GalaxyAPI:
         try:
             resp = open_url(url, data=args, validate_certs=self.validate_certs, method="POST", http_agent=user_agent(), timeout=self._server_timeout)
         except HTTPError as e:
-            # DTFIX-U: tweak this to use AnsibleError base class magic and `raise from` so we can just wrap any error in it.
             raise GalaxyError(e, 'Attempting to authenticate to galaxy')
         except Exception as ex:
             raise AnsibleError('Unable to authenticate to galaxy.') from ex

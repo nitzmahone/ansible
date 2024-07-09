@@ -23,11 +23,11 @@ from .utils import concat_message, get_chained_message, RedactAnnotatedSourceCon
 class ExitCode(enum.IntEnum):
     SUCCESS = 0
     GENERIC_ERROR = 1
-    HOST_FAILED = 2  # DTFIX-U: TQM-sourced?
-    HOST_UNREACHABLE = 3  # DTFIX-U: TQM-sourced?
+    HOST_FAILED = 2  # TQM-sourced?
+    HOST_UNREACHABLE = 3  # TQM-sourced?
     PARSER_ERROR = 4
     INVALID_CLI_OPTION = 5
-    UNICODE_ERROR = 6  # DTFIX-U: obsolete, no longer used
+    UNICODE_ERROR = 6  # obsolete, no longer used?
     KEYBOARD_INTERRUPT = 99
     UNKNOWN_ERROR = 250
 
@@ -46,7 +46,7 @@ class AnsibleError(Exception):
     Where "obj" may be tagged with AnsibleSourcePosition to provide context for error messages.
     """
 
-    # DTFIX-U: this is part of the new DT changes, the API needs additional cleanup before releasing
+    # DTFIX-MERGE: this is part of the new DT changes, the API needs additional cleanup before releasing
     exit_code = ExitCode.GENERIC_ERROR
     default_prefix = ''
     include_cause_message = True
@@ -64,7 +64,7 @@ class AnsibleError(Exception):
         orig_exc: BaseException | None = None,
         help_text: str | None = None,
     ) -> None:
-        # DTFIX-U: these fallback cases mask incorrect use of AnsibleError.message
+        # DTFIX-FUTURE: these fallback cases mask incorrect use of AnsibleError.message, what should we do?
         if message is None:
             message = ''
         elif not isinstance(message, str):
@@ -101,7 +101,7 @@ class AnsibleError(Exception):
 
     @property
     def original_message(self) -> str:
-        # DTFIX-U: this is part of the new DT changes, the API needs additional cleanup before releasing
+        # DTFIX-MERGE: this is part of the new DT changes, the API needs additional cleanup before releasing
 
         return self._message
 
@@ -121,7 +121,7 @@ class AnsibleError(Exception):
 
     @property
     def formatted_source_context(self) -> str | None:
-        # DTFIX-U: this is part of the new DT changes, the API needs additional cleanup before releasing
+        # DTFIX-MERGE: this is part of the new DT changes, the API needs additional cleanup before releasing
 
         with RedactAnnotatedSourceContext.maybe(create=not self._show_content):
             if source_context := SourceContext.from_value(self.obj):
@@ -131,7 +131,7 @@ class AnsibleError(Exception):
 
     @property
     def help_text(self) -> str | None:
-        # DTFIX-U: this is part of the new DT changes, the API needs additional cleanup before releasing
+        # DTFIX-MERGE: this is part of the new DT changes, the API needs additional cleanup before releasing
 
         return self._help_text
 
@@ -258,7 +258,7 @@ AnsibleLookupError = AnsibleTemplatePluginError
 class AnsibleTemplatePluginRuntimeError(AnsibleTemplatePluginError):
     """The specified template plugin (lookup/filter/test) raised an exception during execution."""
 
-    # DTFIX-U: content authors shouldn't be raising this (or the other two below) template errors -- use TypeError, ValueError, etc. instead
+    # DTFIX-MERGE: content authors shouldn't be raising this (or the other two below) template errors -- use TypeError, ValueError, etc. instead
     #        so how should this be named, located? internal errors?
 
     def __init__(self, plugin_type: str, plugin_name: str, ex: Exception) -> None:
@@ -377,7 +377,7 @@ class AnsibleTypeError(AnsibleRuntimeError, TypeError):
     """Ansible-augmented TypeError subclass."""
 
 
-# DTFIX-U: deprecate
+# DTFIX-MERGE: deprecate
 AnsibleFilterTypeError = AnsibleTypeError
 
 
@@ -393,8 +393,6 @@ class AnsibleVariableTypeError(AnsibleRuntimeError):
     """An error due to attempted storage of an unsupported variable type."""
 
     def __init__(self, *, variable_type: type) -> None:
-        # DTFIX-U: what else can we include here to guide users?
-        #        in cases where the value is "simple" we could possibly show the value, not just the type
         super().__init__(f'Variables of type {variable_type} are not supported.')
 
 

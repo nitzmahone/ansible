@@ -61,11 +61,11 @@ class Host:
         return self.get_name()
 
     def __deepcopy__(self, memodict):
-        raise Exception("deepcopy was not properly implemented on host")  # DTFIX-U: ensure this is unneeded and remove
+        raise Exception("deepcopy was not properly implemented on host")  # DTFIX-MERGE: ensure this is unneeded and remove
 
     def serialize(self):
         if bool(1):
-            raise Exception("is this getting hit?")  # DTFIX-U: ensure this is dead code and remove
+            raise Exception("is this getting hit?")  # DTFIX-MERGE: ensure this is dead code and remove
 
         groups = []
         for group in self.groups:
@@ -82,7 +82,7 @@ class Host:
 
     def deserialize(self, data):
         if bool(1):
-            raise Exception("is this getting hit?")  # DTFIX-U: ensure this is dead code and remove
+            raise Exception("is this getting hit?")  # DTFIX-MERGE: ensure this is dead code and remove
 
         # self.__init__(name='', gen_uuid=False)  # used by __setstate__ to deserialize in place  # pylint: disable=unnecessary-dunder-call
 

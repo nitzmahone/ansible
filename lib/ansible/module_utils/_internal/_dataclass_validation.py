@@ -26,7 +26,7 @@ except AttributeError:
 
 def inject_post_init_validation(cls: type, allow_subclasses=False) -> None:
     """Inject a __post_init__ field validation method on the given dataclass. An existing __post_init__ attribute must already exist."""
-    # DTFIX-U: when requiring cls to have a __post_init__, enforcing it as a no-op would be nice, but is tricky on slotted dataclasses due to double-creation
+    # DTFIX-FUTURE: when cls must have a __post_init__, enforcing it as a no-op would be nice, but is tricky on slotted dataclasses due to double-creation
     post_validate_name = '_post_validate'
     method_name = '__post_init__'
     exec_globals: dict[str, t.Any] = {}
@@ -62,7 +62,7 @@ def inject_post_init_validation(cls: type, allow_subclasses=False) -> None:
         # check value
 
         if origin_type is t.Literal:
-            # DTFIX-U: support optional literals
+            # DTFIX-FUTURE: support optional literals
 
             values = t.get_args(target_type)
 
@@ -174,7 +174,7 @@ def _get_allowed_types(target_type: type) -> tuple[type, ...]:
     if origin_type in _union_types:
         allowed_types = tuple(set(itertools.chain.from_iterable(_get_allowed_types(arg) for arg in t.get_args(target_type))))
     elif origin_type is t.Literal:
-        allowed_types = (str,)  # DTFIX-U: support non-str literal types
+        allowed_types = (str,)  # DTFIX-FUTURE: support non-str literal types
     elif origin_type:
         allowed_types = (origin_type,)
     else:

@@ -465,8 +465,8 @@ def _remove_values_conditions(value, no_log_strings, deferred_removals):
 
     elif isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
         return value
-        # value = value.isoformat()  # DTFIX-U: how long has this been here? what's the downside to killing it? the new serializer handles it
-    # DTFIX-U: is this the right thing?
+        # value = value.isoformat()  # DTFIX-MERGE: how long has this been here? what's the downside to killing it? the new serializer handles it
+    # DTFIX-MERGE: is this the right thing?
     elif isinstance(value, AnsibleSerializable):
         return value
     else:
@@ -547,7 +547,6 @@ def _sanitize_keys_conditions(value, no_log_strings, ignore_keys, deferred_remov
         return value
 
     if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
-        # DTFIX-U: grrrr...
         return value
 
     raise TypeError('Value of unknown type: %s, %s' % (type(value), value))

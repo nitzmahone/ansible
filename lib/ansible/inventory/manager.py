@@ -200,7 +200,6 @@ class InventoryManager(object):
     def get_host(self, hostname):
         return self._inventory.get_host(hostname)
 
-    # DTFIX-U: turn this into a generator so we can create the plugins lazily instead of all up front
     def _fetch_inventory_plugins(self) -> list[BaseInventoryPlugin]:
         ''' sets up loaded inventory plugins for usage '''
 
@@ -294,8 +293,8 @@ class InventoryManager(object):
                     try:
                         inventory_wrapper = _InventoryDataWrapper(self._inventory, target_plugin=plugin, source_path=source)
 
-                        # DTFIX-U now that we have a wrapper around inventory, we can have it use ChainMaps to preview the in-progress inventory, but be able to
-                        #  roll back partial inventory failures by discarding the outermost layer
+                        # DTFIX-MERGE: now that we have a wrapper around inventory, we can have it use ChainMaps to preview the in-progress inventory,
+                        #  but be able to roll back partial inventory failures by discarding the outermost layer
                         plugin.parse(inventory_wrapper, self._loader, source, cache=cache)
                         try:
                             plugin.update_cache_if_changed()

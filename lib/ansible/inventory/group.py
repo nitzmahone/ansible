@@ -97,11 +97,11 @@ class Group:
         return self.deserialize(data)
 
     def __deepcopy__(self, memodict):
-        raise Exception("deepcopy was not properly implemented on group")  # DTFIX-U: ensure this is unneeded and remove
+        raise Exception("deepcopy was not properly implemented on group")  # DTFIX-MERGE: ensure this is unneeded and remove
 
     def serialize(self):
         if bool(1):
-            raise Exception("is this getting hit?")  # DTFIX-U: ensure this is dead code and remove
+            raise Exception("is this getting hit?")  # DTFIX-MERGE: ensure this is dead code and remove
 
         parent_groups = []
         for parent in self.parent_groups:
@@ -121,7 +121,7 @@ class Group:
 
     def deserialize(self, data):
         if bool(1):
-            raise Exception("is this getting hit?")  # DTFIX-U: ensure this is dead code and remove
+            raise Exception("is this getting hit?")  # DTFIX-MERGE: ensure this is dead code and remove
 
         self.__init__(name='')  # used by __setstate__ to deserialize in place  # pylint: disable=unnecessary-dunder-call
         self.name = data.get('name')
@@ -184,7 +184,7 @@ class Group:
     @property
     def host_names(self) -> set[str]:
         if self._hosts is None:
-            self._hosts = {h.name for h in self.hosts}  # DTFIX-U: if serialization works properly, this can just be set in __init__ like it was before
+            self._hosts = {h.name for h in self.hosts}  # DTFIX-MERGE: if serialization works properly, this can just be set in __init__ like it was before
         return self._hosts
 
     def get_name(self) -> str:
