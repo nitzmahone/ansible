@@ -760,3 +760,17 @@ releases:
     - linear_started_name.yml
     - replace_regex.yml
     release_date: '2024-07-08'
+  2.17.2rc2:
+    changes:
+      bugfixes:
+      - package_facts - ignore warnings sent by apk on stderr (https://github.com/ansible/ansible/issues/83501).
+      release_summary: '| Release Date: 2024-07-09
+
+        | `Porting Guide <https://docs.ansible.com/ansible-core/2.17/porting_guides/porting_guide_core_2.17.html>`__
+
+        '
+    codename: Gallows Pole
+    fragments:
+    - 2.17.2rc2_summary.yaml
+    - package_facts_apk.yml
+    release_date: '2024-07-09'
