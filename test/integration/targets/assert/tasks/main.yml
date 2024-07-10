@@ -96,6 +96,18 @@
     that: '{{ item.item.checks }}'
   loop: '{{ result.results }}'
 
+# DTFIX-U: switch this to a single task with failed_when once we have that working
+- name: ensure deprecation warning from handlebarred `that`
+  assert:
+    that: '{{ true }}'
+  vars:
+    ansible_deprecation_warnings: true
+  register: res
+
+- assert:
+    that:
+      - res.deprecations | map(attribute="msg") | select('contains', 'should not be surrounded by templating delimiters') | length == 1
+
 - name: templated strings in expressions are processed
   # solution: enable visit_Const trust tagging when processing a conditional expression (not a conditional template)
   assert:

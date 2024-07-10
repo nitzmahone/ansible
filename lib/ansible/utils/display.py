@@ -615,10 +615,17 @@ class Display(metaclass=Singleton):
     ) -> None:
         """Display a deprecation warning message, if enabled."""
 
+        msg = NotATemplate().tag(msg)  # avoid templates in deprecation messages triggering untrusted template warnings
+
         # This is the pre-proxy half of the `deprecated` implementation.
         # Any logic that must occur on workers needs to be implemented here.
 
-        if not C.config.get_config_value('DEPRECATION_WARNINGS'):
+        if warning_context := _DeferredWarningContext.current(optional=True):
+            variables = warning_context.variables
+        else:
+            variables = None
+
+        if not C.config.get_config_value('DEPRECATION_WARNINGS', variables=variables):
             return
 
         self.warning('Deprecation warnings can be disabled by setting `deprecation_warnings=False` in ansible.cfg.')
@@ -1019,6 +1026,7 @@ class _DeferredWarningContext(_ambient_context.AmbientContextBase):
     The intended use is for task-initiated warnings to be recorded with the task result, which makes them visible to registered results, callbacks, etc.
     The active display callback is responsible for communicating any warnings to the user.
     """
+    variables: dict[str, object]  # DTFIX-FUTURE: move this to an AmbientContext-derived TaskContext (once it exists)
     deprecation_warnings: list[DeprecationMessageDetail] = dataclasses.field(default_factory=list)
     warnings: list[WarningMessageDetail] = dataclasses.field(default_factory=list)
 

@@ -410,7 +410,7 @@ class TaskExecutor:
     def _execute(self, templar: Templar, variables: dict[str, t.Any]) -> dict[str, t.Any]:
         result: dict[str, t.Any]
 
-        with _DeferredWarningContext() as warning_ctx:
+        with _DeferredWarningContext(variables=variables) as warning_ctx:
             try:
                 result = self._execute_internal(templar, variables)
             except Exception as ex:

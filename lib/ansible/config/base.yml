@@ -1261,6 +1261,8 @@ DEPRECATION_WARNINGS:
   ini:
   - {key: deprecation_warnings, section: defaults}
   type: boolean
+  vars:
+    - name: ansible_deprecation_warnings
 DEVEL_WARNING:
   name: Running devel warning
   default: True
