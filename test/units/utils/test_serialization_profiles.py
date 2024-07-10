@@ -79,7 +79,7 @@ def get_profile_names() -> tuple[str, ...]:
 
 
 @dataclasses.dataclass(frozen=True)
-class TestParameters:
+class _TestParameters:
     profile_name: str
     value: t.Any
     tags: tuple[AnsibleDatatagBase, ...] = ()
@@ -91,9 +91,9 @@ class TestParameters:
     def __repr__(self):
         fields = ((field, getattr(self, field.name)) for field in dataclasses.fields(self))
         args = (f'{f.name}={v!r}' for f, v in fields if v != f.default)
-        return f"TestParameters({', '.join(args)})"
+        return f"{type(self).__name__}({', '.join(args)})"
 
-    def get_test_output(self) -> TestOutput:
+    def get_test_output(self) -> _TestOutput:
         encoder = get_encoder(self.profile_name)
         decoder = get_decoder(self.profile_name)
 
@@ -121,7 +121,7 @@ class TestParameters:
             else:
                 round_trip = json.loads(payload, cls=decoder)
 
-            return TestOutput(
+            return _TestOutput(
                 payload=payload,
                 round_trip=AnsibleTagHelper.as_untagged_type(round_trip),
                 tags=tuple(AnsibleTagHelper.tags(round_trip)),
@@ -129,16 +129,16 @@ class TestParameters:
 
 
 @dataclasses.dataclass(frozen=True)
-class TestOutput:
+class _TestOutput:
     payload: str | Exception
     round_trip: t.Any
     tags: tuple[AnsibleDatatagBase, ...]
 
 
 @dataclasses.dataclass(frozen=True)
-class TestCase:
-    parameters: TestParameters
-    expected: TestOutput
+class _TestCase:
+    parameters: _TestParameters
+    expected: _TestOutput
 
     def __str__(self) -> str:
         parts = [f'profile={self.parameters.profile_name}', f'value={self.parameters.value}']
@@ -154,7 +154,7 @@ class TestCase:
 
 class DataSet:
     def __init__(self, generate: bool) -> None:
-        self.data: dict[TestParameters, TestOutput] = {}
+        self.data: dict[_TestParameters, _TestOutput] = {}
         self.path = pathlib.Path(__file__).parent / 'expected_serialization_profiles'
         self.generate = generate
 
@@ -178,7 +178,7 @@ class DataSet:
             content = f'{{\n{content[1:-1]}\n}}\n'
             (self.path / f'{group_name}.txt').write_text(content)
 
-    def fetch_or_create_expected(self, test_params: TestParameters) -> TestOutput:
+    def fetch_or_create_expected(self, test_params: _TestParameters) -> _TestOutput:
         if self.generate:
             output = self.data[test_params] = test_params.get_test_output()
         else:
@@ -213,25 +213,25 @@ class ProfileHelper:
 
         self.unsupported_tag_value = unsupported_tag_values[0]
 
-    def create_parameters_from_values(self, *values: t.Any) -> list[TestParameters]:
+    def create_parameters_from_values(self, *values: t.Any) -> list[_TestParameters]:
         return list(itertools.chain.from_iterable(self.create_parameters_from_value(value) for value in values))
 
-    def create_parameters_from_value(self, value: t.Any) -> list[TestParameters]:
-        test_parameters: list[TestParameters] = [
-            TestParameters(
+    def create_parameters_from_value(self, value: t.Any) -> list[_TestParameters]:
+        test_parameters: list[_TestParameters] = [
+            _TestParameters(
                 profile_name=self.profile_name,
                 value=value,
             )
         ]
 
         if self.supported_tag_values:
-            test_parameters.append(TestParameters(
+            test_parameters.append(_TestParameters(
                 profile_name=self.profile_name,
                 value=value,
                 tags=self.supported_tag_values,
             ))
 
-        test_parameters.append(TestParameters(
+        test_parameters.append(_TestParameters(
             profile_name=self.profile_name,
             value=value,
             tags=(self.unsupported_tag_value,),
@@ -244,7 +244,7 @@ class ProfileHelper:
         return test_parameters
 
 
-additional_test_parameters: list[TestParameters] = []
+additional_test_parameters: list[_TestParameters] = []
 
 # DTFIX-MERGE: need better testing for containers, especially for tagged values in containers
 
@@ -262,11 +262,11 @@ _generate = False
 """Set to True to regenerate all test data; a test failure will occur until it is set back to False."""
 
 
-def get_test_cases() -> list[TestCase]:
+def get_test_cases() -> list[_TestCase]:
     data_set = DataSet(generate=_generate)
     data_set.load()
 
-    test_parameters: list[TestParameters] = []
+    test_parameters: list[_TestParameters] = []
 
     for profile_name in get_profile_names():
         helper = ProfileHelper(profile_name)
@@ -276,7 +276,7 @@ def get_test_cases() -> list[TestCase]:
 
     test_parameters.extend(additional_test_parameters)
 
-    test_cases = [TestCase(parameters=parameters, expected=data_set.fetch_or_create_expected(parameters)) for parameters in test_parameters]
+    test_cases = [_TestCase(parameters=parameters, expected=data_set.fetch_or_create_expected(parameters)) for parameters in test_parameters]
 
     data_set.save()
 
@@ -284,7 +284,7 @@ def get_test_cases() -> list[TestCase]:
 
 
 @pytest.mark.parametrize("test_case", get_test_cases(), ids=str)
-def test_profile(test_case: TestCase) -> None:
+def test_profile(test_case: _TestCase) -> None:
     output = test_case.parameters.get_test_output()
 
     if isinstance(output.payload, Exception):
