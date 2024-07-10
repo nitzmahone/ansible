@@ -21,5 +21,5 @@ class AnsibleSequence(AnsibleBaseYAMLObject):
 
 
 class AnsibleVaultEncryptedUnicode(AnsibleBaseYAMLObject):
-    # DTFIX-U: future deprecate this?
+    # DTFIX-MERGE: future deprecate this?
     pass

@@ -193,8 +193,13 @@ class SourceContext:
         if value is None:
             return None
 
+        if type(value) is AnsibleSourcePosition:
+            position = value
+        else:
+            position = AnsibleSourcePosition.get_tag(value)
+
         # DTFIX-MERGE: replace this hack with an Origin tag
-        if (position := AnsibleSourcePosition.get_tag(value)) and position.src and position.src[0] != "<":
+        if position and position.src and position.src[0] != "<":
             return cls.from_source_position(position)
 
         if RedactAnnotatedSourceContext.current(optional=True):

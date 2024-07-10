@@ -21,7 +21,6 @@ def warn(warning: str) -> None:
 
 def deprecate(msg: str, version: str | None = None, date: str | datetime.date | None = None, collection_name: str | None = None) -> None:
     """Record a deprecation warning to be returned with the module result."""
-    # DTFIX-U: this may not be necessary, AnsibleSerializable can handle it
     if isinstance(date, datetime.date):
         date = str(date)
 

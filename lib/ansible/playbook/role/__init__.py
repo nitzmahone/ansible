@@ -200,8 +200,7 @@ class Role(Base, Conditional, Taggable, CollectionSearch, Delegatable):
 
             return r
 
-        # DTFIX-U: this should be RecursionError
-        except RuntimeError as ex:
+        except RecursionError as ex:
             raise AnsibleError("A recursion loop was detected with the roles specified. Make sure child roles do not have dependencies on parent roles",
                                obj=role_include._ds) from ex
 

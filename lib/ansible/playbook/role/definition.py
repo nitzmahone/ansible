@@ -195,7 +195,7 @@ class RoleDefinition(Base, Conditional, Taggable, CollectionSearch):
             return (role_name, role_path)
 
         searches = (self._collection_list or []) + role_search_paths
-        # DTFIX-U: raise a role-specific error type here that only includes the role path (etc) in the extended message/help text
+
         raise AnsibleError("the role '%s' was not found in %s" % (role_name, ":".join(searches)), obj=self._ds)
 
     def _split_role_params(self, ds):

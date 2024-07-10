@@ -36,6 +36,9 @@ from .errors import AnsibleConstructorError
 
 display = Display()
 
+_NOT_A_TEMPLATE: t.Final[NotATemplate] = NotATemplate()
+_TRUSTED_AS_TEMPLATE: t.Final[TrustedAsTemplate] = TrustedAsTemplate()
+
 
 class AnsibleConstructor(SafeConstructor):
     def __init__(
@@ -96,9 +99,10 @@ class AnsibleConstructor(SafeConstructor):
     def construct_yaml_omap(self, node):
         src_pos = self._node_position_info(node)
         display.deprecated(
-            # DTFIX-U: another source position use case, this time without value
-            msg=f'YAML !!omap tag found at {str(src_pos)!r} is deprecated. Use a standard mapping instead, as key order is always preserved.',
+            msg=f'Use of the YAML `!!omap` tag is deprecated.',
             version='2.21',
+            obj=src_pos,
+            help_text='Use a standard mapping instead, as key order is always preserved.',
         )
         items = list(super().construct_yaml_omap(node))[0]
         items = [src_pos.tag(item) for item in items]
@@ -107,9 +111,10 @@ class AnsibleConstructor(SafeConstructor):
     def construct_yaml_pairs(self, node):
         src_pos = self._node_position_info(node)
         display.deprecated(
-            # DTFIX-U: another source position use case, this time without value
-            msg=f'YAML !!pairs tag found at {str(src_pos)!r} is deprecated.',
+            msg=f'Use of the YAML `!!pairs` tag is deprecated.',
             version='2.21',
+            obj=src_pos,
+            help_text='Use a standard mapping instead.',
         )
         items = list(super().construct_yaml_pairs(node))[0]
         items = [src_pos.tag(item) for item in items]
@@ -118,21 +123,19 @@ class AnsibleConstructor(SafeConstructor):
     def construct_yaml_str(self, node):
         # Override the default string handling function
         # to always return unicode objects
-        # DTFIX-U: is this still necessary under Py3?
+        # DTFIX-FUTURE: is this to_text conversion still necessary under Py3?
         value = to_text(self.construct_scalar(node))
 
-        # DTFIX-U: factor out this shared code among the various constructor methods
         tags = [self._node_position_info(node)]
 
         if self._unsafe_depth:
-            tags.append(NotATemplate())
+            tags.append(_NOT_A_TEMPLATE)
         elif self._trusted_as_template:
             # NB: since we're not context aware, this will happily add trust to dictionary keys; this is actually necessary for
             #  certain backward compat scenarios, though might be accomplished in other ways if we wanted to avoid trusting keys in
             #  the general scenario
-            tags.append(TrustedAsTemplate())
+            tags.append(_TRUSTED_AS_TEMPLATE)
 
-        # DTFIX-U: optimize this to support non-conditional list construction and a shared instance of TrustedAsTemplate
         return AnsibleTagHelper.tag(value, tags)
 
     def construct_yaml_binary(self, node):
@@ -192,7 +195,7 @@ class AnsibleConstructor(SafeConstructor):
 
         return AnsibleSourcePosition(src=datasource, line=line, col=column)
 
-# DTFIX-U: review and deprecate tags below as appropriate
+# DTFIX-MERGE: review and deprecate tags below as appropriate
 
 
 AnsibleConstructor.add_constructor(
@@ -223,7 +226,6 @@ AnsibleConstructor.add_constructor(
     u'tag:yaml.org,2002:pairs',
     AnsibleConstructor.construct_yaml_pairs)  # type: ignore[type-var]
 
-# DTFIX-U: do we actually want to tag int/float/etc?
 AnsibleConstructor.add_constructor(
     'tag:yaml.org,2002:int',
     AnsibleConstructor.construct_yaml_int)  # type: ignore[type-var]

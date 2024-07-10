@@ -37,10 +37,10 @@ _empty_frozenset: t.FrozenSet = frozenset()
 
 class AnsibleTagHelper:
     """Utility methods for working with Ansible data tags."""
-    # DTFIX-U: bikeshed the name and location of this class, since it's public API
+    # DTFIX-MERGE: bikeshed the name and location of this class, since it's public API
     #        it may make sense to move this into another module, but the implementations should remain here (so they can be used without circular imports here)
     #        if they're in a separate module, is a class even needed, or should they be globals?
-    # DTFIX-U: add docstrings to all non-override methods in this class
+    # DTFIX-MERGE: add docstrings to all non-override methods in this class
 
     @staticmethod
     def untag(value: _T, tag_type: t.Type[AnsibleDatatagBase]) -> _T:
@@ -82,7 +82,7 @@ class AnsibleTagHelper:
     @staticmethod
     def get_friendly_type_name(type_or_value: t.Any, /) -> str:
         """Return the friendly name of the given type or value. If the type is an AnsibleTaggedObject, the native type will be used."""
-        # DTFIX-U: provide a way to report the real type for debugging purposes
+        # DTFIX-MERGE: provide a way to report the real type for debugging purposes
         if isinstance(type_or_value, type):
             the_type = type_or_value
         else:
@@ -197,7 +197,7 @@ class AnsibleSerializable(metaclass=abc.ABCMeta):
 
         cls._type_key = cls.__name__
 
-        # DTFIX-U: is there a better way to exclude non-abstract types which are base classes?
+        # DTFIX-FUTURE: is there a better way to exclude non-abstract types which are base classes?
         if not inspect.isabstract(cls) and not cls.__name__.endswith('Base') and cls.__name__ != 'AnsibleTaggedObject':
             AnsibleSerializable._known_type_map[cls._type_key] = cls
 
@@ -218,8 +218,8 @@ class AnsibleSerializable(metaclass=abc.ABCMeta):
 
     @staticmethod
     def _deserialize(data: t.Dict[str, t.Any]) -> object:
-        source = data.copy()  # DTFIX-U: is there a more efficient way to operate on a copy of data?
-        type_name = source.pop(AnsibleSerializable._TYPE_KEY, ...)
+        """Deserialize an object from the supplied data dict, which will be mutated if it contains a type key."""
+        type_name = data.pop(AnsibleSerializable._TYPE_KEY, ...)  # common usage assumes `data` is an intermediate dict provided by a deserializer
 
         if type_name is ...:
             return None
@@ -229,7 +229,7 @@ class AnsibleSerializable(metaclass=abc.ABCMeta):
         if not type_value:
             raise ValueError(f'An unknown {AnsibleSerializable._TYPE_KEY!r} value {type_name!r} was encountered during deserialization.')
 
-        return type_value._from_dict(source)
+        return type_value._from_dict(data)
 
     def _repr(self, name: str) -> str:
         args = self._as_dict()
@@ -329,7 +329,7 @@ class Tripwire:
         raise NotImplementedError()
 
 
-# DTFIX-U: need caution tape about adding new tag types being a bad idea
+# DTFIX-MERGE: need caution tape about adding new tag types being a bad idea
 #  (eg, since propagation behavior has to be considered for each type every place it happens)
 @dataclasses.dataclass(**_tag_dataclass_kwargs)
 class AnsibleDatatagBase(AnsibleSerializableDataclass, metaclass=abc.ABCMeta):
@@ -339,9 +339,9 @@ class AnsibleDatatagBase(AnsibleSerializableDataclass, metaclass=abc.ABCMeta):
         # NOTE: This method is called twice when the datatag type is a dataclass.
         super(AnsibleDatatagBase, cls).__init_subclass__(**kwargs)  # cannot use super() without arguments when using slots
 
-        # DTFIX-U: "freeze" this after module init has completed to discourage custom external tag subclasses
+        # DTFIX-FUTURE: "freeze" this after module init has completed to discourage custom external tag subclasses
 
-        # DTFIX-U: is there a better way to exclude non-abstract types which are base classes?
+        # DTFIX-FUTURE: is there a better way to exclude non-abstract types which are base classes?
         if not inspect.isabstract(cls) and not cls.__name__.endswith('Base'):
             existing = _known_tag_type_map.get(cls.__name__)
 
@@ -383,7 +383,7 @@ if sys.version_info >= (3, 9):
     class _AnsibleTagsMapping(dict[type[AnsibleDatatagBase], AnsibleDatatagBase]):
         __slots__ = _NO_INSTANCE_STORAGE
 
-        # DTFIX-U: do we want to try to implement read-only dict support?
+        # DTFIX-FUTURE: do we want to try to implement read-only dict support?
         #        what we have below works for deepcopy, but not pickle
         #        it's also not perfect, since __init__ still mutates the dict
         # def update(self, *args, **kwargs) -> None:
@@ -454,10 +454,10 @@ class CollectionWithMro(c.Collection, t.Protocol):
     __mro__: tuple[type, ...]
 
 
-# DTFIX-U: This should probably reside elsewhere.
+# DTFIX-MERGE: This should probably reside elsewhere.
 def is_non_scalar_collection_type(value: type) -> t.TypeGuard[type[CollectionWithMro]]:
     """Returns True if the value is a non-scalar collection type, otherwise returns False."""
-    # DTFIX-U: find a better way to exclude _AnsibleTaggedVaultBomb
+    # DTFIX-FUTURE: find a better way to exclude _AnsibleTaggedVaultBomb
     return issubclass(value, c.Collection) and not issubclass(value, str) and not issubclass(value, bytes) and value.__name__ != '_AnsibleTaggedVaultBomb'
 
 
@@ -593,9 +593,9 @@ class AnsibleTaggedObject(AnsibleSerializable):
         return tagged_type
 
     def _as_dict(self) -> t.Dict[str, t.Any]:
-        # DTFIX-U: this is probably incomplete; don't we need a full deep copy (possibly with templating and access)?
-        # This isn't a problem for consumers that are inherently recursive already (eg JSON serialization, repr, YAML)
-        # Maybe just docstring clarification that it's not recursive and that returned nested containers may still have tagged types inside?
+        # DTFIX-MERGE: this is probably incomplete; don't we need a full deep copy (possibly with templating and access)?
+        #  This isn't a problem for consumers that are inherently recursive already (eg JSON serialization, repr, YAML)
+        #  Maybe just docstring clarification that it's not recursive and that returned nested containers may still have tagged types inside?
         return {
             'value': self._native_copy(),
             'tags': list(self._ansible_tags_mapping.values()),
@@ -651,7 +651,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
 class _AnsibleTaggedStr(str, AnsibleTaggedObject):
     __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
 
-    # DTFIX-U: implement more methods here?
+    # DTFIX-MERGE: implement more methods here?
     _scalar_str_methods = ('lstrip', 'strip', 'rstrip', 'encode', 'removeprefix', 'removesuffix')
     _iterable_str_methods = ('partition', 'rsplit', 'split')
 
@@ -681,7 +681,7 @@ class _AnsibleTaggedStr(str, AnsibleTaggedObject):
 
 
 class _AnsibleTaggedBytes(bytes, AnsibleTaggedObject):
-    # DTFIX-U: same treatment and tests as _AnsibleTaggedStr for common utility methods; share setup code?
+    # DTFIX-MERGE: same treatment and tests as _AnsibleTaggedStr for common utility methods; share setup code?
     # nonempty __slots__ not supported for subtype of 'bytes'
 
     def decode(self, *args, **kwargs) -> str:
@@ -839,7 +839,7 @@ class _AnsibleTaggedList(list, AnsibleTaggedObject):
     # Propagation of tags in these cases is left to the caller, based on needs specific to their use case.
 
 
-# DTFIX-U: do we want frozenset too?
+# DTFIX-MERGE: do we want frozenset too?
 class _AnsibleTaggedSet(set, AnsibleTaggedObject):
     __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
 

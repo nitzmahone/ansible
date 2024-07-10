@@ -147,7 +147,7 @@ def jwrite(info):
 
 def _run_module(wrapped_cmd, jid):
 
-    # DTFIX-U: needs rework for serialization profiles
+    # DTFIX-FUTURE: needs rework for serialization profiles
 
     jwrite({"started": 1, "finished": 0, "ansible_job_id": jid})
 

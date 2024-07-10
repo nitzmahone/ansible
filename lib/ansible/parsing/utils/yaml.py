@@ -18,7 +18,7 @@ from ansible.utils.serialization import legacy
 
 def from_yaml(
     data: str,
-    file_name: str = '<string>',  # DTFIX-U: do something better here, we don't want placeholders making their way into AnsibleSourcePosition
+    file_name: str = '<string>',  # DTFIX-MERGE: do something better here, we don't want placeholders making their way into AnsibleSourcePosition
     show_content: bool = True,  # deprecated: description='deprecate show_content in favor of RedactAnnotatedSourceContext' core_version='2.22'
     vault_secrets: list[tuple[str, VaultSecret]] | None = None,
     json_only: bool = False,
@@ -41,6 +41,6 @@ def from_yaml(
             try:
                 return AnsibleLoader(data, file_name=file_name, vault_secrets=vault_secrets, trusted_as_template=trusted_as_template).get_single_data()
             except Exception as yaml_ex:
-                # DTFIX-U: how can we indicate in AnsibleSourcePosition that the data is in-memory only, to support context information -- is that useful?
+                # DTFIX-MERGE: how can we indicate in AnsibleSourcePosition that the data is in-memory only, to support context information -- is that useful?
                 #        we'd need to pass data to handle_exception so it could be used as the content instead of reading from disk
                 AnsibleYAMLParserError.handle_exception(yaml_ex, src=file_name)

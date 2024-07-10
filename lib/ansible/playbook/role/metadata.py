@@ -80,7 +80,6 @@ class RoleMetadata(Base, CollectionSearch):
                         role_def['name'] = def_parsed['name']
                     roles.append(role_def)
                 except AnsibleError as ex:
-                    # DTFIX-U: maybe unnecessary? at least don't rewrap existing parser errors...
                     raise AnsibleParserError("Error parsing role dependencies.", obj=role_def) from ex
 
         current_role_path = None

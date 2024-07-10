@@ -80,7 +80,7 @@ class DataLoader:
     def load(
             self,
             data: str,
-            file_name: str = '<string>',  # DTFIX-U: do something better here, we don't want placeholders making their way into AnsibleSourcePosition
+            file_name: str = '<string>',  # DTFIX-MERGE: do something better here, we don't want placeholders making their way into AnsibleSourcePosition
             show_content: bool = True,  # deprecated: description='deprecate show_content in favor of RedactAnnotatedSourceContext' core_version='2.22'
             json_only: bool = False,
             trusted_as_template: bool = False,
@@ -155,11 +155,11 @@ class DataLoader:
         if encrypted_source := is_encrypted(b_data):
             b_data = self._vault.decrypt(b_data)
 
-        # DTFIX-U: clean this up, invert, use a dataclass, something...
+        # DTFIX-MERGE: clean this up, invert, use a dataclass, something...
         return b_data, not encrypted_source
 
     def get_text_file_contents(self, file_name: str) -> str:
-        # DTFIX-U: test/docstring this method
+        # DTFIX-MERGE: test/docstring this method
         return to_text(self._get_file_contents(file_name)[0])
 
     def _get_file_contents(self, file_name: str) -> tuple[bytes, bool]:
@@ -183,7 +183,7 @@ class DataLoader:
         try:
             data = pathlib.Path(file_name).read_bytes()
         except FileNotFoundError as ex:
-            # DTFIX-U: why not just let the builtin one fly?
+            # DTFIX-FUTURE: why not just let the builtin one fly?
             raise AnsibleFileNotFound("Unable to retrieve file contents.", file_name=file_name) from ex
         except (IOError, OSError) as ex:
             raise AnsibleParserError(f"An error occurred while trying to read the file {file_name!r}.") from ex

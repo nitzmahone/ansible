@@ -425,8 +425,7 @@ class FieldAttributeBase:
 
         try:
             new_me = self.__class__()
-        except RuntimeError as ex:
-            # DTFIX-U: uhh, shouldn't this be RecursionError? RuntimeError could be lots of other things...
+        except RecursionError as ex:
             raise AnsibleError("Exceeded maximum object depth. This may have been caused by excessive role recursion.") from ex
 
         for name in self.fattributes:
@@ -525,7 +524,8 @@ class FieldAttributeBase:
         self._finalized = True
 
     def post_validate_attribute(self, templar: Templar, name: str, attribute: FieldAttribute):
-        original_value = getattr(self, name)  # DTFIX-U: this can probably be used in many getattr cases below, but the value may be out-of-date in some cases
+        # DTFIX-FUTURE: this can probably be used in many getattr cases below, but the value may be out-of-date in some cases
+        original_value = getattr(self, name)
         value = original_value
 
         if attribute.static:
@@ -542,7 +542,7 @@ class FieldAttributeBase:
                 return Sentinel
             else:
                 raise AnsibleFieldAttributeError(f'The field {name!r} is required but was not set.', obj=self.get_ds())
-        # DTFIX-U: compare types, not strings
+        # TEMPFIX: compare types, not strings
         elif not attribute.always_post_validate and self.__class__.__name__ not in ('Task', 'Handler', 'PlayContext', 'IncludeRole', 'TaskInclude'):
             # Intermediate objects like Play() won't have their fields validated by
             # default, as their values are often inherited by other objects and validated
@@ -749,7 +749,7 @@ class Base(FieldAttributeBase):
     # used to hold sudo/su stuff
     DEPRECATED_ATTRIBUTES = []  # type: list[str]
 
-    # DTFIX-U: generalize this, we're going to need it for other values (e.g.: ignore_errors, etc.)
+    # DTFIX-MERGE: generalize this, we're going to need it for other values (e.g.: ignore_errors, etc.)
     def no_log_with_fallback(self, templar: Templar) -> bool:
         """Return the post-validated no_log value, falling back to a default on validation/templating failure with a warning."""
 
@@ -758,8 +758,8 @@ class Base(FieldAttributeBase):
 
         try:
             no_log = self.post_validate_attribute(templar, 'no_log', self.fattributes['no_log'])
-        except Exception as no_log_ex:
-            display.warning(f'Invalid no_log value for task, output will be masked. The error was: {no_log_ex}')  # DTFIX-U: better error here
+        except Exception as ex:
+            display.error_as_warning('Invalid no_log value for task, output will be masked.', exception=ex)
             no_log = True
 
         return no_log

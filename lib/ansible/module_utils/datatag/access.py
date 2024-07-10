@@ -81,18 +81,18 @@ class AnsibleAccessContext:
             return o  # short circuit if the object has no tags
 
         value = POORLY_NAMED_SENTINEL
-        # DTFIX-U: store exceptions from notifications, warn/raise at end?
+        # DTFIX-FUTURE: store exceptions from notifications, warn/raise at end?
         #  * store results from _notify calls to mutating contexts, notify all, return the innermost mutation, or warn on > 1?
         for ctx in reversed(self._notify_contexts):
             # noinspection PyProtectedMember
             if ctx._tag_type_interest.intersection(tagtypes):  # this context is interested in one or more of our tags
-                # DTFIX-U: come up with a cheaper better way to only keep the innermost mutation
+                # DTFIX-FUTURE: come up with a cheaper better way to only keep the innermost mutation
                 # noinspection PyProtectedMember
-                # DTFIX-U: FDI037 - should we be chaining "res", passing original "o", or both?
+                # DTFIX-FUTURE: FDI037 - should we be chaining "res", passing original "o", or both?
                 res = ctx._notify(o)
                 if res is not POORLY_NAMED_SENTINEL and isinstance(ctx, _MutatingAccessContextBase) and value is POORLY_NAMED_SENTINEL:
                     value = res
-                # DTFIX-U: otherwise warn? use a different method name?
+                # DTFIX-FUTURE: otherwise warn? use a different method name?
 
         if value is POORLY_NAMED_SENTINEL:
             value = o
