@@ -158,7 +158,7 @@ class Play(Base, Taggable, CollectionSearch):
 
         return super(Play, self).preprocess_data(ds)
 
-    # DTFIX-U: these do nothing but augment the exception message; DRY and nuke
+    # DTFIX-FUTURE: these do nothing but augment the exception message; DRY and nuke
 
     def _load_tasks(self, attr, ds):
         '''

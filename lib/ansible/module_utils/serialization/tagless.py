@@ -23,6 +23,7 @@ class _Profile(_json._JSONSerializationProfile):
             _datetime.date: cls.serialize_as_isoformat,
             _datetime.time: cls.serialize_as_isoformat,
             _datetime.datetime: cls.serialize_as_isoformat,
+            # bytes intentionally ommitted as they are not a supported variable type, they were not originally supported by the old AnsibleJSONEncoder
             _datatag._AnsibleTaggedDate: cls.discard_tags,
             _datatag._AnsibleTaggedTime: cls.discard_tags,
             _datatag._AnsibleTaggedDateTime: cls.discard_tags,

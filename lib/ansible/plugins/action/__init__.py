@@ -28,7 +28,7 @@ from ansible.module_utils.common.arg_spec import ArgumentSpecValidator
 from ansible.utils.datatag.tags import NotATemplate
 from ansible.module_utils.errors import UnsupportedError
 from ansible.module_utils.json_utils import _filter_non_json_lines
-from ansible.module_utils.serialization import get_module_decoder, Direction
+from ansible.module_utils.serialization import get_module_decoder, Direction, get_module_encoder
 from ansible.module_utils.six import binary_type, string_types, text_type
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
 from ansible.module_utils.common.json import AnsibleJSONEncoder
@@ -92,7 +92,6 @@ class ActionBase(ABC):
         # interpreter discovery state
         self._discovered_interpreter_key: str | None = None
         self._discovered_interpreter = False
-        self._discovery_warnings: list[str] = []
         self._used_interpreter: str | None = None
 
         # Backwards compat: self._display isn't really needed, just import the global display and use that.
@@ -120,10 +119,9 @@ class ActionBase(ABC):
         result = {}
 
         if tmp is not None:
-            # DTFIX-U: WRONG KEY
-            result['warning'] = ['ActionModule.run() no longer honors the tmp parameter. Action'
-                                 ' plugins should set self._connection._shell.tmpdir to share'
-                                 ' the tmpdir']
+            display.warning('ActionModule.run() no longer honors the tmp parameter. Action'
+                            ' plugins should set self._connection._shell.tmpdir to share'
+                            ' the tmpdir.')
         del tmp
 
         if self._task.async_val and not self._supports_async:
@@ -1012,7 +1010,6 @@ class ActionBase(ABC):
         # allow user to insert string to add context to remote loggging
         module_args['_ansible_target_log_info'] = C.config.get_config_value('TARGET_LOG_INFO', variables=task_vars)
 
-        # DTFIX-U: are we adding enum serialization support?
         module_args['_ansible_tracebacks_for'] = [value.name.lower() for value in _traceback.TracebackEvent if _traceback.is_traceback_enabled(value)]
 
     def _execute_module(self, module_name=None, module_args=None, tmp=None, task_vars=None, persist_files=False, delete_remote_tmp=None, wrap_async=False,
@@ -1098,7 +1095,8 @@ class ActionBase(ABC):
                     args_data += '%s=%s ' % (k, shlex.quote(text_type(v)))
                 self._transfer_data(args_file_path, args_data)
             elif module_style in ('non_native_want_json', 'binary'):
-                self._transfer_data(args_file_path, json.dumps(module_args))  # DTFIX-U: encoder needed
+                profile_encoder = get_module_encoder(module_bits.serialization_profile, Direction.CONTROLLER_TO_MODULE)
+                self._transfer_data(args_file_path, json.dumps(module_args, cls=profile_encoder))
             display.debug("done transferring module to remote")
 
         environment_string = self._compute_environment_string()
@@ -1211,10 +1209,6 @@ class ActionBase(ABC):
                 data['ansible_facts'] = {}
 
             data['ansible_facts'][self._discovered_interpreter_key] = self._discovered_interpreter
-
-        # DTFIX-U: collapse all this stuff and just call display.warning at the sources so the tracebacks are correct?
-        for warning in self._discovery_warnings:
-            display.warning(warning)
 
         display.debug("done with _execute_module (%s, %s)" % (module_name, module_args))
         return data

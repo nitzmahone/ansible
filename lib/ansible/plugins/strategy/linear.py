@@ -30,7 +30,7 @@ DOCUMENTATION = '''
 '''
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleAssertionError, AnsibleParserError, AnsibleTemplateError
+from ansible.errors import AnsibleError, AnsibleAssertionError, AnsibleParserError, AnsibleTemplateError, AnsibleValueOmittedError
 from ansible.playbook.handler import Handler
 from ansible.playbook.included_file import IncludedFile
 from ansible.playbook.task import Task
@@ -163,7 +163,10 @@ class StrategyModule(StrategyBase):
                     # sets BYPASS_HOST_LOOP to true, or if it has run_once enabled. If so, we
                     # will only send this task to the first host in the list.
 
-                    task_action = templar.template(task.action)
+                    try:
+                        task_action = templar.template(task.action)
+                    except AnsibleValueOmittedError:
+                        raise AnsibleParserError("Omit is not valid for the `action` keyword.", obj=task.action) from None
 
                     try:
                         action = action_loader.get(task_action, class_only=True, collection_list=task.collections)

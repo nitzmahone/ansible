@@ -39,7 +39,7 @@ def generate_ansible_template_vars(path, fullpath=None, dest_path=None):
 
     managed_default = constants.config.get_config_value('DEFAULT_MANAGED_STR')
 
-    # DTFIX-U: deprecate this in favor of users defining their own variable to replace ansible_managed
+    # DTFIX-MERGE: deprecate this in favor of users defining their own variable to replace ansible_managed
     #        to make the transition easier, there should be a facility to define custom variables (with templates) in config
     managed_str = managed_default.format(
         # IMPORTANT: These values must be constant strings to avoid template injection.
@@ -51,7 +51,7 @@ def generate_ansible_template_vars(path, fullpath=None, dest_path=None):
 
     temp_vars['ansible_managed'] = AnsibleTagHelper.tag_copy(managed_default, time.strftime(managed_str, time.localtime(os.path.getmtime(b_path))))
 
-    # DTFIX-U: some config values should be trusted as templates -- config should be able to decide that
+    # DTFIX-FUTURE: some config values should be trusted as templates -- config should be able to decide that
     #        once config provides a trusted value, this can be removed and the trust will be preserved by the tag_copy above
     temp_vars['ansible_managed'] = TrustedAsTemplate().tag(temp_vars['ansible_managed'])
 
