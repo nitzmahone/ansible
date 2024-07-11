@@ -27,7 +27,7 @@ import multiprocessing.queues
 
 from ansible import constants as C
 from ansible import context
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleError, ExitCode
 from ansible.executor.play_iterator import PlayIterator
 from ansible.executor.stats import AggregateStats
 from ansible.executor.task_result import TaskResult
@@ -122,13 +122,12 @@ class TaskQueueManager:
     which dispatches the Play's tasks to hosts.
     '''
 
-    # DTFIX-MERGE: figure out to line these up with ansible.errors.ExitCodes
-    RUN_OK = 0
-    RUN_ERROR = 1
-    RUN_FAILED_HOSTS = 2
-    RUN_UNREACHABLE_HOSTS = 4
-    RUN_FAILED_BREAK_PLAY = 8
-    RUN_UNKNOWN_ERROR = 255
+    RUN_OK = ExitCode.SUCCESS
+    RUN_ERROR = ExitCode.GENERIC_ERROR
+    RUN_FAILED_HOSTS = ExitCode.HOST_FAILED
+    RUN_UNREACHABLE_HOSTS = ExitCode.HOST_UNREACHABLE
+    RUN_FAILED_BREAK_PLAY = 8  # never leaves PlaybookExecutor.run
+    RUN_UNKNOWN_ERROR = 255  # never leaves PlaybookExecutor.run, intentionally includes the bit value for 8
 
     def __init__(self, inventory, variable_manager, loader, passwords, stdout_callback=None, run_additional_callbacks=True, run_tree=False, forks=None):
 

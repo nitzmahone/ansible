@@ -21,13 +21,13 @@ from .utils import concat_message, get_chained_message, RedactAnnotatedSourceCon
 
 
 class ExitCode(enum.IntEnum):
-    SUCCESS = 0
-    GENERIC_ERROR = 1
-    HOST_FAILED = 2  # TQM-sourced?
-    HOST_UNREACHABLE = 3  # TQM-sourced?
-    PARSER_ERROR = 4
+    SUCCESS = 0  # used by TQM, must be bit-flag safe
+    GENERIC_ERROR = 1  # used by TQM, must be bit-flag safe
+    HOST_FAILED = 2  # TQM-sourced, must be bit-flag safe
+    HOST_UNREACHABLE = 4  # TQM-sourced, must be bit-flag safe
+    PARSER_ERROR = 4  # TEMPFIX: CLI-sourced, conflicts with HOST_UNREACHABLE
     INVALID_CLI_OPTION = 5
-    UNICODE_ERROR = 6  # obsolete, no longer used?
+    UNICODE_ERROR = 6  # obsolete, no longer used
     KEYBOARD_INTERRUPT = 99
     UNKNOWN_ERROR = 250
 
