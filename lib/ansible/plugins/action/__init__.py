@@ -571,7 +571,7 @@ class ActionBase(ABC):
         '''
 
         if isinstance(data, str):
-            data = str.encode(errors='surrogateescape')
+            data = data.encode(errors='surrogateescape')
         elif not isinstance(data, bytes):
             raise TypeError('data must be either a string or bytes')
 
