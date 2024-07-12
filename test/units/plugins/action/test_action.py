@@ -609,11 +609,14 @@ class TestActionBase(unittest.TestCase):
 
         self.assertEqual(action_base._transfer_data('/path/to/remote/file', 'some data'), '/path/to/remote/file')
         self.assertEqual(action_base._transfer_data('/path/to/remote/file', 'some mixed data: fö〩'), '/path/to/remote/file')
-        self.assertEqual(action_base._transfer_data('/path/to/remote/file', dict(some_key='some value')), '/path/to/remote/file')
-        self.assertEqual(action_base._transfer_data('/path/to/remote/file', dict(some_key='fö〩')), '/path/to/remote/file')
+        self.assertEqual(action_base._transfer_data('/path/to/remote/file', 'some data'.encode()), '/path/to/remote/file')
+        self.assertEqual(action_base._transfer_data('/path/to/remote/file', 'some mixed data: fö〩'.encode()), '/path/to/remote/file')
 
         mock_afo.write.side_effect = Exception()
         self.assertRaises(AnsibleError, action_base._transfer_data, '/path/to/remote/file', '')
+
+        with pytest.raises(TypeError):
+            action_base._transfer_data('/path/to/remote/file', dict())
 
     def test_action_base__execute_remote_stat(self):
         # create our fake task
