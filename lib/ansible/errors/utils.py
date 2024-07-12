@@ -193,7 +193,7 @@ class SourceContext:
         if value is None:
             return None
 
-        if type(value) is AnsibleSourcePosition:
+        if isinstance(value, AnsibleSourcePosition):
             position = value
         else:
             position = AnsibleSourcePosition.get_tag(value)

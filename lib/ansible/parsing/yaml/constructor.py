@@ -99,7 +99,7 @@ class AnsibleConstructor(SafeConstructor):
     def construct_yaml_omap(self, node):
         src_pos = self._node_position_info(node)
         display.deprecated(
-            msg=f'Use of the YAML `!!omap` tag is deprecated.',
+            msg='Use of the YAML `!!omap` tag is deprecated.',
             version='2.21',
             obj=src_pos,
             help_text='Use a standard mapping instead, as key order is always preserved.',
@@ -111,7 +111,7 @@ class AnsibleConstructor(SafeConstructor):
     def construct_yaml_pairs(self, node):
         src_pos = self._node_position_info(node)
         display.deprecated(
-            msg=f'Use of the YAML `!!pairs` tag is deprecated.',
+            msg='Use of the YAML `!!pairs` tag is deprecated.',
             version='2.21',
             obj=src_pos,
             help_text='Use a standard mapping instead.',
