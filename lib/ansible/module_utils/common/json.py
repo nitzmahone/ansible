@@ -468,7 +468,7 @@ def _create_encoding_check_error() -> Exception:
     )
 
 
-@functools.cache
+@functools.lru_cache
 def _string_encoding_check_enabled() -> bool:
     """Return True if JSON deserialization should verify strings can be encoded as valid UTF8."""
     try:
