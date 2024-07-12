@@ -31,7 +31,6 @@ from ansible.module_utils.json_utils import _filter_non_json_lines
 from ansible.module_utils.serialization import get_module_decoder, Direction, get_module_encoder
 from ansible.module_utils.six import binary_type, string_types, text_type
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
-from ansible.module_utils.common.json import AnsibleJSONEncoder
 from ansible.release import __version__
 from ansible.template.templar import Templar
 from ansible.utils.collection_loader import resource_from_fqcr
@@ -1223,7 +1222,7 @@ class ActionBase(ABC):
             decoder = get_module_decoder(profile, Direction.MODULE_TO_CONTROLLER)
             data = json.loads(filtered_output, cls=decoder)
 
-            _errors.AnsibleModuleCapturedError.handle_action_exception(data, is_action=False)
+            _errors.AnsibleModuleCapturedError.normalize_result_exception(data)
 
             data['_ansible_parsed'] = True  # DTFIX-U: rip this out and all usages of it
         except ValueError as ex:

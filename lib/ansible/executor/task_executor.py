@@ -412,7 +412,10 @@ class TaskExecutor:
 
         with _DeferredWarningContext(variables=variables) as warning_ctx:
             try:
+                # DTFIX-FUTURE: improve error handling to prioritize the earliest exception, turning the remaining ones into warnings
                 result = self._execute_internal(templar, variables)
+                self._apply_task_result_compat(result, warning_ctx)
+                _errors.AnsibleModuleCapturedError.maybe_raise_on_result(result)
             except Exception as ex:
                 try:
                     raise AnsibleTaskError(obj=self._task.get_ds()) from ex
@@ -421,8 +424,6 @@ class TaskExecutor:
                     result.update(
                         changed=False,
                     )
-            else:
-                self._apply_task_result_compat(result, warning_ctx)
 
             result.update(_ansible_no_log=self._task.no_log_with_fallback(templar))
 
@@ -813,8 +814,6 @@ class TaskExecutor:
     @staticmethod
     def _apply_task_result_compat(result: dict[str, t.Any], warning_ctx: _DeferredWarningContext) -> None:
         """Apply backward-compatibility mutations to the supplied task result."""
-        _errors.AnsibleModuleCapturedError.handle_action_exception(result, is_action=True)
-
         if warnings := result.get('warnings'):
             if isinstance(warnings, list):
                 for warning in warnings:

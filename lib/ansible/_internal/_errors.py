@@ -36,17 +36,20 @@ class AnsibleModuleCapturedError(AnsibleRuntimeError):
         return None
 
     @classmethod
-    def handle_action_exception(cls, result: dict[str, t.Any], is_action: bool) -> None:
-        """Remove the `exception` key from the result, if present, raising an error if `exception` exists and is not None."""
+    def normalize_result_exception(cls, result: dict[str, t.Any]) -> ErrorDetail | None:
+        """
+        Normalize the result `exception`, if any, to be an `ErrorDetail` instance.
+        The `exception` key will be removed if falsey.
+        An `ErrorDetail` instance will be returned if `failed` is truthy.
+        """
         if not isinstance(result, dict):
-            raise TypeError(f'Malformed action result. Received {type(result)} instead of {dict}.')
+            raise TypeError(f'Malformed result. Received {type(result)} instead of {dict}.')
 
-        if (exception := result.pop('exception', None)) is None:
-            return
+        failed = result.get('failed')  # DTFIX-FUTURE: warn if failed is present and not a bool, or exception is present without failed being True
+        exception = result.pop('exception', None)
 
-        if is_action:
-            # deprecated: description='turn this into a deprecation warning (actions should raise, not set exception)' core_version='2.22'
-            pass
+        if not failed and not exception:
+            return None
 
         if isinstance(exception, ErrorDetail):
             error_detail = exception
@@ -54,9 +57,15 @@ class AnsibleModuleCapturedError(AnsibleRuntimeError):
             # translate non-ErrorDetail errors
             error_detail = ErrorDetail(
                 errors=[ErrorMessage(msg=str(result.get('msg', 'Unknown error.')))],
-                formatted_traceback=str(exception),
+                formatted_traceback=str(exception) if exception else None,
             )
 
         result.update(exception=error_detail)
 
-        raise cls(error_detail, result)
+        return error_detail if failed else None  # even though error detail was normalized, only return it if the result indicated failure
+
+    @classmethod
+    def maybe_raise_on_result(cls, result: dict[str, t.Any]) -> None:
+        """Normalize the result and raise an exception if the result indicated failure."""
+        if error_detail := cls.normalize_result_exception(result):
+            raise cls(error_detail, result)
