@@ -87,7 +87,7 @@ def discover_interpreter(action, interpreter_name, discovery_mode, task_vars):
 
         if not found_interpreters:
             if not is_silent:
-                display.warning(f'No python interpreters found for host {host!r} (tried {bootstrap_python_list!r}).')
+                display.warning(msg=f'No python interpreters found for host {host!r} (tried {bootstrap_python_list!r}).')
             # this is lame, but returning None or throwing an exception is uglier
             return _FALLBACK_INTERPRETER
 
@@ -134,7 +134,7 @@ def discover_interpreter(action, interpreter_name, discovery_mode, task_vars):
             if platform_interpreter not in bootstrap_python_list:
                 # sanity check to make sure we looked for it
                 if not is_silent:
-                    display.warning(f"Platform interpreter {platform_interpreter!r} on host {host!r} is missing from bootstrap list.")
+                    display.warning(msg=f"Platform interpreter {platform_interpreter!r} on host {host!r} is missing from bootstrap list.")
 
             if not is_silent:
                 display.warning(
@@ -154,7 +154,7 @@ def discover_interpreter(action, interpreter_name, discovery_mode, task_vars):
         raise
     except Exception as ex:
         if not is_silent:
-            display.error_as_warning(f'Unhandled error in Python interpreter discovery for host {host!r}.', ex)
+            display.error_as_warning(msg=f'Unhandled error in Python interpreter discovery for host {host!r}.', exception=ex)
 
             if res and res.get('stderr'):
                 display.vvv(msg=u'Interpreter discovery remote stderr:\n{0}'.format(to_text(res.get('stderr'))), host=host)
