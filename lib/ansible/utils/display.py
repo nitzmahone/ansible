@@ -343,12 +343,9 @@ class Display(metaclass=Singleton):
         self.setup_curses = False
 
     def _replacing_warning_handler(self, exception: UnicodeError) -> tuple[str | bytes, int]:
-        # TODO: This should probably be deferred until after the current display is completed
-        #       this will require some amount of new functionality
-        self.deprecated(
-            'Non UTF-8 encoded data replaced with "?" while displaying text to stdout/stderr, this is temporary and will become an error',
-            version='2.18',
-        )
+        # This can't be removed as long as we have the possibility of encountering un-renderable strings
+        # created with `surrogateescape`; the alternative of having display methods hard fail is untenable.
+        self.warning('Non UTF-8 encoded data replaced with "?" while displaying text to stdout/stderr.')
         return '?', exception.end
 
     def set_queue(self, queue: FinalQueue) -> None:

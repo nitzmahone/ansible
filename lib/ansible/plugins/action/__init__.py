@@ -565,18 +565,19 @@ class ActionBase(ABC):
         self._connection.put_file(local_path, remote_path)
         return remote_path
 
-    def _transfer_data(self, remote_path, data):
+    def _transfer_data(self, remote_path: str | bytes, data: str | bytes) -> str | bytes:
         '''
         Copies the module data out to the temporary module path.
         '''
 
-        if isinstance(data, dict):
-            data = json.dumps(data, cls=AnsibleJSONEncoder, preserve_datatags=True)
+        if isinstance(data, str):
+            data = str.encode(errors='surrogateescape')
+        elif not isinstance(data, bytes):
+            raise TypeError('data must be either a string or bytes')
 
         afd, afile = tempfile.mkstemp(dir=C.DEFAULT_LOCAL_TMP)
         afo = os.fdopen(afd, 'wb')
         try:
-            data = to_bytes(data, errors='surrogate_or_strict')
             afo.write(data)
         except Exception as e:
             raise AnsibleError("failure writing module data to temporary file for transfer: %s" % to_native(e))
@@ -1224,18 +1225,7 @@ class ActionBase(ABC):
 
             _errors.AnsibleModuleCapturedError.handle_action_exception(data, is_action=False)
 
-            if C.MODULE_STRICT_UTF8_RESPONSE and not data.pop('_ansible_trusted_utf8', None):
-                try:
-                    _validate_utf8_json(data)
-                except UnicodeEncodeError:
-                    # When removing this, also remove the loop and latin-1 from ansible.module_utils.common.text.converters.jsonify
-                    display.deprecated(
-                        f'Module "{self._task.resolved_action or self._task.action}" returned non UTF-8 data in '
-                        'the JSON response. This will become an error in the future',
-                        version='2.18',
-                    )
-
-            data['_ansible_parsed'] = True
+            data['_ansible_parsed'] = True  # DTFIX-U: rip this out and all usages of it
         except ValueError as ex:
             # not valid json, lets try to capture error
             data = dict(failed=True, _ansible_parsed=False)

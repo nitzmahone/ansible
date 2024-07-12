@@ -9,6 +9,8 @@ from ansible.module_utils.common import json as _json
 
 
 class _Profile(_json._JSONSerializationProfile):
+    encode_strings_as_utf8 = True
+
     @classmethod
     def post_init(cls) -> None:
         cls.allowed_ansible_serializable_types = _json._common_module_types | _json._common_module_response_types

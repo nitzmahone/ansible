@@ -25,6 +25,7 @@ from ansible.template.utils import TemplateContext
 from ansible.utils.datatag.tags import TrustedAsTemplate
 from ansible.module_utils.serialization import get_encoder, get_decoder, fallback_to_str
 from ansible.utils import serialization as controller_serialization
+from ansible.errors import AnsibleRuntimeError
 
 
 class CustomMapping(c.Mapping):
@@ -50,6 +51,7 @@ basic_values = (
     1,
     1.1,
     'hi',
+    '汉语',  # non-ASCII string
     b'hi',
     datetime.datetime(2024, 1, 2, 3, 4, 5, 6, datetime.timezone.utc, fold=1),
     datetime.time(1, 2, 3, 4, datetime.timezone.utc, fold=1),
@@ -119,7 +121,10 @@ class _TestParameters:
                 payload = ex
                 round_trip = None
             else:
-                round_trip = json.loads(payload, cls=decoder)
+                try:
+                    round_trip = json.loads(payload, cls=decoder)
+                except Exception as ex:
+                    round_trip = ex
 
             return _TestOutput(
                 payload=payload,
@@ -251,6 +256,7 @@ additional_test_parameters: list[_TestParameters] = []
 additional_test_parameters.extend(ProfileHelper(fallback_to_str._Profile.profile_name).create_parameters_from_values(
     b'\x00',  # valid utf-8 strict, JSON escape sequence required
     b'\x80',  # utf-8 strict decoding fails, forcing the use of an error handler such as surrogateescape, JSON escape sequence required
+    '\udc80',  # same as above, but already a string (verify that the string version is handled the same as the bytes version)
     {1: "1"},  # integer key
     {b'hi': "1"},  # bytes key
     {TrustedAsTemplate().tag(b'hi'): "2"},  # tagged bytes key
@@ -295,7 +301,12 @@ def test_profile(test_case: _TestCase) -> None:
     else:
         assert output.payload == test_case.expected.payload
         assert type(output.round_trip) is type(test_case.expected.round_trip)
-        assert output.round_trip == test_case.expected.round_trip
+
+        if isinstance(output.round_trip, AnsibleRuntimeError):
+            assert str(output.round_trip.original_message) == str(test_case.expected.round_trip.original_message)
+        else:
+            assert output.round_trip == test_case.expected.round_trip
+
         assert output.tags == test_case.expected.tags
 
 

@@ -182,7 +182,7 @@ class InventoryCLI(CLI):
                     'change.' % e.args[0]
                 )
         else:
-            results = json.dumps(stuff, cls=legacy_inventory.Encoder, sort_keys=True, indent=4, ensure_ascii=False)
+            results = json.dumps(stuff, cls=legacy_inventory.Encoder, sort_keys=True, indent=4)
 
         return results
 
