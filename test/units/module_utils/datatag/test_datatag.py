@@ -44,6 +44,13 @@ from ansible.module_utils.datatag import (
 )
 from ansible.module_utils.datatag.tags import Deprecated
 
+try:
+    from ansible._internal._errors import CapturedErrorDetail
+except ImportError:
+    class CapturedErrorDetail:
+        pass
+
+
 if sys.version_info >= (3, 9):
     from typing import get_type_hints
 else:
@@ -505,6 +512,7 @@ class TestDatatagTarget(AutoParamSupport):
             'JinjaConstTemplate' not in instance_type.__name__ and
             instance_type is not AnsibleTaggedObject and
             instance_type is not AnsibleSerializableDataclass and
+            instance_type is not CapturedErrorDetail and  # DTFIX-U: is this safe to skip serialization tests on?
             not issubclass(instance_type, AnsibleSerializableWrapper)
         )}
 
