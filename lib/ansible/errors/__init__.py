@@ -14,7 +14,6 @@ from collections.abc import Sequence
 from json import JSONDecodeError
 
 from ansible.module_utils.common.text.converters import to_text
-from ..module_utils.common.messages import ErrorDetail
 from ..utils.datatag.tags import AnsibleSourcePosition
 
 from .utils import concat_message, get_chained_message, RedactAnnotatedSourceContext, SourceContext, _dedupe_and_concat_message_chain
@@ -137,10 +136,6 @@ class AnsibleError(Exception):
 
     def __str__(self) -> str:
         return self.message
-
-    @property
-    def additional_error_detail(self) -> ErrorDetail | None:
-        return None
 
 
 class AnsibleUndefinedConfigEntry(AnsibleError):

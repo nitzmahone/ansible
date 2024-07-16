@@ -115,6 +115,7 @@ def _get_display() -> Display | _TemporaryDisplay:
 def _create_error_detail(exception: BaseException, event: _traceback.TracebackEvent | None = None) -> ErrorDetail:
     # DTFIX-MERGE: can this be moved to _internal._errors?
     from . import AnsibleError
+    from .._internal import _errors
 
     target_exception: BaseException | None = exception
     error_chain: list[ErrorMessage] = []
@@ -124,7 +125,7 @@ def _create_error_detail(exception: BaseException, event: _traceback.TracebackEv
     else:
         formatted_traceback = None
 
-    while target_exception:
+    while target_exception:  # DTFIX-U: rename this, it sure looks confusing
         if isinstance(target_exception, AnsibleError):
             include_cause_message = target_exception.include_cause_message
             edc = ErrorMessage(
@@ -140,13 +141,14 @@ def _create_error_detail(exception: BaseException, event: _traceback.TracebackEv
 
         error_chain.append(edc)
 
-        if isinstance(target_exception, AnsibleError) and (detail := target_exception.additional_error_detail):
+        if isinstance(target_exception, _errors.AnsibleCapturedError):
+            detail = target_exception.additional_error_detail
             error_chain.extend(detail.errors)
 
             if formatted_traceback and detail.formatted_traceback:
                 formatted_traceback = (
                     f'{detail.formatted_traceback}\n'
-                    f'The target exception above was the direct cause of the following local exception:\n\n'
+                    f'The {target_exception.context} exception above was the direct cause of the following controller exception:\n\n'
                     f'{formatted_traceback}'
                 )
 

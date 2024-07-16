@@ -415,7 +415,7 @@ class TaskExecutor:
                 # DTFIX-FUTURE: improve error handling to prioritize the earliest exception, turning the remaining ones into warnings
                 result = self._execute_internal(templar, variables)
                 self._apply_task_result_compat(result, warning_ctx)
-                _errors.AnsibleModuleCapturedError.maybe_raise_on_result(result)
+                _errors.AnsibleActionCapturedError.maybe_raise_on_result(result)
             except Exception as ex:
                 try:
                     raise AnsibleTaskError(obj=self._task.get_ds()) from ex

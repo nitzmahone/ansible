@@ -644,6 +644,7 @@ def common_environment() -> dict[str, str]:
         # export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
         'OBJC_DISABLE_INITIALIZE_FORK_SAFETY',
         'ANSIBLE_KEEP_REMOTE_FILES',
+        'ANSIBLE_DISPLAY_TRACEBACK',  # DTFIX-MERGE: this isn't how we want to expose this, since it won't work for delegated controllers
         # MacOS Homebrew Compatibility
         # https://cryptography.io/en/latest/installation/#building-cryptography-on-macos
         # This may also be required to install pyyaml with libyaml support when installed in non-standard locations.

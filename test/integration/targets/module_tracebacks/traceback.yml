@@ -50,9 +50,8 @@
         that:
           - hostvars.testhost_local.handled_error.exception is contains 'Traceback'
           - hostvars.testhost_ssh.handled_error.exception is contains 'Traceback'
-
-          - hostvars.testhost_local.unhandled_error.exception is undefined  # catastrophic failures have stdout/stderr, but no discrete traceback
-          - hostvars.testhost_ssh.unhandled_error.exception is undefined  # catastrophic failures have stdout/stderr, but no discrete traceback
+          - hostvars.testhost_local.unhandled_error.exception is contains 'Traceback'
+          - hostvars.testhost_ssh.unhandled_error.exception is contains 'Traceback'
       when: error_tracebacks
 
     - name: verify tracebacks were not captured
@@ -60,7 +59,6 @@
         that:
           - hostvars.testhost_local.handled_error.exception == '(traceback unavailable)'
           - hostvars.testhost_ssh.handled_error.exception == '(traceback unavailable)'
-
-          - hostvars.testhost_local.unhandled_error.exception is undefined  # catastrophic failures have stdout/stderr, but no discrete traceback
-          - hostvars.testhost_ssh.unhandled_error.exception is undefined  # catastrophic failures have stdout/stderr, but no discrete traceback
+          - hostvars.testhost_local.unhandled_error.exception == '(traceback unavailable)'
+          - hostvars.testhost_ssh.unhandled_error.exception == '(traceback unavailable)'
       when: not error_tracebacks

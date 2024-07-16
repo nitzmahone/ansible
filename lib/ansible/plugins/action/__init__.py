@@ -1213,40 +1213,63 @@ class ActionBase(ABC):
         display.debug("done with _execute_module (%s, %s)" % (module_name, module_args))
         return data
 
-    def _parse_returned_data(self, res, profile: str):
+    def _parse_returned_data(self, res: dict[str, t.Any], profile: str) -> dict[str, t.Any]:
         try:
-            filtered_output, warnings = _filter_non_json_lines(res.get('stdout', u''), objects_only=True)
+            filtered_output, warnings = _filter_non_json_lines(res.get('stdout', ''), objects_only=True)
+
             for w in warnings:
                 display.warning(w)
 
             decoder = get_module_decoder(profile, Direction.MODULE_TO_CONTROLLER)
+
             data = json.loads(filtered_output, cls=decoder)
 
             _errors.AnsibleModuleCapturedError.normalize_result_exception(data)
 
-            data['_ansible_parsed'] = True  # DTFIX-U: rip this out and all usages of it
+            data.update(_ansible_parsed=True)  # this must occur after normalize_result_exception, since it checks the type of data to ensure it's a dict
         except ValueError as ex:
-            # not valid json, lets try to capture error
-            data = dict(failed=True, _ansible_parsed=False)
-            data['module_stdout'] = res.get('stdout', u'')
-            if 'stderr' in res:
-                data['module_stderr'] = res['stderr']
+            message = "Module result deserialization failed."
+            help_text = ""
+            include_cause_message = True
 
-            # The default
-            data['msg'] = f"Module result deserialization failed: {ex}"
-
-            # try to figure out if we are missing interpreter
             if self._used_interpreter is not None:
-                interpreter = re.escape(self._used_interpreter.lstrip('!#'))
-                match = re.compile('%s: (?:No such file or directory|not found)' % interpreter)
-                if match.search(data['module_stderr']) or match.search(data['module_stdout']):
-                    data['msg'] = "The module failed to execute correctly, you probably need to set the interpreter."
+                interpreter = self._used_interpreter.lstrip('!#')
+                # "not found" case is currently not tested; it was once reproducible
+                # see: https://github.com/ansible/ansible/pull/53534
+                not_found_err_re = re.compile(rf'{re.escape(interpreter)}: (?:No such file or directory|not found|command not found)')
 
-            # always append hint
-            data['msg'] += '\nSee stdout/stderr for the exact error'
+                if not_found_err_re.search(res.get('stderr', '')) or not_found_err_re.search(res.get('stdout', '')):
+                    message = f"The module interpreter {interpreter!r} was not found."
+                    help_text = 'Consider overriding the configured interpreter path for this host. '
+                    include_cause_message = False  # cause context *might* be useful in the traceback, but the JSON deserialization failure message is not
 
-            if 'rc' in res:
-                data['rc'] = res['rc']
+            try:
+                # Because the underlying action API is built on result dicts instead of exceptions (for all but the most catastrophic failures),
+                # we're using a tweaked version of the module exception handler to get new ErrorDetail-backed errors from this part of the code.
+                # Ideally this would raise immediately on failure, but this would likely break actions that assume `ActionBase._execute_module()`
+                # does not raise on module failure.
+
+                error = AnsibleError(
+                    message=message,
+                    help_text=help_text + "See stdout/stderr for the returned output.",
+                )
+
+                error.include_cause_message = include_cause_message
+
+                raise error from ex
+            except AnsibleError as ansible_ex:
+                sentinel = object()
+
+                data = self.result_dict_from_exception(ansible_ex)
+                data.update(
+                    _ansible_parsed=False,
+                    module_stdout=res.get('stdout', ''),
+                    module_stderr=res.get('stderr', sentinel),
+                    rc=res.get('rc', sentinel),
+                )
+
+                data = {k: v for k, v in data.items() if v is not sentinel}
+
         return data
 
     # TEMPFIX: move to connection base
@@ -1422,7 +1445,7 @@ class ActionBase(ABC):
     @staticmethod
     def result_dict_from_exception(exception: BaseException) -> dict[str, t.Any]:
         """Return a failed task result dict from the given exception."""
-        if ansible_remoted_error := _errors.AnsibleModuleCapturedError.find_first_remoted_error(exception):
+        if ansible_remoted_error := _errors.AnsibleCapturedError.find_first_remoted_error(exception):
             result = ansible_remoted_error._result.copy()
         else:
             result = {}
