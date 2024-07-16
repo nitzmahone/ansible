@@ -47,7 +47,7 @@ class AnsibleCapturedError(AnsibleRuntimeError):
         The `exception` key will be removed if falsey.
         An `CapturedErrorDetail` instance will be returned if `failed` is truthy.
         """
-        if type(cls) is AnsibleCapturedError:
+        if type(cls) is AnsibleCapturedError:  # pylint: disable=unidiomatic-typecheck
             raise TypeError('The normalize_result_exception method cannot be called on the AnsibleCapturedError base type, use a derived type.')
 
         if not isinstance(result, dict):
