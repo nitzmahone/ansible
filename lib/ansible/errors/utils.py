@@ -279,7 +279,7 @@ class SourceContext:
                 line = line[:max_src_line_len - len(truncation_marker)] + truncation_marker
                 usable_line_len = max_src_line_len - len(truncation_marker)
 
-            annotated_source_lines.append(f'{str(line_num).rjust(line_label_width)} {line}')
+            annotated_source_lines.append(f'{str(line_num).rjust(line_label_width)}{" " if line else ""}{line}')
 
         if target_col_num and usable_line_len >= target_col_num >= 1:
             column_marker = f'column {target_col_num}'
