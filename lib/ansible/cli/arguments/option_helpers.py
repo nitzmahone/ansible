@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import operator
 import argparse
 import os
@@ -22,6 +23,8 @@ from ansible.module_utils.common.yaml import HAS_LIBYAML, yaml_load
 from ansible.release import __version__
 from ansible.utils.path import unfrackpath
 
+from ...utils.datatag.tags import TrustedAsTemplate
+
 
 #
 # Special purpose OptionParsers
@@ -33,12 +36,39 @@ class SortingHelpFormatter(argparse.HelpFormatter):
 
 
 class ArgumentParser(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs) -> None:
+        self.__actions: dict[str | None, type[argparse.Action]] = {}
+
+        super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def __trusted_cli_arg(value: str) -> str:
+        """Custom string type that applies trust to the value to allow it to be templated."""
+        return TrustedAsTemplate().tag(value)
+
+    def register(self, registry_name, value, object):
+        if registry_name == 'action':
+            self.__actions[value] = object
+
+        super().register(registry_name, value, object)
+
     def add_argument(self, *args, **kwargs):
         action = kwargs.get('action')
         help = kwargs.get('help')
         if help and action in {'append', 'append_const', 'count', 'extend', PrependListAction}:
             help = f'{help.rstrip(".")}. This argument may be specified multiple times.'
         kwargs['help'] = help
+
+        resolved_action = self.__actions.get(action, action)  # get the action by name, or use as-is (assume it's a subclass of argparse.Action)
+        action_signature = inspect.signature(resolved_action.__init__)
+
+        if action_signature.parameters.get('type'):
+            # DTFIX-U: apply AnsibleSourcePosition (or its expanded provenance replacement) here?
+            if (arg_type := kwargs.get('type', 'str')) == 'str':
+                arg_type = self.__trusted_cli_arg  # all CLI strings are trusted by default
+
+            kwargs.update(type=arg_type)
+
         return super().add_argument(*args, **kwargs)
 
 
