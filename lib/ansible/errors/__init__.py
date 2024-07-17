@@ -163,8 +163,8 @@ class AnsibleAssertionError(AnsibleError, AssertionError):
 class AnsibleOptionsError(AnsibleError):
     """Invalid options were passed."""
 
-    # FUTURE: This exception is used for many non-CLI related errors.
-    #         The few cases which are CLI related should really be handled by argparse instead, at which point the exit code here can be removed.
+    # TEMPFIX: This exception is used for many non-CLI related errors.
+    #          The few cases which are CLI related should really be handled by argparse instead, at which point the exit code here can be removed.
     exit_code = ExitCode.INVALID_CLI_OPTION
 
 

@@ -56,8 +56,8 @@ class CallbackModule(CallbackBase):
         self._handle_exception(result._result, use_stderr=self.get_option('display_failed_stderr'))
         self._handle_warnings(result._result)
 
-        # FUTURE: this method should not exist- delegate "suggested keys to display" to the plugin or something... As-is, the placement of this
-        #         call obliterates `results`, which causes a task summary to be printed on loop failures, which we don't do anywhere else.
+        # TEMPFIX: this method should not exist, delegate "suggested keys to display" to the plugin or something... As-is, the placement of this
+        #          call obliterates `results`, which causes a task summary to be printed on loop failures, which we don't do anywhere else.
         self._clean_results(result._result, result._task.action)
 
         if result._task.loop and 'results' in result._result:

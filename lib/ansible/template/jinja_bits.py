@@ -687,7 +687,7 @@ def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
             yield ex.source
             # Normal error handling will convert the first AnsibleUndefined encountered into an exception, ignoring any further AnsibleUndefined values.
             # When using ReplaceUndefined having a second AnsibleUndefined allows us to warn the user about potential omission of subsequent template nodes.
-            # FUTURE: We should be able to accurately determine if truncation occurred by having the code generator smuggle out the number of expected nodes.
+            # DTFIX-FUTURE: We should be able to determine if truncation occurred by having the code generator smuggle out the number of expected nodes.
             yield AnsibleUndefined('template potentially truncated')
         else:
             if type(node) is TemplateModule:  # pylint: disable=unidiomatic-typecheck

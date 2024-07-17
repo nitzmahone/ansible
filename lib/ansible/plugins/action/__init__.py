@@ -1445,7 +1445,7 @@ class ActionBase(ABC):
     @staticmethod
     def result_dict_from_exception(exception: BaseException) -> dict[str, t.Any]:
         """Return a failed task result dict from the given exception."""
-        if ansible_remoted_error := _errors.AnsibleCapturedError.find_first_remoted_error(exception):
+        if ansible_remoted_error := _errors.AnsibleResultCapturedError.find_first_remoted_error(exception):
             result = ansible_remoted_error._result.copy()
         else:
             result = {}

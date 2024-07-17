@@ -543,7 +543,7 @@ class Templar:
             else:
                 result = self.evaluate_expression(conditional, escape_backslashes=False)
         except AnsibleUndefinedVariable as ex:
-            # FUTURE: we're only augmenting the message for context here; once we have proper contextual tracking, we can dump the re-raise
+            # DTFIX-FUTURE: we're only augmenting the message for context here; once we have proper contextual tracking, we can dump the re-raise
             raise AnsibleUndefinedVariable("Error while evaluating conditional.", obj=conditional) from ex
 
         if isinstance(result, bool):
@@ -583,10 +583,10 @@ class Templar:
                     obj=data,
                 )
 
-            # FUTURE: Once we have defined what methods are entry-points into templating, we can use inspect.stack() to find the most recent non-template
-            #         caller and use that for source position when no source position is available. This could be useful for situations where the template
-            #         was embedded in a plugin, or a plugin is otherwise responsible for losing the source position and/or trust. We can't just use the first
-            #         non-template caller as that will lead to false positivies for re-entrant calls (e.g. template plugins that call into templar).
+            # DTFIX-FUTURE: Once we have defined what methods are entry-points into templating, we can use inspect.stack() to find the most recent non-template
+            #   caller and use that for source position when no source position is available. This could be useful for situations where the template
+            #   was embedded in a plugin, or a plugin is otherwise responsible for losing the source position and/or trust. We can't just use the first
+            #   non-template caller as that will lead to false positivies for re-entrant calls (e.g. template plugins that call into templar).
 
             _display.warning('Skipped untrusted template.', help_text=help_text, obj=data)
 

@@ -33,7 +33,7 @@ from binascii import hexlify
 from binascii import unhexlify
 from binascii import Error as BinasciiError
 
-from ansible.module_utils._internal._ambient_context import AmbientContextBase
+from ansible.module_utils._internal import _ambient_context, _traceback
 from ansible.module_utils.datatag import AnsibleDatatagBase, AnsibleTagHelper
 from ansible.utils.datatag.tags import AnsibleSourcePosition, VaultedValue, UndecryptableVaultedValue
 
@@ -1302,12 +1302,15 @@ def _maybe_decrypt_ciphertext(ciphertext: str) -> str:
         # DTFIX-MERGE: consider combining VaultedValue and Undecryptable tags now that the latter is no longer a singleton
         # DTFIX-FUTURE: provide a better error when the default vault isn't present?
         # specially tag things we aren't able to decrypt (cheaper than a flag in VaultedValue)
-        tags.append(UndecryptableVaultedValue(reason=get_chained_message(ex)))
+        tags.append(UndecryptableVaultedValue(
+            reason=get_chained_message(ex),
+            traceback=_traceback.maybe_extract_traceback(ex, _traceback.TracebackEvent.ERROR),
+        ))
 
     return AnsibleTagHelper.tag(value, tags)
 
 
-class VaultSecretsContext(AmbientContextBase):
+class VaultSecretsContext(_ambient_context.AmbientContextBase):
     def __init__(self, secrets: list[tuple[str, VaultSecret]] | None = None) -> None:
         self.secrets = dict(
             default=VaultLib(secrets=secrets or []),

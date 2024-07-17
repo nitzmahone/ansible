@@ -3,7 +3,8 @@ from __future__ import annotations
 import dataclasses
 import typing as t
 
-from ansible.errors import AnsibleError
+from ansible._internal import _errors
+from ansible.module_utils.common.messages import ErrorDetail, ErrorMessage
 
 # noinspection PyProtectedMember
 from ansible.module_utils.datatag import (
@@ -30,13 +31,10 @@ class _VaultBombPoorlyNamedTag(AnsibleSingletonTagBase):
     pass
 
 
-class UndecryptableVaultError(AnsibleError):
-    """
-    Error raised by VaultBomb when an undecryptable variable is accessed.
-    The only detail preserved from the original decryption failure is the message chain.
-    The original cause chain is discarded, as these values are likely to cross process boundaries where the exception chain cannot be preserved.
-    """
-    # FUTURE: Subclass this tag to preserve the stringified traceback detail (when tracebacks are enabled) and update error handling logic to make use of it.
+class UndecryptableVaultError(_errors.AnsibleCapturedError):
+    """Error raised by VaultBomb when an undecryptable variable is accessed."""
+
+    context = 'vault'
     default_prefix = "Attempt to use undecryptable variable."
 
 
@@ -84,7 +82,13 @@ class _VaultBomb(Tripwire):
 
         uvv_tag = UndecryptableVaultedValue.get_tag(self._value)
 
-        raise UndecryptableVaultError(message=uvv_tag.reason, obj=obj)
+        raise UndecryptableVaultError(
+            obj=obj,
+            error_detail=ErrorDetail(
+                errors=[ErrorMessage(msg=uvv_tag.reason)],
+                formatted_traceback=uvv_tag.traceback,
+            ),
+        )
 
 
 class _AnsibleTaggedVaultBomb(_VaultBomb, AnsibleTaggedObject):

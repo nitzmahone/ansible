@@ -254,7 +254,7 @@ AnsibleConstructor.add_constructor(
     u'!vault',
     AnsibleConstructor.construct_vault_encrypted_unicode)  # type: ignore[type-var]
 
-# FUTURE: deprecate !vault-encrypted
+# TEMPFIX: deprecate !vault-encrypted
 AnsibleConstructor.add_constructor(
     u'!vault-encrypted',
     AnsibleConstructor.construct_vault_encrypted_unicode)  # type: ignore[type-var]

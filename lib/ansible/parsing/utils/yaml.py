@@ -26,7 +26,7 @@ def from_yaml(
 ) -> t.Any:
     """Creates a Python data structure from the given data, which can be either a JSON or YAML string."""
     with RedactAnnotatedSourceContext.maybe(create=not show_content):
-        # FUTURE: this whole two-step sucks, implement this natively in the YAML decoder or delegate?
+        # TEMPFIX: this whole two-step should be unnecessary, implement this natively in the YAML decoder or delegate?
         try:
             # we first try to load this data as JSON.
             # Fixes issues with extra vars json strings not being parsed correctly by the yaml parser

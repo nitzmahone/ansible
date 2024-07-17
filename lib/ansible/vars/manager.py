@@ -368,7 +368,7 @@ class VariableManager:
                             raise AnsibleParserError(f"Error reading `vars_files` file {vars_file!r}.", obj=vars_file) from ex
 
                 except AnsibleUndefinedVariable as ex:
-                    # FUTURE: this appears to be unreachable, and the skip logic seems faulty...
+                    # TEMPFIX: this appears to be unreachable, and the skip logic seems faulty...
                     if host is not None and self._fact_cache.get(host.name, dict()).get('module_setup') and task is not None:
                         raise AnsibleUndefinedVariable("an undefined variable was found when attempting to template the vars_files item '%s'"
                                                        % vars_file_item, obj=vars_file_item) from ex

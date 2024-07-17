@@ -39,19 +39,19 @@ class AnsibleYAMLParserError(AnsibleParserError):
         message: str | None = None
         help_text = None
 
-        # FUTURE: Do all this by walking the parsed YAML doc stream. Using regexes is a dead-end; YAML's just too flexible to not have a
-        # raft of false-positives and corner cases. If we directly consume either the YAML parse stream or override the YAML composer, we can
-        # better catch these things without worrying about duplicating YAML's scalar parsing logic around quoting/escaping. At first, we can
-        # replace the regex logic below with tiny special-purpose parse consumers to catch specific issues, but ideally, we could do a lot of this
-        # inline with the actual doc parse, since our rules are a lot more strict than YAML's (eg, no support for non-scalar keys), and a lot of the
-        # problem cases where that comes into play are around expression quoting and Jinja {{ syntax looking like weird YAML values we don't support.
-        # Some common examples, where -> is "what YAML actually sees":
-        # foo: {{ bar }} -> {"foo": {{"bar": None}: None}} - a mapping with a mapping as its key (legal YAML, but not legal Python/Ansible)
+        # TEMPFIX: Do all this by walking the parsed YAML doc stream. Using regexes is a dead-end; YAML's just too flexible to not have a
+        #  raft of false-positives and corner cases. If we directly consume either the YAML parse stream or override the YAML composer, we can
+        #  better catch these things without worrying about duplicating YAML's scalar parsing logic around quoting/escaping. At first, we can
+        #  replace the regex logic below with tiny special-purpose parse consumers to catch specific issues, but ideally, we could do a lot of this
+        #  inline with the actual doc parse, since our rules are a lot more strict than YAML's (eg, no support for non-scalar keys), and a lot of the
+        #  problem cases where that comes into play are around expression quoting and Jinja {{ syntax looking like weird YAML values we don't support.
+        #  Some common examples, where -> is "what YAML actually sees":
+        #  foo: {{ bar }} -> {"foo": {{"bar": None}: None}} - a mapping with a mapping as its key (legal YAML, but not legal Python/Ansible)
         #
-        # - copy: src=foo.txt  # kv syntax (kv could be on following line(s), too- implicit multi-line block scalar)
-        #     dest: bar.txt  # orphaned mapping, since the value of `copy` is the scalar "src=foo.txt"
+        #  - copy: src=foo.txt  # kv syntax (kv could be on following line(s), too- implicit multi-line block scalar)
+        #      dest: bar.txt  # orphaned mapping, since the value of `copy` is the scalar "src=foo.txt"
         #
-        # - msg == "Error: 'dude' was not found"  # unquoted scalar has a : in it -> {'msg == "Error"': 'dude'} [ was not found" ] is garbage orphan scalar
+        #  - msg == "Error: 'dude' was not found"  # unquoted scalar has a : in it -> {'msg == "Error"': 'dude'} [ was not found" ] is garbage orphan scalar
 
         # noinspection PyUnboundLocalVariable
         if not isinstance(exception, MarkedYAMLError):
@@ -71,7 +71,7 @@ class AnsibleYAMLParserError(AnsibleParserError):
         elif match := re.search(r'^\s*(?:-\s+)*(?:[\w\s]+:\s+)?(?P<value>\{\{.*}})', target_line):
             source_context = SourceContext.from_source_position(original_pos.replace(col=match.start('value') + 1))
             message = 'This may be an issue with missing quotes around a template block.'
-            # FUTURE: Use the captured value to show the actual fix required.
+            # TEMPFIX: Use the captured value to show the actual fix required.
             help_text = """
 For example:
 
@@ -95,7 +95,7 @@ Should be:
         ):
             source_context = SourceContext.from_source_position(original_pos.replace(col=value_match.start('value') + colon_match.start() + 1))
             message = 'Colons in unquoted values must be followed by a non-space character.'
-            # FUTURE: Use the captured value to show the actual fix required.
+            # TEMPFIX: Use the captured value to show the actual fix required.
             help_text = """
 For example:
 
@@ -114,7 +114,7 @@ Should be:
             if first != last:  # "foo" in bar
                 source_context = SourceContext.from_source_position(original_pos.replace(col=match.start('value') + 1))
                 message = 'Values starting with a quote must end with the same quote.'
-                # FUTURE: Use the captured value to show the actual fix required, and use that same logic to improve the source position further.
+                # TEMPFIX: Use the captured value to show the actual fix required, and use that same logic to improve the source position further.
                 help_text = """
 For example:
 
@@ -127,7 +127,7 @@ Should be:
             elif first == last and target_line.count(first) > 2:  # "foo" and "bar"
                 source_context = SourceContext.from_source_position(original_pos.replace(col=match.start('value') + 1))
                 message = 'Values starting with a quote must end with the same quote, and not contain that quote.'
-                # FUTURE: Use the captured value to show the actual fix required, and use that same logic to improve the source position further.
+                # TEMPFIX: Use the captured value to show the actual fix required, and use that same logic to improve the source position further.
                 help_text = """
 For example:
 

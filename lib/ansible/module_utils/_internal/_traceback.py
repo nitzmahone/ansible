@@ -34,7 +34,7 @@ def maybe_capture_traceback(event: TracebackEvent) -> str | None:
     tb_lines = []
 
     if current_frame := inspect.currentframe():
-        # FUTURE: rewrite target-side tracebacks to point at controller-side paths?
+        # DTFIX-FUTURE: rewrite target-side tracebacks to point at controller-side paths?
         frames = inspect.getouterframes(current_frame)
         ignore_frame_count = 2  # ignore this function and its caller
         tb_lines.append('Traceback (most recent call last):\n')

@@ -38,10 +38,12 @@ def check_methods() -> list[str]:
 def test_detonate_methods(name: str) -> None:
     """Verify all expected methods on _VaultBomb detonate and that the reason is propagated to the exception from the tag."""
     reason = "because i said so"
-    bomb = _VaultBomb.arm(UndecryptableVaultedValue(reason=reason).tag(""))
+    traceback = 'fake traceback'
+    bomb = _VaultBomb.arm(UndecryptableVaultedValue(reason=reason, traceback=traceback).tag(""))
     method = getattr(bomb, name)
 
     with pytest.raises(UndecryptableVaultError) as err:
         method()
 
     assert reason in err.value.message
+    assert traceback == err.value.additional_error_detail.formatted_traceback

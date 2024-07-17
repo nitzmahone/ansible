@@ -49,6 +49,7 @@ class VaultedValue(AnsibleDatatagBase):
 class UndecryptableVaultedValue(AnsibleDatatagBase):
     """Additional tag for vaulted values we couldn't decrypt on load that may contain forensic detail."""
     reason: str
+    traceback: str | None = None
 
 
 @dataclasses.dataclass(**_tag_dataclass_kwargs)

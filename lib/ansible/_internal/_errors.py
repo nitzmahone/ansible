@@ -8,19 +8,34 @@ from ansible.module_utils.common.messages import ErrorDetail, ErrorMessage, _dat
 
 
 class AnsibleCapturedError(AnsibleRuntimeError):
-    """An exception representing error detail captured in a foreign context (e.g., worker process, remote module target)."""
+    """An exception representing error detail captured in another context where the error detail must be serialized to be preserved."""
 
-    context: t.ClassVar[str]
+    context: t.ClassVar[str]  # DTFIX-MERGE: rename this and make it private since derived types may not be internal?
 
-    def __init__(self, error_detail: ErrorDetail, result: dict[str, t.Any]) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        *,
+        obj: t.Any = None,
+        error_detail: ErrorDetail,
+    ) -> None:
+        super().__init__(
+            obj=obj,
+        )
 
         self._error_detail = error_detail
-        self._result = result
 
     @property
     def additional_error_detail(self) -> ErrorDetail:
         return self._error_detail
+
+
+class AnsibleResultCapturedError(AnsibleCapturedError):
+    """An exception representing error detail captured in a foreign context where an action/module result dictionary is involved."""
+
+    def __init__(self, error_detail: ErrorDetail, result: dict[str, t.Any]) -> None:
+        super().__init__(error_detail)
+
+        self._result = result
 
     @classmethod
     def maybe_raise_on_result(cls, result: dict[str, t.Any]) -> None:
@@ -47,7 +62,7 @@ class AnsibleCapturedError(AnsibleRuntimeError):
         The `exception` key will be removed if falsey.
         An `CapturedErrorDetail` instance will be returned if `failed` is truthy.
         """
-        if type(cls) is AnsibleCapturedError:  # pylint: disable=unidiomatic-typecheck
+        if type(cls) is AnsibleResultCapturedError:  # pylint: disable=unidiomatic-typecheck
             raise TypeError('The normalize_result_exception method cannot be called on the AnsibleCapturedError base type, use a derived type.')
 
         if not isinstance(result, dict):
@@ -93,14 +108,14 @@ class AnsibleCapturedError(AnsibleRuntimeError):
         return value + '\n'
 
 
-class AnsibleActionCapturedError(AnsibleCapturedError):
+class AnsibleActionCapturedError(AnsibleResultCapturedError):
     """An exception representing error detail sourced directly by an action in its result dictionary."""
 
     default_prefix = 'Action failed.'
     context = 'action'
 
 
-class AnsibleModuleCapturedError(AnsibleCapturedError):
+class AnsibleModuleCapturedError(AnsibleResultCapturedError):
     """An exception representing error detail captured in a module context and returned from an action's result dictionary."""
 
     default_prefix = 'Module failed.'
@@ -110,4 +125,4 @@ class AnsibleModuleCapturedError(AnsibleCapturedError):
 @dataclasses.dataclass(**_dataclass_kwargs)
 class CapturedErrorDetail(ErrorDetail):
     # DTFIX-MERGE: where to put this, name, etc. since it shows up in results, it's not exactly private (and contains a type ref to an internal type)
-    error_type: type[AnsibleCapturedError] | None = None
+    error_type: type[AnsibleResultCapturedError] | None = None

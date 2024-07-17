@@ -769,7 +769,7 @@ class StrategyBase:
             if original_task.register:
 
                 if not isidentifier(original_task.register):
-                    # FUTURE: this is duplicated in task_executor
+                    # TEMPFIX: this is duplicated in task_executor
                     raise AnsibleError("Invalid variable name in 'register' specified.", obj=original_task.register)
 
                 host_list = self.get_task_hosts(iterator, original_host, original_task)

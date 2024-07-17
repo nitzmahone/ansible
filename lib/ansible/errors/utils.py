@@ -231,10 +231,10 @@ class SourceContext:
         """Attempt to retrieve source and render a contextual indicator of an error location."""
         from ..parsing.vault import is_encrypted
 
-        # FUTURE: support referencing the column after the end of the target line, so we can indicate where a missing character (quote) needs to be added
-        #         this is also useful for cases like end-of-stream reported by the YAML parser
+        # DTFIX-FUTURE: support referencing the column after the end of the target line, so we can indicate where a missing character (quote) needs to be added
+        #               this is also useful for cases like end-of-stream reported by the YAML parser
 
-        # FUTURE: Implement line wrapping and match annotated line width to the terminal display width.
+        # DTFIX-FUTURE: Implement line wrapping and match annotated line width to the terminal display width.
 
         context_line_count: t.Final = 2
         max_annotated_line_width: t.Final = 120

@@ -176,7 +176,7 @@ class _JSONSerializationProfile:
 
     @classmethod
     def serialize_as_list(cls, value: t.Iterable) -> list:
-        # FUTURE: once we have separate control/data channels for module-to-controller (and back), warn about this conversion
+        # DTFIX-FUTURE: once we have separate control/data channels for module-to-controller (and back), warn about this conversion
         return AnsibleTagHelper.tag_copy(value, (item for item in value), value_type=list)
 
     @classmethod
@@ -334,7 +334,7 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         o = AnsibleAccessContext.current().access(o)
 
         if isinstance(o, Tripwire):
-            # FUTURE: since Tripwire.trip() is NoReturn, ideally we'd not need this bogus assignment, but it's not handled properly by all tools
+            # DTFIX-FUTURE: since Tripwire.trip() is NoReturn, ideally we'd not need this bogus assignment, but it's not handled properly by all tools
             o = o.trip()  # trip failures for AnsibleUndefined, VaultBomb, etc.
         elif not self._preserve_datatags and isinstance(o, AnsibleTaggedObject):
             o = o._native_copy()
