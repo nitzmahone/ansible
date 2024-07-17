@@ -33,7 +33,7 @@ class AnsibleResultCapturedError(AnsibleCapturedError):
     """An exception representing error detail captured in a foreign context where an action/module result dictionary is involved."""
 
     def __init__(self, error_detail: ErrorDetail, result: dict[str, t.Any]) -> None:
-        super().__init__(error_detail)
+        super().__init__(error_detail=error_detail)
 
         self._result = result
 
