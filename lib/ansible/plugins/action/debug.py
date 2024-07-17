@@ -34,7 +34,7 @@ class ActionModule(ActionBase):
 
     TRANSFERS_FILES = False
     _requires_connection = False
-    FIXME_DOES_OWN_TEMPLATING = True
+    DOES_OWN_TEMPLATING = True
 
     def run(self, tmp=None, task_vars=None):
         # DTFIX-U: we need more consistent error handling, either all failures should be ignored or none of them

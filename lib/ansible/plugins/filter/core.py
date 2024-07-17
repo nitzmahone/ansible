@@ -490,7 +490,8 @@ def b64decode(string, encoding='utf-8'):
     return to_text(base64.b64decode(to_bytes(string, errors='surrogate_or_strict')), encoding=encoding)
 
 
-def deprecated_FIXME(value):
+def deprecated(value):
+    # DTFIX-PR: implement the deprecated filter, right now it accepts no args
     return Deprecated(msg='blah', removal_date=datetime.date(2023, 1, 1), removal_version='456').tag(value)
 
 
@@ -692,7 +693,7 @@ class FilterModule(object):
 
     def filters(self):
         return {
-            'deprecated': deprecated_FIXME,
+            'deprecated': deprecated,
 
             # base 64
             'b64decode': b64decode,

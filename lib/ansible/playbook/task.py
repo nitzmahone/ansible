@@ -174,7 +174,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
             # DTFIX-FUTURE: need to preserve resolved action and resolved as module separately to handle action subsystems that want to do their own templating?
             # DTFIX-FUTURE: centralized k=v, raw_params, variable_params handling?
             # DTFIX-MERGE: verify module_defaults behavior; looks like {{ my_args }} does not merge properly; handling embedded omit fallbacks is also "fun"
-            if ctx.plugin_load_context.resolved and getattr(ctx.object, 'FIXME_DOES_OWN_TEMPLATING', False):
+            if ctx.plugin_load_context.resolved and getattr(ctx.object, 'DOES_OWN_TEMPLATING', False):
                 # template _variable_params, but stop if we encounter a container, let plugin template from there
                 if vp := value.pop('_variable_params', None):
                     value = templar.template(vp, options=TemplateOptions(value_for_omit={}), mode=TemplateMode.STOP_ON_CONTAINER)

@@ -281,7 +281,7 @@ def _default_id_func(obj: object) -> str:
     res = str(obj)
 
     if "genexpr" in res:
-        res = "FIXME (with generator)"
+        res = "(with generator)"
 
     return res
 

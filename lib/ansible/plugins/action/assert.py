@@ -19,7 +19,7 @@ from __future__ import annotations
 import typing as t
 
 from ansible.errors import AnsibleValueOmittedError, AnsibleError
-from ansible.module_utils.common.validation import check_type_list_that_does_not_suck_FIXME
+from ansible.module_utils.common.validation import check_type_list_that_does_not_suck
 from ansible.plugins.action import ActionBase
 from ansible.template.templar import TemplateMode
 
@@ -28,7 +28,7 @@ class ActionModule(ActionBase):
     """Assert that one or more conditional expressions evaluate to true."""
 
     _requires_connection = False
-    FIXME_DOES_OWN_TEMPLATING = True
+    DOES_OWN_TEMPLATING = True  # DTFIX-PR: bikeshed a name for this attribute
 
     def run(self, tmp=None, task_vars=None):
         if task_vars is None:
@@ -69,7 +69,7 @@ class ActionModule(ActionBase):
                 success_msg=dict(type=str_or_list_of_str, default='All assertions passed'),
                 quiet=dict(type='bool', default=False),
                 # explicitly not validating types `elements` here to let type rules for conditionals apply
-                that=dict(type=check_type_list_that_does_not_suck_FIXME, required=True),
+                that=dict(type=check_type_list_that_does_not_suck, required=True),
             ),
         )
 

@@ -415,8 +415,8 @@ def check_type_list(value):
     raise TypeError('%s cannot be converted to a list' % type(value))
 
 
-# DTFIX-MERGE: bikeshed name
-def check_type_list_that_does_not_suck_FIXME(value):
+def check_type_list_that_does_not_suck(value):
+    # DTFIX-MERGE: bikeshed name
     if isinstance(value, list):
         return value
 

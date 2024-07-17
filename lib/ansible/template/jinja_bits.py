@@ -493,11 +493,11 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         return lex
 
-    _FIXME_DEBUGGABLE_TEMPLATE_SOURCE = False
+    _DEBUGGABLE_TEMPLATE_SOURCE = False  # DTFIX-PR: bikeshed a name/mechanism to control template debugging
 
     def from_string(self, *args, **kwargs):
         # DTFIX-U: sane way to make this work outside from_string?
-        with _CompileStateSmugglingCtx.maybe(create=self._FIXME_DEBUGGABLE_TEMPLATE_SOURCE) as ctx:
+        with _CompileStateSmugglingCtx.maybe(create=self._DEBUGGABLE_TEMPLATE_SOURCE) as ctx:
             template_obj = super().from_string(*args, **kwargs)
 
             if isinstance(ctx, _CompileStateSmugglingCtx):
@@ -512,9 +512,14 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     def _compile(self, source, filename):
         if csc := _CompileStateSmugglingCtx.current(optional=True):
+            if src_pos := AnsibleSourcePosition.get_tag(csc.template_source):
+                template_src = repr(str(src_pos))
+            else:
+                template_src = 'unknown location'
+
             source = '\n'.join((
                 "import sys; breakpoint() if type(sys.breakpointhook) is not type(breakpoint) else None",
-                "# original template source (FIXME include source position): ",
+                f"# original template source from {template_src}: ",
                 '\n'.join(f'# {line}' for line in (csc.template_source or '').splitlines()),
                 source
             ))
@@ -700,8 +705,8 @@ def _flatten_and_lazify_vars(mapping: c.Mapping) -> t.Iterable[c.Mapping]:
             yield from _flatten_and_lazify_vars(m)
     elif mapping_type is _AnsibleLazyTemplateDict:
         if not mapping:
-            # DTFIX-U: handle or remove?
-            raise Exception("FIXME: we didn't think it was possible to have an empty lazy here...")
+            # DTFIX-MERGE: handle or remove?
+            raise Exception("we didn't think it was possible to have an empty lazy here...")
         yield mapping
     elif mapping_type in (dict, _AnsibleTaggedDict):
         # don't propagate empty dictionary layers
