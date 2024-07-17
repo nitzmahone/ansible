@@ -311,7 +311,7 @@ class AnsibleCodeGenerator(NativeCodeGenerator):
         Prevent Jinja's code generation from stringifying single nodes before generating its repr.
         This complements the behavioral change in AnsibleEnvironment.concat which returns single nodes without stringifying them.
         """
-        # TODO: contribute this upstream as a fix to Jinja's native support
+        # DTFIX-FUTURE: contribute this upstream as a fix to Jinja's native support
         group_list = list(group)
 
         if len(group_list) == 1:
