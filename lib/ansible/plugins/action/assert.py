@@ -58,7 +58,7 @@ class ActionModule(ActionBase):
 
             # if `that` is a non-list, restore the original input (template or container)
             if arg_name == "that" and not isinstance(templated_arg, list):
-                # DTFIX-U: ensure that we get a warning below because of template instead of expression
+                # DTFIX-MERGE: ensure that we get a warning below because of template instead of expression
                 templated_arg = arg
 
             self._task.args[arg_name] = templated_arg

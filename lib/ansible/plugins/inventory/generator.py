@@ -106,7 +106,7 @@ class InventoryModule(BaseInventoryPlugin):
         # This limitation was part of the original plugin implementation and was updated to maintain feature parity with the new templating API.
         if not isinstance(pattern, str):
             return pattern
-        # DTFIX-U: don't clobber variables
+        # DTFIX-MERGE: don't clobber variables
         self.templar.available_variables = variables
         return self.templar.template(pattern)
 

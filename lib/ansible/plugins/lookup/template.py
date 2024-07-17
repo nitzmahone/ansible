@@ -146,7 +146,7 @@ class LookupModule(LookupBase):
                 # plus some added by ansible (e.g., template_{path,mtime}),
                 # plus anything passed to the lookup with the template_vars=
                 # argument.
-                # DTFIX-U: why isn't this a chainmap with a sacrificial bottom layer?
+                # TEMPFIX: why isn't this a chainmap with a sacrificial bottom layer?
                 vars = deepcopy(variables)
                 vars.update(generate_ansible_template_vars(term, lookupfile))
                 vars.update(lookup_template_vars)

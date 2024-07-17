@@ -37,7 +37,7 @@ class ActionModule(ActionBase):
     DOES_OWN_TEMPLATING = True
 
     def run(self, tmp=None, task_vars=None):
-        # DTFIX-U: we need more consistent error handling, either all failures should be ignored or none of them
+        # DTFIX-MERGE: we need more consistent error handling, either all failures should be ignored or none of them
         replace_undefined = ReplaceUndefined()
 
         argument_spec = {
@@ -88,7 +88,7 @@ class ActionModule(ActionBase):
                 except Exception as ex:
                     raise AnsibleError('Error while templating variable expression.', obj=raw_var_arg) from ex
 
-                # DTFIX-U: how should debug handle the case of var being a template?
+                # DTFIX-MERGE: how should debug handle the case of var being a template?
                 #        if the template results in an undefined value, the ReplaceUndefined behavior makes the result even more confusing
                 #        it seems like at a minimum, a warning about not using templates for `var` would be appropriate
 

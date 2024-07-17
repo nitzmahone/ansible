@@ -161,7 +161,7 @@ class _Profile(_json._JSONSerializationProfile):
         if isinstance(k, str):
             return k
 
-        # DTFIX-U: decide if this is a deprecation warning, error, or what?
+        # DTFIX-MERGE: decide if this is a deprecation warning, error, or what?
         #  Non-string variable names have been disallowed by set_fact and other things since at least 2021.
         return str(k)
 

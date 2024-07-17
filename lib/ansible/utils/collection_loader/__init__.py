@@ -42,6 +42,6 @@ def resource_from_fqcr(ref):
     return ref.split(u'.')[-1]
 
 
-# DTFIX-U: decide what of this we want to actually be public/toplevel, put other stuff on a utility class?
+# TEMPFIX: decide what of this we want to actually be public/toplevel, put other stuff on a utility class?
 from ._collection_config import AnsibleCollectionConfig
 from ._collection_finder import AnsibleCollectionRef

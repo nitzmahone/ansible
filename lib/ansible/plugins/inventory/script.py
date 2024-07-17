@@ -174,7 +174,7 @@ class InventoryModule(BaseInventoryPlugin):
 
     NAME = 'script'
 
-    # DTFIX-U: currently no way to apply trust- see _meta handling in parse() below
+    # DTFIX-PR: currently no way to apply trust- see _meta handling in parse() below
 
     def __init__(self):
 
@@ -256,7 +256,7 @@ class InventoryModule(BaseInventoryPlugin):
             # if called with --host for backwards compat with 1.2 and earlier.
             for (group, gdata) in processed.items():
                 if group == '_meta':
-                    # DTFIX-U: add support for a new template_trust declaration in _meta and let the script plugin's trusted_by_default impl consult it
+                    # DTFIX-PR: add support for a new template_trust declaration in _meta and let the script plugin's trusted_by_default impl consult it
                     if 'hostvars' in gdata:
                         data_from_meta = gdata['hostvars']
                 else:
@@ -353,7 +353,7 @@ def parse_inventory(value: str) -> dict[str, t.Any]:
     """Parse an inventory JSON document after auto-detecting the serialization profile."""
     profile_name = detect_profile_name(value)
     decoder = get_decoder(profile_name)
-    file_name = '<script inventory plugin>'  # DTFIX-U: is there a better way to indicate the source than using a bogus file_name value?
+    file_name = '<script inventory plugin>'  # DTFIX-MERGE: is there a better way to indicate the source than using a bogus file_name value?
 
     try:
         return json.loads(value, cls=decoder, file_name=file_name)

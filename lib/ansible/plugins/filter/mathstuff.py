@@ -50,7 +50,7 @@ def unique(environment, a, case_sensitive=None, attribute=None):
 
     def _do_fail(ex):
         if case_sensitive is False or attribute:
-            # DTFIX-U: better error type?
+            # DTFIX-MERGE: better error type?
             raise AnsibleError(
                 "Jinja2's unique filter failed and we cannot fall back to Ansible's version as it does not support the parameters supplied."
             ) from ex

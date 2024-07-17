@@ -53,7 +53,7 @@ def preprocess_vars(a):
     that vars loaded from a file conform to an expected state.
     '''
 
-    # DTFIX-U: this does not properly handle omit, undefined, or dynamic structure from templated `vars` ; templating should be done earlier
+    # TEMPFIX: this does not properly handle omit, undefined, or dynamic structure from templated `vars` ; templating should be done earlier
     if a is None:
         return None
     elif not isinstance(a, list):
@@ -184,8 +184,8 @@ class VariableManager:
 
         _vars_sources = {}
 
-        # DTFIX-U: this no longer has any effect and can be switched back to regular combine
         def _combine_and_track(data, new_data, source):
+            # TEMPFIX: this no longer does any tracking, only a slight optimization for empty new_data
             if new_data == {}:
                 return data
 

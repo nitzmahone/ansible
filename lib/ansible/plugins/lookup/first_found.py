@@ -40,15 +40,14 @@ DOCUMENTATION = """
           - When used as a template via C(lookup) or C(query), setting O(skip=True) will *not* cause the task to skip.
             Tasks must handle the empty list return from the template.
           - When V(False) and C(lookup) or C(query) specifies O(ignore:errors='ignore') all errors (including no file found,
-            but potentially others) return none or an empty list respectively.
+            but potentially others) return V(None) or an empty list respectively.
           - When V(True) and C(lookup) or C(query) specifies O(ignore:errors='ignore'), no file found will return an empty
-            list and other potential errors return none or empty list depending on the template call
+            list and other potential errors return V(None) or empty list depending on the template call
             (in other words return values of C(lookup) vs C(query)).
     seealso:
       - ref: playbook_task_paths
         description: Search paths used for relative paths/files.
 """
-# DTFIX-U: how should the `none` references above appear in the prose (and which markup text should they be wrapped with)?
 
 
 EXAMPLES = """
@@ -159,7 +158,6 @@ def _split_on(terms, spliters=','):
     if isinstance(terms, str):
         termlist = re.split(r'[%s]' % ''.join(map(re.escape, spliters)), terms)
 
-        # DTFIX-U: any shared location to do this kind of thing?
         # propagate tags from the input term to all output terms
         termlist = [AnsibleTagHelper.tag_copy(terms, term) for term in termlist]
 
@@ -213,7 +211,7 @@ class LookupModule(LookupBase):
         return total_search
 
     def run(self, terms, variables=None, **kwargs):
-        # DTFIX-U: JinjaCallContext is not finalized user-facing API, need caution tape of some sort here?
+        # DTFIX-MERGE: JinjaCallContext is not finalized user-facing API, need caution tape of some sort here?
         if te_action := JinjaCallContext.current()._te_invoking_action_name:
             # we're being invoked by TaskExecutor.get_loop_items(), special backcompat behavior
 
