@@ -512,7 +512,7 @@ class TestDatatagTarget(AutoParamSupport):
             'JinjaConstTemplate' not in instance_type.__name__ and
             instance_type is not AnsibleTaggedObject and
             instance_type is not AnsibleSerializableDataclass and
-            instance_type is not CapturedErrorDetail and  # DTFIX-U: is this safe to skip serialization tests on?
+            instance_type is not CapturedErrorDetail and  # this type is intentionally not JSON serializable, it's for controller-only usage
             not issubclass(instance_type, AnsibleSerializableWrapper)
         )}
 

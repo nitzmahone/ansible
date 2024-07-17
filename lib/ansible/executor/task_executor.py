@@ -427,14 +427,18 @@ class TaskExecutor:
 
             result.update(_ansible_no_log=self._task.no_log_with_fallback(templar))
 
+        # The warnings/deprecations in the result have already been captured in the _DeferredWarningContext by _apply_task_result_compat.
+        # The captured warnings/deprecations are a superset of the ones from the result, and may have been converted from a dict to a dataclass.
+        # These are then used to supersede the entries in the result.
+
         result.pop('warnings', None)
         result.pop('deprecations', None)
 
-        if warning_ctx.warnings:
-            result.update(warnings=warning_ctx.warnings)
+        if warnings := warning_ctx.get_warnings():
+            result.update(warnings=warnings)
 
-        if warning_ctx.deprecation_warnings:
-            result.update(deprecations=warning_ctx.deprecation_warnings)
+        if deprecation_warnings := warning_ctx.get_deprecation_warnings():
+            result.update(deprecations=deprecation_warnings)
 
         return result
 
@@ -821,7 +825,7 @@ class TaskExecutor:
                         # translate non-WarningMessageDetail messages
                         warning = WarningMessageDetail(msg=str(warning))
 
-                    warning_ctx.warnings.append(warning)
+                    warning_ctx.capture(warning)
             else:
                 display.warning(f"Task result `warnings` was {type(warnings)} instead of {list}.")
 
@@ -835,7 +839,7 @@ class TaskExecutor:
                         except Exception as ex:
                             display.error_as_warning("Task result `deprecations` contained an invalid item.", exception=ex)
 
-                    warning_ctx.deprecation_warnings.append(deprecation)
+                    warning_ctx.capture(deprecation)
             else:
                 display.warning(f"Task result `deprecations` was {type(deprecations)} instead of {list}.")
 

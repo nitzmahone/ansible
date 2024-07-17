@@ -109,5 +109,5 @@ class AnsibleModuleCapturedError(AnsibleCapturedError):
 
 @dataclasses.dataclass(**_dataclass_kwargs)
 class CapturedErrorDetail(ErrorDetail):
-    # DTFIX-U: where to put this, name, etc. since it shows up in results, it's not exactly private (and contains a type ref to an internal type)
+    # DTFIX-MERGE: where to put this, name, etc. since it shows up in results, it's not exactly private (and contains a type ref to an internal type)
     error_type: type[AnsibleCapturedError] | None = None

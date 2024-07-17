@@ -617,12 +617,7 @@ class Display(metaclass=Singleton):
         # This is the pre-proxy half of the `deprecated` implementation.
         # Any logic that must occur on workers needs to be implemented here.
 
-        if warning_context := _DeferredWarningContext.current(optional=True):
-            variables = warning_context.variables
-        else:
-            variables = None
-
-        if not C.config.get_config_value('DEPRECATION_WARNINGS', variables=variables):
+        if not _DeferredWarningContext.deprecation_warnings_enabled():
             return
 
         self.warning('Deprecation warnings can be disabled by setting `deprecation_warnings=False` in ansible.cfg.')
@@ -632,7 +627,7 @@ class Display(metaclass=Singleton):
         else:
             formatted_source_context = None
 
-        warning = DeprecationMessageDetail(
+        deprecation = DeprecationMessageDetail(
             msg=msg,
             help_text=help_text,
             version=version,
@@ -643,10 +638,10 @@ class Display(metaclass=Singleton):
         )
 
         if warning_ctx := _DeferredWarningContext.current(optional=True):
-            warning_ctx.deprecation_warnings.append(warning)
+            warning_ctx.capture(deprecation)
             return
 
-        self._deprecated(warning)
+        self._deprecated(deprecation)
 
     @_proxy
     def _deprecated(self, warning: DeprecationMessageDetail) -> None:
@@ -691,7 +686,7 @@ class Display(metaclass=Singleton):
         )
 
         if warning_ctx := _DeferredWarningContext.current(optional=True):
-            warning_ctx.warnings.append(warning)
+            warning_ctx.capture(warning)
             # DTFIX-U: what to do about propagating wrap_text?
             return
 
@@ -1016,19 +1011,54 @@ class Display(metaclass=Singleton):
 _display = Display()
 
 
-@dataclasses.dataclass(kw_only=True)
 class _DeferredWarningContext(_ambient_context.AmbientContextBase):
     """
     Calls to `Display.warning()` and `Display.deprecated()` within this context will cause the resulting warnings to be captured and not displayed.
     The intended use is for task-initiated warnings to be recorded with the task result, which makes them visible to registered results, callbacks, etc.
     The active display callback is responsible for communicating any warnings to the user.
     """
-    variables: dict[str, object]  # DTFIX-FUTURE: move this to an AmbientContext-derived TaskContext (once it exists)
-    deprecation_warnings: list[DeprecationMessageDetail] = dataclasses.field(default_factory=list)
-    warnings: list[WarningMessageDetail] = dataclasses.field(default_factory=list)
 
-    # FUTURE: once we start implementing nested scoped contexts for our own bookkeeping, this should be an interface facade that forwards to the nearest
-    #         context that actually implements the warnings collection capability
+    # DTFIX-FUTURE: once we start implementing nested scoped contexts for our own bookkeeping, this should be an interface facade that forwards to the nearest
+    #               context that actually implements the warnings collection capability
+
+    def __init__(self, *, variables: dict[str, object]) -> None:
+        self._variables = variables  # DTFIX-FUTURE: move this to an AmbientContext-derived TaskContext (once it exists)
+        self._deprecation_warnings: list[DeprecationMessageDetail] = []
+        self._warnings: list[WarningMessageDetail] = []
+        self._seen: set[WarningMessageDetail] = set()
+
+    @classmethod
+    def deprecation_warnings_enabled(cls) -> bool:
+        """Return True if deprecation warnings are enabled for the current calling context, otherwise False."""
+        # DTFIX-FUTURE: move this capability into config using an AmbientContext-derived TaskContext (once it exists)
+        if warning_ctx := cls.current(optional=True):
+            variables = warning_ctx._variables
+        else:
+            variables = None
+
+        return C.config.get_config_value('DEPRECATION_WARNINGS', variables=variables)
+
+    def capture(self, warning_detail: WarningMessageDetail):
+        """Add the warning/deprecation to the context if it has not already been seen by this context."""
+        if warning_detail in self._seen:
+            return
+
+        self._seen.add(warning_detail)
+
+        if isinstance(warning_detail, DeprecationMessageDetail):
+            self._deprecation_warnings.append(warning_detail)
+        else:
+            self._warnings.append(warning_detail)
+
+    def get_warnings(self) -> list[WarningMessageDetail]:
+        """Return a list of the captured non-deprecation warnings."""
+        # DTFIX-FUTURE: return a read-only list proxy instead
+        return self._warnings
+
+    def get_deprecation_warnings(self) -> list[DeprecationMessageDetail]:
+        """Return a list of the captured deprecation warnings."""
+        # DTFIX-FUTURE: return a read-only list proxy instead
+        return self._deprecation_warnings
 
 
 def _format_error_chain(error_chain: t.Sequence[MessageBase], formatted_tb: str | None = None) -> str:

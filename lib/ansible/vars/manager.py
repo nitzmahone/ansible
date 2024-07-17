@@ -41,8 +41,8 @@ from ansible.vars.plugins import get_vars_from_inventory_sources, get_vars_from_
 
 display = Display()
 
-# share a single instance of this tag to avoid having an excessively large number of instances (hosts * top-level facts)
-# DTFIX-U: need to make template stack navigable to be able to tell someone *which* fact tripped when, eg, rendering a captured dict of facts via debug: var
+# Share a single instance of this tag to avoid having an excessively large number of instances (hosts * top-level facts),
+# as well as avoiding "bulk" warnings when accessing `vars` (95+ instances) that would not be de-duped if unique.
 _TOP_LEVEL_FACTS_DEPRECATED = Deprecated(msg='Top-level facts are deprecated, use `ansible_facts` instead.', removal_version='2.22')
 
 

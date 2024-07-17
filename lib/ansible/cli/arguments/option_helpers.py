@@ -63,7 +63,7 @@ class ArgumentParser(argparse.ArgumentParser):
         action_signature = inspect.signature(resolved_action.__init__)
 
         if action_signature.parameters.get('type'):
-            # DTFIX-U: apply AnsibleSourcePosition (or its expanded provenance replacement) here?
+            # DTFIX-MERGE: apply AnsibleSourcePosition (or its expanded provenance replacement) here?
             if (arg_type := kwargs.get('type', 'str')) == 'str':
                 arg_type = self.__trusted_cli_arg  # all CLI strings are trusted by default
 

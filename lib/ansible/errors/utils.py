@@ -117,7 +117,7 @@ def _create_error_detail(exception: BaseException, event: _traceback.TracebackEv
     from . import AnsibleError
     from .._internal import _errors
 
-    target_exception: BaseException | None = exception
+    current_exception: BaseException | None = exception
     error_chain: list[ErrorMessage] = []
 
     if event:
@@ -125,37 +125,37 @@ def _create_error_detail(exception: BaseException, event: _traceback.TracebackEv
     else:
         formatted_traceback = None
 
-    while target_exception:  # DTFIX-U: rename this, it sure looks confusing
-        if isinstance(target_exception, AnsibleError):
-            include_cause_message = target_exception.include_cause_message
+    while current_exception:
+        if isinstance(current_exception, AnsibleError):
+            include_cause_message = current_exception.include_cause_message
             edc = ErrorMessage(
-                msg=target_exception.original_message.strip(),
-                formatted_source_context=target_exception.formatted_source_context,
-                help_text=target_exception.help_text,
+                msg=current_exception.original_message.strip(),
+                formatted_source_context=current_exception.formatted_source_context,
+                help_text=current_exception.help_text,
             )
         else:
             include_cause_message = True
             edc = ErrorMessage(
-                msg=str(target_exception).strip(),
+                msg=str(current_exception).strip(),
             )
 
         error_chain.append(edc)
 
-        if isinstance(target_exception, _errors.AnsibleCapturedError):
-            detail = target_exception.additional_error_detail
+        if isinstance(current_exception, _errors.AnsibleCapturedError):
+            detail = current_exception.additional_error_detail
             error_chain.extend(detail.errors)
 
             if formatted_traceback and detail.formatted_traceback:
                 formatted_traceback = (
                     f'{detail.formatted_traceback}\n'
-                    f'The {target_exception.context} exception above was the direct cause of the following controller exception:\n\n'
+                    f'The {current_exception.context} exception above was the direct cause of the following controller exception:\n\n'
                     f'{formatted_traceback}'
                 )
 
         if not include_cause_message:
             break
 
-        target_exception = _get_cause(target_exception)
+        current_exception = _get_cause(current_exception)
 
     return ErrorDetail(errors=error_chain, formatted_traceback=formatted_traceback)
 
