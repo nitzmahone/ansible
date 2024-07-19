@@ -305,13 +305,9 @@ class InventoryManager(object):
                         display.vvv('Parsed %s inventory source with %s plugin' % (source, plugin_name))
                         break
                     except AnsibleParserError as e:
-                        display.debug('%s was not parsable by %s' % (source, plugin_name))
-                        tb = ''.join(traceback.format_tb(sys.exc_info()[2]))
-                        failures.append({'src': source, 'plugin': plugin_name, 'exc': e, 'tb': tb})
+                        failures.append({'src': source, 'plugin': plugin_name, 'exc': e})
                     except Exception as e:
-                        display.debug('%s failed while attempting to parse %s' % (plugin_name, source))
-                        tb = ''.join(traceback.format_tb(sys.exc_info()[2]))
-                        failures.append({'src': source, 'plugin': plugin_name, 'exc': AnsibleError(e), 'tb': tb})
+                        failures.append({'src': source, 'plugin': plugin_name, 'exc': e})
                 else:
                     display.vvv("%s declined parsing %s as it did not pass its verify_file() method" % (plugin_name, source))
 
@@ -325,9 +321,7 @@ class InventoryManager(object):
                 if failures:
                     # only if no plugin processed files should we show errors.
                     for fail in failures:
-                        display.warning(u'\n* Failed to parse %s with %s plugin: %s' % (to_text(fail['src']), fail['plugin'], to_text(fail['exc'])))
-                        if 'tb' in fail:
-                            display.vvv(to_text(fail['tb']))
+                        display.error_as_warning(msg=f'Failed to parse {fail["src"]!r} with {fail["plugin"]!r} plugin.', exception=fail['exc'])
 
                 # final error/warning on inventory source failure
                 if C.INVENTORY_ANY_UNPARSED_IS_FAILED:
