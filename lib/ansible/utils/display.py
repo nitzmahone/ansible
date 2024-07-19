@@ -31,7 +31,6 @@ else:
 import collections.abc as c
 import codecs
 import ctypes.util
-import dataclasses
 import fcntl
 import getpass
 import io

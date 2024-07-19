@@ -13,7 +13,7 @@ def patch_sys_intern() -> None:
 
     def ansible_sys_intern(value: str) -> str:
         """This is a monkey patch for `sys.intern` that converts any `str` derived type to `str` before calling the actual `sys.intern` function."""
-        if type(value) is not str and isinstance(value, str):
+        if type(value) is not str and isinstance(value, str):  # pylint: disable=unidiomatic-typecheck
             value = str(value)
 
         return sys_intern(value)
