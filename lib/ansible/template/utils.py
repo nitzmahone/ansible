@@ -49,7 +49,7 @@ class _OmitType:
     """
     __slots__ = ()
 
-    # DTFIX-U: this keeps pickle happy, but not JSON/YAML for callbacks; just teach them about it?
+    # DTFIX-MERGE: this keeps pickle happy, but not JSON/YAML for callbacks; just teach them about it?
     def __new__(cls):
         return Omit
 
@@ -59,5 +59,5 @@ class _OmitType:
 
 Omit = object.__new__(_OmitType)
 
-# DTFIX-U: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
+# DTFIX-MERGE: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
 datatag._untaggable_types |= {type(Omit)}

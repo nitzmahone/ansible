@@ -127,7 +127,7 @@ class JinjaPluginIntercept(c.MutableMapping):
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> bool | Undefined:
-            # DTFIX-U: consider replacing this and the nested behavior with split decorators?
+            # DTFIX-MERGE: consider replacing this and the nested behavior with split decorators?
             if not accept_undefined_args:
                 if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
                     return first_undefined
@@ -162,7 +162,7 @@ class JinjaPluginIntercept(c.MutableMapping):
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> t.Any:
-            # DTFIX-U: consider replacing this and the nested behavior with split decorators?
+            # DTFIX-MERGE: consider replacing this and the nested behavior with split decorators?
             if not accept_undefined_args:
                 if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
                     return first_undefined
@@ -201,7 +201,7 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
         raise AnsibleTemplatePluginNotFoundError('lookup', plugin_name)
 
     # if the lookup doesn't understand undefined args and there's at least one in the top level, short-circuit by returning the first one we found
-    # DTFIX-U: consider replacing with split decorators?
+    # DTFIX-MERGE: consider replacing with split decorators?
     if not instance.accept_undefined_args and (first_undefined := get_first_undefined_arg(lookup_terms, lookup_kwargs)) is not None:
         return first_undefined
 

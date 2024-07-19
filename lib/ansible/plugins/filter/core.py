@@ -97,7 +97,7 @@ def to_bool(a):
         a = a.lower()
     if a in ('yes', 'on', '1', 'true', 1):
         return True
-    # DTFIX-U: This should warn about unrecognized falsey values.
+    # DTFIX-MERGE: This should warn about unrecognized falsey values.
     #        It should also have a strict-mode tri-state that defaults to False now and in the future becomes True.
     #        Failure to specify strict should result in a deprecation warning if the fallthrough case occurs.
     return False
@@ -618,7 +618,7 @@ def commonpath(paths):
     return os.path.commonpath(paths)
 
 
-# DTFIX-U: FDI038 - this needs to be a generic return-type coercion for plugins that don't claim to be aware of the expanded var type system
+# DTFIX-MERGE: FDI038 - this needs to be a generic return-type coercion for plugins that don't claim to be aware of the expanded var type system
 @pass_environment
 def _cleansed_groupby(*args, **kwargs):
     res = sync_do_groupby(*args, **kwargs)
@@ -628,7 +628,7 @@ def _cleansed_groupby(*args, **kwargs):
 
     return res
 
-# DTFIX-U: make these dumb wrappers more dynamic
+# DTFIX-MERGE: make these dumb wrappers more dynamic
 
 
 @accept_undefined_args
@@ -641,7 +641,7 @@ def wrapped_default(*args, **kwargs) -> t.Any:
 @accept_undefined_args
 @functools.wraps(do_map)
 def wrapped_map(*args, **kwargs) -> t.Any:
-    # DTFIX-U: consider replacing this with split decorators?
+    # DTFIX-MERGE: consider replacing this with split decorators?
     if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
         return first_undefined
 
@@ -651,7 +651,7 @@ def wrapped_map(*args, **kwargs) -> t.Any:
 @accept_undefined_args
 @functools.wraps(do_select)
 def wrapped_select(*args, **kwargs) -> t.Any:
-    # DTFIX-U: consider replacing this with split decorators?
+    # DTFIX-MERGE: consider replacing this with split decorators?
     if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
         return first_undefined
 
@@ -661,7 +661,7 @@ def wrapped_select(*args, **kwargs) -> t.Any:
 @accept_undefined_args
 @functools.wraps(do_selectattr)
 def wrapped_selectattr(*args, **kwargs) -> t.Any:
-    # DTFIX-U: consider replacing this with split decorators?
+    # DTFIX-MERGE: consider replacing this with split decorators?
     if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
         return first_undefined
 
@@ -671,7 +671,7 @@ def wrapped_selectattr(*args, **kwargs) -> t.Any:
 @accept_undefined_args
 @functools.wraps(do_reject)
 def wrapped_reject(*args, **kwargs) -> t.Any:
-    # DTFIX-U: consider replacing this with split decorators?
+    # DTFIX-MERGE: consider replacing this with split decorators?
     if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
         return first_undefined
 
@@ -681,7 +681,7 @@ def wrapped_reject(*args, **kwargs) -> t.Any:
 @accept_undefined_args
 @functools.wraps(do_rejectattr)
 def wrapped_rejectattr(*args, **kwargs) -> t.Any:
-    # DTFIX-U: consider replacing this with split decorators?
+    # DTFIX-MERGE: consider replacing this with split decorators?
     if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
         return first_undefined
 
@@ -708,7 +708,7 @@ class FilterModule(object):
             'from_json': from_json,
 
             # yaml
-            # DTFIX-U: validate these to ensure that we serialize lazy/tagged values as their plain types properly
+            # DTFIX-MERGE: validate these to ensure that we serialize lazy/tagged values as their plain types properly
             'to_yaml': to_yaml,
             'to_nice_yaml': to_nice_yaml,
             'from_yaml': from_yaml,
