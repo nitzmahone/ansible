@@ -134,6 +134,20 @@
   assert:
     that: "\"'y' is undefined\" in error.msg"
 
+- name: test inline list containing a constant template arg to a lookup
+  debug:
+    msg: |-
+      {{ lookup('list', ['{{ 1 }}']) }}
+  register: result
+  failed_when: result.msg != [1]
+
+- name: test inline dict containing a constant template arg to a lookup
+  debug:
+    msg: |-
+      {{ lookup('dict', {'key': '{{ 1 }}'}) }}
+  register: result
+  failed_when: result.msg.value != 1
+
 - name: test inline constant template arg to a lookup in a non-optimizable expression
   vars:
     echo_me: hi mom

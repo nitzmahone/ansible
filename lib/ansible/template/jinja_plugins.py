@@ -291,11 +291,10 @@ def _trust_jinja_constants(o: t.Any) -> t.Any:
     Only container types emitted by the Jinja compiler are checked, since others do not contain constants.
     This is used to provide backwards compatiblity with historical lookup behavior for positional arguments.
     """
-    # DTFIX-U: needs tests to exercise this
-    o_type = type(o)
-
     if _JinjaConstTemplate.is_tagged_on(o):
         return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))
+
+    o_type = type(o)
 
     if o_type is dict:
         return {k: _trust_jinja_constants(v) for k, v in o.items()}
