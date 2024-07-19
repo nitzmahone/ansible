@@ -52,7 +52,5 @@ EXAMPLES: |
 
 RETURN:
   _value:
-    # DTFIX-U: how to represent null/None in prose?
-    description: Matched string or None if no match.
-    # DTFIX-U: how to represent nullable string in `type`?
+    description: Matched string or V(None) if no match.
     type: str
