@@ -14,7 +14,9 @@ from itertools import chain
 # deprecated: description='typing.Self exists in Python 3.11+' python_version='3.10'
 from ..compat import typing as t
 
-from .._internal import _dataclass_validation
+from .._internal import _dataclass_validation, _sys_intern_patch
+
+_sys_intern_patch.patch_sys_intern()
 
 if sys.version_info >= (3, 10):
     # Using slots for reduced memory usage and improved performance.
@@ -883,7 +885,6 @@ _untaggable_types = frozenset({type(None), bool})
 # noinspection PyProtectedMember
 _ANSIBLE_ALLOWED_VAR_TYPES = _untaggable_types | set(AnsibleTaggedObject._tagged_type_map) | set(AnsibleTaggedObject._tagged_type_map.values())
 """These are the only types supported by Ansible's variable storage. Subclasses are not permitted."""
-
 
 _ANSIBLE_ALLOWED_NON_SCALAR_COLLECTION_VAR_TYPES = frozenset(item for item in _ANSIBLE_ALLOWED_VAR_TYPES if is_non_scalar_collection_type(item))
 _ANSIBLE_ALLOWED_MAPPING_VAR_TYPES = frozenset(item for item in _ANSIBLE_ALLOWED_VAR_TYPES if issubclass(item, c.Mapping))

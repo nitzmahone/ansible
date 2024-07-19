@@ -6,6 +6,7 @@ import contextlib
 import copy
 import dataclasses
 import datetime
+import importlib
 import inspect
 import json
 
@@ -16,6 +17,8 @@ import sys
 import pytest
 
 import ansible.module_utils.compat.typing as t
+
+from ansible.module_utils._internal import _sys_intern_patch
 
 from ansible.module_utils.common.json import (
     AnsibleProfileJSONDecoder,
@@ -760,3 +763,36 @@ def test_conflicting_tagged_type_map_entry():
 
     with pytest.raises(TypeError, match="Cannot define type 'SecondaryDict' since '_AnsibleTaggedDict' already extends 'dict'."):
         create_problem()
+
+
+def test_sys_intern_reload() -> None:
+    """Make sure that reloading the `sys.intern` monkey-patch doesn't end up wrapping itself."""
+    sys_intern = sys.intern
+
+    sys_intern_patch = importlib.reload(_sys_intern_patch)
+    sys_intern_patch.patch_sys_intern()
+
+    assert sys_intern_patch is _sys_intern_patch
+    assert sys.intern is sys_intern
+
+
+def test_delete_and_import_sys_intern_patching() -> None:
+    """Make sure that deleting and importing the `sys.intern` monkey-patch doesn't end up double patching `sys.intern`."""
+    sys_intern = sys.intern
+
+    del sys.modules[_sys_intern_patch.__name__]
+
+    sys_intern_patch = importlib.import_module(_sys_intern_patch.__name__)
+    sys_intern_patch.patch_sys_intern()
+
+    assert sys_intern_patch is not _sys_intern_patch
+    assert sys.intern is sys_intern
+
+
+def test_sys_intern() -> None:
+    """Make sure that our monkey-patched `sys.intern` returns identical string references for the same string value."""
+    singleton_tagged_str = ExampleSingletonTag().tag("hello")
+    instance_tagged_str = ExampleTagWithContent(content_str="something").tag("hello")
+    plain_str = "hello"
+
+    assert sys.intern(singleton_tagged_str) is sys.intern(instance_tagged_str) is sys.intern(plain_str)

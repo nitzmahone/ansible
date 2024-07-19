@@ -12,7 +12,7 @@ _ts = sys.modules[__name__]
 ClassVar = t.ClassVar
 
 
-def patch_dataclasses_is_type():
+def patch_dataclasses_is_type() -> None:
     if not _is_patch_needed():
         return  # pragma: nocover
 
