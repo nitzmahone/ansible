@@ -224,7 +224,7 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
 
             lookup_res = instance.run(lookup_terms, variables=templar.available_variables, **proxy_kwargs(lookup_kwargs))
 
-            # DTFIX-U: Consider allowing/requiring lookup plugins to declare how their result should be handled.
+            # DTFIX-FUTURE: Consider allowing/requiring lookup plugins to declare how their result should be handled.
             #        Currently there are multiple behaviors that are less than ideal and poorly documented (or not at all):
             #        * When `errors=warn` or `errors=ignore` the result is `None` unless `wantlist=True`, in which case the result is `[]`.
             #        * The user must specify `wantlist=True` to receive the plugin return value unmodified.
@@ -237,12 +237,12 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
             #          * len() >= 2 when at least one element is not `str` - Return the sequence as-is.
 
             if not is_sequence(lookup_res):
-                # DTFIX-U: this error message (and the previous deprecation warning) indicate a list is required
-                #        however, the is_sequence check allows any Sequence type other than str/bytes
-                #        letting non-list values through may trigger variable type checking warnings/errors
+                # DTFIX-FUTURE: deprecate return types which are not a list
+                #   previously non-Sequence return types were deprecated and then became an error in 2.18
+                #   however, the deprecation message (and this error) mention `list` specifically rather than `Sequence`
+                #   letting non-list values through will trigger variable type checking warnings/errors
                 raise TypeError(f'returned {type(lookup_res)} instead of {list}')
 
-        # DTFIX-U: most of this exception handling should occur at the edge of templating
         except AnsibleUndefinedError as ex:
             return ex.source
         except Exception as ex:

@@ -17,7 +17,7 @@ display = Display()
 @dataclasses.dataclass(**_tag_dataclass_kwargs)
 class _JinjaConstTemplate(AnsibleSingletonTagBase):
     # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
-    # DTFIX-U: this isn't covered by ansible-test unit tests (PyCharm finds it by accident)
+    # DTFIX-MERGE: this isn't covered by ansible-test unit tests (running unit tests in PyCharm finds it due to lack of isolation)
     pass
 
 
@@ -29,23 +29,29 @@ class _RenderJinjaConstAsTemplate(_MutatingAccessContextBase):
         return TemplateContext.current().templar.proxy_or_render_template(TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o)))
 
 
+@dataclasses.dataclass(frozen=True)
+class TrippedDeprecationInfo:
+    template: str
+    deprecated: Deprecated
+
+
 class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):
     _tag_type_interest = frozenset([Deprecated])
 
     def __init__(self) -> None:
-        self._tripped_deprecation_info: list[tuple[str, Deprecated]] = []
+        self._tripped_deprecation_info: list[TrippedDeprecationInfo] = []
 
     def _notify(self, o: t.Any) -> t.Any:
         deprecated = Deprecated.get_tag(o)
 
         if deprecated:
             template_ctx = TemplateContext.current(optional=True)
-            # DTFIX-U: in cases of indirection/lazy, we need to walk back up to a string template, not a data structure
+            # DTFIX-FUTURE: in cases of indirection/lazy, we need to walk back up to a string template, not a data structure
             template = template_ctx.template_value if template_ctx else None
 
             # when the current template input is a container, provide a descriptive string with source position propagated (if possible)
             if not isinstance(template, str):
-                # DTFIX-U: ascend the template stack to try and find the nearest string source template
+                # DTFIX-FUTURE: ascend the template stack to try and find the nearest string source template
                 src_pos = AnsibleSourcePosition.get_tag(template)
 
                 template = '<<container>>'
@@ -53,11 +59,13 @@ class DeprecatedAccessAuditContext(_NotifiableAccessContextBase):
                 if src_pos:
                     src_pos.tag(template)
 
-            # DTFIX-U: use something better than a tuple here, once we have proper intermediate object/template contexts to reference
-            self._tripped_deprecation_info.append((NotATemplate().tag(template), deprecated))
+            self._tripped_deprecation_info.append(TrippedDeprecationInfo(
+                template=NotATemplate().tag(template),
+                deprecated=deprecated,
+            ))
 
         return POORLY_NAMED_SENTINEL
 
     @property
-    def deprecated_access(self) -> tuple[tuple[str, Deprecated], ...]:
+    def deprecated_access(self) -> tuple[TrippedDeprecationInfo, ...]:
         return tuple(self._tripped_deprecation_info)

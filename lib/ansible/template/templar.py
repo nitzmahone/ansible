@@ -416,18 +416,18 @@ class Templar:
 
     @staticmethod
     def _emit_deprecation_warnings(deprecated: DeprecatedAccessAuditContext) -> None:
-        for deprecation_template, deprecation in deprecated.deprecated_access:
-            if AnsibleSourcePosition.is_tagged_on(deprecation_template):
-                msg = deprecation.msg
+        for item in deprecated.deprecated_access:
+            if AnsibleSourcePosition.is_tagged_on(item.template):
+                msg = item.deprecated.msg
             else:
                 # without a source position, we need to include what context we do have (the template)
-                msg = f'While processing {deprecation_template!r}: {deprecation.msg}'
+                msg = f'While processing {item.template!r}: {item.deprecated.msg}'
 
             _display.deprecated(
                 msg=msg,
-                version=deprecation.removal_version,
-                date=deprecation.removal_date,
-                obj=deprecation_template,
+                version=item.deprecated.removal_version,
+                date=item.deprecated.removal_date,
+                obj=item.template,
             )
 
     @staticmethod

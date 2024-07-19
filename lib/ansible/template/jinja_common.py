@@ -20,7 +20,7 @@ class _TemplateConfig:
     allow_embedded_templates = config.get_config_value("ALLOW_EMBEDDED_TEMPLATES")
     allow_broken_conditionals = config.get_config_value('ALLOW_BROKEN_CONDITIONALS')
     jinja_extensions = config.get_config_value('DEFAULT_JINJA2_EXTENSIONS')
-    raise_on_trust_check_fail = False  # DTFIX-U: make this configurable with multiple options (warn, warn_with_trace, error, ignore, etc)
+    raise_on_trust_check_fail = False  # DTFIX-MERGE: make this configurable with multiple options (warn, error, ignore)
 
 
 class AnsibleUndefinedError(UndefinedError):
@@ -29,7 +29,7 @@ class AnsibleUndefinedError(UndefinedError):
     This error is only raised by AnsibleUndefined and should never escape the templating system.
     """
 
-    # DTFIX-U: give this class a name that reflects its usage as an internal-only flow control exception
+    # DTFIX-MERGE: give this class a name that reflects its usage as an internal-only flow control exception
 
     def __init__(self, message: str, source: AnsibleUndefined):
         super().__init__(message)
@@ -69,8 +69,8 @@ class AnsibleUndefined(StrictUndefined, Tripwire):
         else:
             self._undefined_template_source = TemplateContext.current().template_value
 
-    # DTFIX-U: we should probably intercept the dunder methods calling this instead -- and then make sure this function complains loudly if it is called
     def _fail_with_undefined_error(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
+        # DTFIX-MERGE: we should probably intercept the dunder methods calling this instead -- and then make sure this function complains loudly if it is called
         raise AnsibleUndefinedError(self._undefined_message, self)
 
     def trip(self) -> t.NoReturn:
@@ -85,7 +85,7 @@ class AnsibleUndefined(StrictUndefined, Tripwire):
     def __getitem__(self, key):
         return self
 
-    # DTFIX-U: do this right, have thorough tests to catch anything that slips through
+    # DTFIX-MERGE: do this right, have thorough tests to catch anything that slips through
     __repr__ = _fail_with_undefined_error
     __iter__ = __str__ = __len__ = _fail_with_undefined_error
     __eq__ = __ne__ = __bool__ = __hash__ = _fail_with_undefined_error
@@ -104,10 +104,10 @@ class AnsibleUndefined(StrictUndefined, Tripwire):
 
 def get_first_undefined_arg(args: c.Sequence, kwargs: dict[str, t.Any]) -> AnsibleUndefined | None:
     """Utility method to inspect plugin args and return the first undefined encountered."""
-    # DTFIX-U: this may or may not need to be public API, move back to utils or once usage is wrapped in a decorator?
+    # DTFIX-MERGE: this may or may not need to be public API, move back to utils or once usage is wrapped in a decorator?
     for arg in itertools.chain(args, kwargs.values()):
         if type(arg) is AnsibleUndefined:  # pylint:disable=unidiomatic-typecheck
-            # DTFIX-U: global config for deprecation warning + return None
+            # DTFIX-MERGE: global config for deprecation warning + return None
             return arg
 
     return None
@@ -124,5 +124,5 @@ class JinjaCallContext(_ambient_context.AmbientContextBase):
     _te_invoking_action_name: str | None = None
 
 
-# DTFIX-U: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
+# DTFIX-MERGE: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
 _mu_datatag._untaggable_types |= {AnsibleUndefined}
