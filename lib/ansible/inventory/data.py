@@ -33,6 +33,7 @@ from ansible._internal import _serialization
 from ansible.utils._wrapt import ObjectProxy
 
 from . import helpers  # this is left as a module import to facilitate easier unit test patching
+from ..module_utils.datatag import AnsibleTagHelper
 
 if t.TYPE_CHECKING:
     from ansible.plugins.inventory import BaseInventoryPlugin
@@ -317,7 +318,7 @@ class _InventoryDataWrapper(ObjectProxy):
         super().__init__(referent)
         self._target_plugin = target_plugin
         # fallback source position to ensure that vars are tagged with at least the file they came from
-        self._default_source_position_tag = AnsibleSourcePosition(src=source_path)
+        self._default_source_position_tag = AnsibleSourcePosition(src=AnsibleTagHelper.as_untagged_type(source_path))
         self._inspector = _serialization.AnsibleVariableVisitor(
             trusted_as_template=self._target_plugin.trusted_by_default,
             source_position=self._default_source_position_tag,
