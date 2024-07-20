@@ -378,7 +378,7 @@ class _CompileStateSmugglingCtx(_ambient_context.AmbientContextBase):
     template_source: str | None = None
     python_source: str | None = None
     filename: str | None = None
-    tempfile: t.Any = None  # DTFIX-U: what should this type hint be?
+    tempfile: t.Any = None  # DTFIX-MERGE: what should this type hint be?
 
 
 class AnsibleLexer(Lexer):
@@ -477,13 +477,12 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # See also optimizeconst impl: https://github.com/pallets/jinja/blob/3.1.0/src/jinja2/compiler.py#L48-L49
         self.optimized = False
 
-        self.template_class.environment_class = AnsibleEnvironment  # DTFIX-U: why is this here? -- it was moved from Templar.__init__ (environment creation)
+        self.template_class.environment_class = AnsibleEnvironment  # DTFIX-MERGE: why is this here? it was moved from Templar.__init__ (environment creation)
 
     @property
     def lexer(self):
         """Return/cache an AnsibleLexer with settings from the current AnsibleEnvironment"""
-        # DTFIX-U: we should pre-generate the default cached lexer before forking, not leave it to chance (e.g. simple playbooks)
-        # DTFIX-U: more efficient key calculation
+        # DTFIX-MERGE: we should pre-generate the default cached lexer before forking, not leave it to chance (e.g. simple playbooks)
         key = tuple(getattr(self, name) for name in _TEMPLATE_OVERRIDE_FIELD_NAMES)
 
         lex = self._lexer_cache.get(key)
@@ -787,13 +786,12 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
     """
     o_type = type(o)
 
-    from ansible.vars.hostvars import HostVars, HostVarsVars  # DTFIX-U: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
+    from ansible.vars.hostvars import HostVars, HostVarsVars  # DTFIX-PR: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
 
     value_type: type[dict | list | tuple | set]
 
     if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
         return o
-    # DTFIX-U: delazifying HostVars/HostVarsVars here is correct but expensive- look at ways to do deferred lazy outside of templating or ?
     elif o_type in (dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict, HostVars, HostVarsVars):
         value_expression = ((
             _finalize_template_result(k, mode),

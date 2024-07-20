@@ -49,16 +49,16 @@ class _AnsibleLazyTemplateMixin:
 
     # due to the way Jinja handles globals, we may encounter things like functions/methods in hooked getitem/getattr that
     # always pass through this mixin; we want to silently ignore those types
-    # DTFIX-U: optimize this list by separating base types (using isinstance) from exact types using a set lookup
+    # DTFIX-FUTURE: optimize this list by separating base types (using isinstance) from exact types using a set lookup
     _ignore_types = (
-        types.FunctionType,  # DTFIX-U: global functions returned from Jinja globals __getitem__ def _lookup
-        types.MethodType,  # DTFIX-U: ?
+        types.FunctionType,  # DTFIX-MERGE: global functions returned from Jinja globals __getitem__ def _lookup
+        types.MethodType,  # DTFIX-MERGE: ?
         functools.partial,  # triggered by TaskExecutor lookup partial injection as a template local
-        type,  # DTFIX-U: this is a broad ignore for looking up `range` via `resolve_or_missing`; is there a better way?
-        # DTFIX-U: is there a better way to include callables like these, so we're not playing whack-a-mole
-        type(''.startswith),  # DTFIX-U: builtin_function_or_method
+        type,  # DTFIX-MERGE: this is a broad ignore for looking up `range` via `resolve_or_missing`; is there a better way?
+        # DTFIX-MERGE: is there a better way to include callables like these, so we're not playing whack-a-mole
+        type(''.startswith),  # DTFIX-MERGE: builtin_function_or_method
         type(Omit),
-        # DTFIX-U: if we optimize to use type reference equality later, update this list to include relevant derived types
+        # DTFIX-FUTURE: if we optimize to use type reference equality later, update this list to include relevant derived types
         Undefined,
         # Jinja passes these into filters/tests via @pass_environment et al.; silently ignore them
         Environment,
@@ -72,7 +72,6 @@ class _AnsibleLazyTemplateMixin:
     _mutator: weakref.ReferenceType[JinjaCallContext] | None
 
     def __init_subclass__(cls, **kwargs) -> None:
-        # DTFIX-U: this determination is very fragile to new layers added to the hierarchy
         tagged_type = cls.__mro__[1]
         native_type = tagged_type.__mro__[1]
 
@@ -99,15 +98,6 @@ class _AnsibleLazyTemplateMixin:
 
     @staticmethod
     def _try_create(item: t.Any) -> t.Any:
-        # DTFIX-U: should we be supporting arbitrary sequences and mappings here?
-
-        # DTFIX-U: this double-copy is very wasteful- optimize with a new "wrap_with_type" classmethod on
-        #  AnsibleTaggedObject or ? Also, maybe augment AnsibleTaggedObject._tag_value with the ability to force the wrapper
-        #  type or an alternate type map instead?
-
-        # DTFIX-U: add an optimization to avoid looking at tagged types for entire categories of things we're not interested in
-        # DTFIX-U: consider optimizing empty container case (return input)?
-
         item_type = type(item)
 
         # try to use exact type match first to determine which wrapper (if any) to apply; isinstance checks
@@ -127,13 +117,13 @@ class _AnsibleLazyTemplateMixin:
                     dispatcher = _AnsibleLazyTemplateMixin._dispatch_types[container_type]
                     break
             else:
-                # DTFIX-U: collapse special handling here?
                 if isinstance(item, _ITERATOR_TYPES):
+                    # DTFIX-MERGE: document the reason for this being here (once we remember why)
                     raise AnsibleVariableTypeError(variable_type=type(item))
 
-                # DTFIX-U: what do we want here? such as HostVars, HostVarsVars
-                # DTFIX-U: we now have strict checking of variable types leaving templating, is this warning redundant?
-                # DTFIX-U: undefined types need to be here too? (prevent warnings from with_first_found loops with undefined values)
+                # DTFIX-MERGE: what do we want here? such as HostVars, HostVarsVars
+                # DTFIX-MERGE: we now have strict checking of variable types leaving templating, is this warning redundant?
+                # DTFIX-MERGE: undefined types need to be here too? (prevent warnings from with_first_found loops with undefined values)
                 if not isinstance(item, _AnsibleLazyTemplateMixin._ignore_types):
                     display.warning(f'Encountered unsupported {item_type} type.')
 
@@ -358,7 +348,7 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
         return _AnsibleLazyTemplateDict(super().__ror__(other))
 
     def __deepcopy__(self, memo):
-        # DTFIX-U: once lazies are wrappers, implement this as a basic deepcopy that preserves laziness
+        # DTFIX-MERGE: implement lazy deep copy
         raise NotImplementedError("Deep copy of Ansible lazy types is not supported.")
 
 
@@ -536,7 +526,7 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
         super().sort(*args, **kwargs)
 
     def __deepcopy__(self, memo):
-        # DTFIX-U: once lazies are wrappers, implement this as a basic deepcopy that preserves laziness
+        # DTFIX-MERGE: implement lazy deep copy
         raise NotImplementedError("Deep copy of Ansible lazy types is not supported.")
 
 
