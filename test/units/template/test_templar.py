@@ -32,10 +32,10 @@ import unittest
 
 from ansible.errors import (
     AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplatePluginNotFoundError,
-    AnsibleBrokenConditionalError, AnsibleTemplatePluginLoadError, AnsibleTemplatePluginRuntimeError,
+    AnsibleBrokenConditionalError, AnsibleTemplatePluginLoadError, AnsibleTemplatePluginRuntimeError, AnsibleTemplateError,
 )
 
-from ansible.module_utils.datatag import AnsibleTagHelper
+from ansible.module_utils.datatag import AnsibleTagHelper, AnsibleDatatagBase
 from ansible.utils.collection_loader._collection_finder import _AnsibleCollectionFinder
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
@@ -894,6 +894,70 @@ def test_jinja2_loader_plugin(fixture: str, plugin_type: str, plugin_name: str, 
         _AnsibleCollectionFinder._remove()
 
         nuke_module_prefix('ansible_collections')
+
+
+def test_variable_name_as_template_success() -> None:
+    source_pos = AnsibleSourcePosition(src="somefile")
+    name = NotATemplate().tag(source_pos.tag("blar"))
+
+    res = Templar().variable_name_as_template(name)
+    assert res.replace(' ', '') == "{{blar}}"
+
+    required_tags: frozenset[AnsibleDatatagBase] = frozenset({source_pos, TrustedAsTemplate()})
+
+    assert required_tags - AnsibleTagHelper.tags(res) == set()  # there might be others, that's fine
+    assert not NotATemplate.is_tagged_on(res)
+
+
+def test_variable_name_as_template_invalid() -> None:
+    invalid_name = AnsibleSourcePosition(src="somefile").tag("  invalid[var*name")
+
+    with pytest.raises(AnsibleError) as err:
+        Templar().variable_name_as_template(invalid_name)
+
+    assert err.value.obj is invalid_name
+
+
+def test_resolve_variable_expression_success() -> None:
+    templar = Templar(variables=dict(thing=dict(subdict1=dict(subdict2="hi mom"))))
+
+    assert templar.resolve_variable_expression("thing.subdict1.subdict2") == "hi mom"
+
+
+def test_resolve_variable_expression_invalid() -> None:
+    templar = Templar(variables=dict(thing=dict(subdict1=dict(subdict2="hi mom"))))
+
+    expr = "thing['subdict1']['subdict2']"  # non-identifier components should fail early
+
+    with pytest.raises(AnsibleError) as err:
+        templar.resolve_variable_expression(expr)
+
+    assert err.value.obj is expr
+
+
+def test_resolve_variable_expression_missing() -> None:
+    templar = Templar()
+
+    source_pos = AnsibleSourcePosition(src="somefile")
+
+    expr = source_pos.tag("missing_variable")
+
+    with pytest.raises(AnsibleUndefinedVariable) as err:
+        templar.resolve_variable_expression(expr)
+
+    assert err.value.obj == expr  # may not be the same instance, since it was tagged TrustedAsTemplate internally
+
+    required_tags: frozenset[AnsibleDatatagBase] = frozenset({source_pos, TrustedAsTemplate()})
+
+    assert required_tags - AnsibleTagHelper.tags(err.value.obj) == set()  # there might be others, that's fine
+
+
+def test_error_invalid_non_string_template():
+    """Ensure errors on non-string template inputs include type information."""
+    with pytest.raises(AnsibleTemplateError) as err:
+        Templar().template(...)
+
+    assert f"of type {type(...)}" in err.value.message
 
 
 def nuke_module_prefix(prefix):

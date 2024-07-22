@@ -14,7 +14,6 @@ from collections import ChainMap
 
 from jinja2.exceptions import TemplateSyntaxError
 from jinja2.loaders import FileSystemLoader
-from jinja2 import __version__ as jinja2_version
 
 from ansible.errors import (
     AnsibleError,
@@ -46,10 +45,6 @@ from .undefined_behaviors import FAIL_ON_UNDEFINED, UndefinedBehavior
 
 _display = Display()
 
-# DTFIX-U: remove/harden- just here for development backstop for now
-if tuple(map(int, jinja2_version.split('.'))) < (3, 1):
-    raise RuntimeError('Jinja 3.1+ required')
-
 
 def as_non_templatable_text(value: t.Any) -> str:
     return AnsibleTagHelper.tag(str(value), AnsibleTagHelper.tags(value) | {NotATemplate()})
@@ -63,10 +58,9 @@ class TemplateTrustCheckFailedError(AnsibleTemplateError):
 class TemplateOptions:
     DEFAULT: t.ClassVar[t.Self]
 
-    # DTFIX-U: embedded sentinel
     preserve_trailing_newlines: bool = t.cast(bool, ...)
     escape_backslashes: bool = t.cast(bool, ...)
-    overrides: TemplateOverrides = t.cast(TemplateOverrides, ...)  # DTFIX-U: these aren't really overrides anymore, rename the dataclass and this field
+    overrides: TemplateOverrides = t.cast(TemplateOverrides, ...)  # DTFIX-MERGE: these aren't really overrides anymore, rename the dataclass and this field
     undefined_behavior: UndefinedBehavior = t.cast(UndefinedBehavior, ...)
     value_for_omit: t.Any = ...
 
@@ -82,12 +76,11 @@ class TemplateOptions:
                 # HACK: stop post_init here when creating the shared defaults
                 return
 
-        # DTFIX-U: dataclasses.replace on the defaults in a factory?
+        # DTFIX-FUTURE: dataclasses.replace on the defaults in a factory?
         for field in dataclasses.fields(self):
-            # DTFIX-U: tighten this up?
             if getattr(self, field.name) is ...:
-                # DTFIX-U: figure out a better way to avoid propagating options
-                # DTFIX-U: review all options to determine correct propagation behavior
+                # DTFIX-MERGE: figure out a better way to avoid propagating options
+                # DTFIX-MERGE: review all options to determine correct propagation behavior
                 if field.name in ('value_for_omit', 'overrides', 'escape_backslashes'):
                     value = getattr(TemplateOptions.DEFAULT, field.name)
                 else:
@@ -183,7 +176,7 @@ class Templar:
 
     @property
     def available_variables(self) -> dict[str, t.Any] | ChainMap[str, t.Any]:
-        # DTFIX-U: ensure that we're always accessing this as a shallow container-level snapshot, and eliminate uses of set_temporary_context and anything
+        # DTFIX-MERGE: ensure that we're always accessing this as a shallow container-level snapshot, and eliminate uses of set_temporary_context and anything
         #  else that directly mutates this value. _new_context may resolve this for us?
         if self._variables is None:
             self._variables = self._variables_factory() if self._variables_factory else {}
@@ -232,38 +225,34 @@ class Templar:
             for key, value in original.items():
                 setattr(targets[key], key, value)
 
-    # DTFIX-U: ditch this?
     def resolve_variable_expression(self, expression: str) -> t.Any:
         """Resolve a variable name or simple dotted variable expression."""
-        stripped_expression = expression.strip()
-        components = stripped_expression.split('.')
+        components = expression.split('.')
         if not all(map(isidentifier, components)):
-            raise AnsibleError(f'invalid variable expression: {expression}')
-        return self.evaluate_expression(TrustedAsTemplate().tag(stripped_expression))
+            # DTFIX-MERGE: better exception type here
+            raise AnsibleError(f'invalid variable expression: {expression}', obj=expression)
+        return self.evaluate_expression(TrustedAsTemplate().tag(expression))
 
-    # DTFIX-U: implement a pylint check for proper usage of LiteralString args (even if mypy eventually supports it,
-    # we'll want this to get checked for collections, too).
     def template_literal_expression(self, expression: t.LiteralString, var_overrides: dict[str, t.Any] | None = None) -> t.Any:
         """Template string literal expressions with blind trust."""
-        # DTFIX-U: propagate other tags? (source position, etc)
+        # DTFIX-RELEASE: implement a pylint check for proper usage of LiteralString args (even if mypy eventually supports it,
+        #  we'll want this to get checked for collections, too).
+
         variables = ChainMap(var_overrides, self.available_variables) if var_overrides else self.available_variables
         templar = Templar(self._loader, variables=variables)
         return templar.evaluate_expression(TrustedAsTemplate().tag(expression))
 
     @staticmethod
     def variable_name_as_template(name: str) -> str:
-        stripped_name = name.strip()
-        if not isidentifier(stripped_name):
-            # DTFIX-U: better exception type here
-            raise AnsibleError(f"invalid variable name: {stripped_name}")
-        # DTFIX-U: propagate other tags? (source position, etc)
-        # this is safe enough to blindly apply trust, since it can only be an identifier
-        return TrustedAsTemplate().tag('{{' + stripped_name + '}}')
+        """Return a trusted template string that will resolve the provided variable name. Raises an error if `name` is not a valid identifier."""
+        if not isidentifier(name):
+            # DTFIX-MERGE: better exception type here
+            raise AnsibleError(f"invalid variable name: {name!r}", obj=name)
+        return AnsibleTagHelper.tag('{{' + name + '}}', (AnsibleTagHelper.tags(name) | {TrustedAsTemplate()}) - {NotATemplate()})
 
-    # DTFIX-U: TemplateMode.EXPRESSION should be strings only- enforce (or use a different entrypoint)
     def template(
             self,
-            variable: t.Any,
+            variable: t.Any,  # DTFIX-MERGE: once we settle the new/old API boundaries, rename this (here and in other methods)
             *,
             options: TemplateOptions | None = None,
             mode: TemplateMode = TemplateMode.DEFAULT,
@@ -275,18 +264,21 @@ class Templar:
         if variable is None:
             return variable  # input was not manipulated, assume that it contains only allowed types
 
-        # When processing a template (ie, not an expression), silently ignore strings that were explicitly tagged NotATemplate.
-        # The exclusion of expression mode supports testing untrusted constants from playbooks tagged with `!unsafe` (since it applies NotATemplate).
-        # Plugins could encounter this situation if evaluate_expression is called with a value tagged NotATemplate.
-        if mode != TemplateMode.EXPRESSION and NotATemplate.is_tagged_on(variable):
+        if mode == TemplateMode.EXPRESSION:
+            if not isinstance(variable, str):
+                raise TypeError(f"Expressions must be {str!r}, got {type(variable)!r}.")
+        elif NotATemplate.is_tagged_on(variable):
+            # When processing a template (ie, not an expression), silently ignore strings that were explicitly tagged NotATemplate.
+            # The exclusion of expression mode supports testing untrusted constants from playbooks tagged with `!unsafe` (since it applies NotATemplate).
+            # Plugins could encounter this situation if evaluate_expression is called with a value tagged NotATemplate.
             return variable
 
-        # DTFIX-U: early exit on empty collections
+        # DTFIX-FUTURE: early exit on empty collections (hot code path for playbook templating/validation)
 
-        # DTFIX-U: tighten this up, and figure out a better way to avoid propagating options
+        # DTFIX-MERGE: tighten this up, and figure out a better way to avoid propagating options
         if template_ctx := TemplateContext.current(optional=True):
-            # DTFIX-U: ideally avoid re-creating TemplateOptions every time here
-            options = options or TemplateOptions()  # DTFIX-U: this is dangerous because it looks like it's the default, but it's a context-aware factory method
+            # DTFIX-FUTURE: ideally avoid re-creating TemplateOptions every time here
+            options = options or TemplateOptions()  # DTFIX-MERGE: dangerous because it looks like it's the default, but it's a context-aware factory method
             stop_on_template = template_ctx.stop_on_template
         else:
             options = options or TemplateOptions.DEFAULT
@@ -402,15 +394,13 @@ class Templar:
                 newlines = options.overrides.newline_sequence * (data_newlines - res_newlines)
                 result = AnsibleTagHelper.tag_copy(result, result + newlines)
 
-        # DTFIX-U: ensure tag propagation behavior is working for containers
-        # DTFIX-U: should there be some form of recursive application here?
-        # DTFIX-U: propagate more tags here?
-        # if the input string template was source-tagged and the result is not, propagate the source tag to the new value
+        # If the input string template was source-tagged and the result is not, propagate the source tag to the new value.
+        # This provides further contextual information when a template-derived value/var causes an error.
         if (src_pos := AnsibleSourcePosition.get_tag(template)) and not AnsibleSourcePosition.is_tagged_on(result):
             try:
                 result = src_pos.tag(result)
             except NotTaggableError:
-                pass  # DTFIX-U: determine if there are cases where this error should not be suppressed
+                pass  # best effort- if we can't, oh well
 
         return result
 
@@ -432,7 +422,7 @@ class Templar:
 
     @staticmethod
     def _raise_template_error(ex: Exception, variable: t.Any, mode: TemplateMode) -> t.NoReturn:
-        # DTFIX-U: capture useful context information from each context early
+        # DTFIX-FUTURE: capture useful context information from each context on the way in, not the way out
 
         if isinstance(ex, AnsibleTemplateError):
             exception_to_raise = ex
@@ -440,10 +430,10 @@ class Templar:
             cause = 'expression' if mode is TemplateMode.EXPRESSION else 'template'
 
             if isinstance(variable, str):
-                if len(variable) <= 60 and '\n' not in variable:  # DTFIX-U: implement better limits on inline template display
+                if len(variable) <= 60 and '\n' not in variable:  # DTFIX-FUTURE: implement better configuration on inline template elision/presentation
                     cause += f' {variable!r}'
             else:
-                cause += f' of type {type(variable)}'  # DTFIX-U: what causes this, do we need it here or somewhere else?
+                cause += f' of type {type(variable)}'  # augment errors for non-string inputs with type information
 
             ex_type = AnsibleTemplateError  # always raise an AnsibleTemplateError/subclass
 
@@ -474,9 +464,7 @@ class Templar:
             return False
 
     def evaluate_expression(self, expression: str, escape_backslashes=True, template_locals: dict[str, t.Any] | None = None) -> t.Any:
-        # DTFIX-U: should we allow passing options here, so we can use this with the debug action?
-        if not isinstance(expression, str):
-            raise TypeError(f"evaluate_expression requires {str!r}, got {type(expression)!r}")
+        # DTFIX-MERGE: allow passing TemplateOptions here, so the debug action can use this instead of template(mode=TemplateMode.EXPRESSION)
 
         return self.template(
             expression,
@@ -488,7 +476,6 @@ class Templar:
     _BROKEN_CONDITIONAL_ALLOWED_FRAGMENT = 'Broken conditionals are currently allowed because the `ALLOW_BROKEN_CONDITIONALS` configuration option is enabled.'
 
     def evaluate_conditional(self, conditional: str | bool | None) -> bool:
-        # DTFIX-U: all error/warning messages need location info
         if type(conditional) is bool:  # pylint: disable=unidiomatic-typecheck
             return conditional
 
@@ -550,10 +537,10 @@ class Templar:
             return result
 
         bool_result = bool(result)
-        # DTFIX-U: `type(result)` should probably be the base type of the data structure
+
         msg = (
-            f'Conditional result was {textwrap.shorten(str(result), width=40)!r} of type {type(result)}, which evaluates to {bool_result}. '
-            'Conditionals must have a boolean result.'
+            f'Conditional result was {textwrap.shorten(str(result), width=40)!r} of type {AnsibleTagHelper.get_friendly_type_name(result)!r}, '
+            f'which evaluates to {bool_result}. Conditionals must have a boolean result.'
         )
 
         if _TemplateConfig.allow_broken_conditionals:
@@ -595,7 +582,7 @@ class Templar:
         return True
 
     def proxy_or_render_template(self, item: t.Any):
-        # DTFIX-U: always blindly access item here?
+        # DTFIX-MERGE: always blindly access item here?
         res = self.template(AnsibleAccessContext.current().access(item))
 
         if (type(res) is AnsibleUndefined and  # pylint: disable=unidiomatic-typecheck

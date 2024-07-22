@@ -85,16 +85,15 @@ class TemplateOverrides:
         Return a dictionary of arguments for passing to Environment.overlay.
         The dictionary will be empty if all fields have their default value.
         """
-        # DTFIX-U: calculate default/non-default during __post_init__
+        # DTFIX-FUTURE: calculate default/non-default during __post_init__
         fields = [(field, getattr(self, field.name)) for field in dataclasses.fields(self)]
         kwargs = {field.name: value for field, value in fields if value != field.default}
 
         return kwargs
 
-    def contains_start_string(self, value: str) -> bool:
+    def _contains_start_string(self, value: str) -> bool:
         """Returns True if the given value contains a variable, block or comment start string."""
-        # DTFIX-U: this is inefficient, use a compiled regex instead
-        #        when fixing this, rename this function and include the line statement and line comment prefixes too (even though we don't yet need them)
+        # DTFIX-FUTURE: this is inefficient, use a compiled regex instead
 
         for marker in (self.block_start_string, self.variable_start_string, self.comment_start_string):
             if marker in value:
@@ -102,10 +101,9 @@ class TemplateOverrides:
 
         return False
 
-    def starts_and_ends_with_jinja_delimiters(self, value: str) -> bool:
+    def _starts_and_ends_with_jinja_delimiters(self, value: str) -> bool:
         """Returns True if the given value starts and ends with Jinja variable, block or comment delimiters."""
-        # DTFIX-U: this is inefficient, use a compiled regex instead
-        #        when fixing this, rename this function and include the line statement and line comment prefixes too (even though we don't yet need them)
+        # DTFIX-FUTURE: this is inefficient, use a compiled regex instead
 
         for marker in (self.block_start_string, self.variable_start_string, self.comment_start_string):
             if value.startswith(marker):
@@ -175,8 +173,10 @@ class AnsibleContext(Context):
         return AnsibleAccessContext.current().access(val)
 
     def get_all(self):
-        # DTFIX-U: explanatory docstring
-
+        """
+        Override Jinja's default get_all to return all vars in the context as a ChainMap with a mutable layer at the bottom.
+        This provides some isolation against accidental changes to inherited variable contexts without requiring copies.
+        """
         layers = []
 
         if self.vars:
@@ -204,14 +204,16 @@ class AnsibleContext(Context):
         context.blocks.update((k, list(v)) for k, v in self.blocks.items())
         return context
 
-    # DTFIX-U: the base class sources these directly from their `dict` implementations, which is incorrect in our ChainMap cases; are these even used/needed?
     def keys(self, *args, **kwargs):
+        """Base Context delegates to `dict.keys` against `get_all`, which would fail since we return a ChainMap. No known usage."""
         raise NotImplementedError()
 
     def values(self, *args, **kwargs):
+        """Base Context delegates to `dict.values` against `get_all`, which would fail since we return a ChainMap. No known usage."""
         raise NotImplementedError()
 
     def items(self, *args, **kwargs):
+        """Base Context delegates to built-in `dict.items` against `get_all`, which would fail since we return a ChainMap. No known usage."""
         raise NotImplementedError()
 
 
@@ -263,8 +265,8 @@ class AnsibleTemplate(Template):
 
     _source_tempfile = None
 
-    # DTFIX-U: this still isn't working reliably; something else must be keeping the template object alive
     def __del__(self):
+        # DTFIX-MERGE: this still isn't working reliably; something else must be keeping the template object alive
         if self._source_tempfile:
             os.unlink(self._source_tempfile.name)
 
@@ -287,17 +289,6 @@ class AnsibleTemplate(Template):
             jinja_vars=ArgSmuggler.extract_jinja_vars(vars),
             jinja_globals=self.globals,
         )
-
-
-# DTFIX-U: this is no longer used (previously part of J2Vars init to filter locals), should we still do this? Probably not...
-def _process_locals(_l):
-    if _l is None:
-        return {}
-    return {
-        k: v for k, v in _l.items()
-        if v is not missing
-        and k not in {'context', 'environment', 'template'}  # NOTE is this really needed?
-    }
 
 
 class AnsibleCodeGenerator(NativeCodeGenerator):
@@ -495,7 +486,6 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     _DEBUGGABLE_TEMPLATE_SOURCE = False  # DTFIX-PR: bikeshed a name/mechanism to control template debugging
 
     def from_string(self, *args, **kwargs):
-        # DTFIX-U: sane way to make this work outside from_string?
         with _CompileStateSmugglingCtx.maybe(create=self._DEBUGGABLE_TEMPLATE_SOURCE) as ctx:
             template_obj = super().from_string(*args, **kwargs)
 
@@ -543,7 +533,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # this code is complemented by our tweaked CodeGenerator _output_const_repr that ensures that literal constants
         # in templates aren't double-repr'd in the generated code
         if len(node_list) == 1:
-            # DTFIX-U: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
+            # DTFIX-MERGE: determine if we should do managed access here (we *should* have hit them all during templating/resolve, but ?)
             return node_list[0]
 
         # in order to ensure that all embedded triggers fire (vaultbomb, undefined, etc.), do a recursive finalize before we repr (otherwise we can end up
@@ -588,7 +578,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         return TemplateContext.current().templar.proxy_or_render_template(TrustedAsTemplate().tag(const_template))
 
     def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
-        # DTFIX-U: do we actually need to managed-access both sides of templates/strings here?
+        # DTFIX-MERGE: do we actually need to managed-access both sides of templates/strings here?
         # example: "{{ some['thing'] }}" -- obj is the "some" dict, argument is "thing"
         # access on the result of super().getitem is necessary
         return TemplateContext.current().templar.proxy_or_render_template(super().getitem(obj, argument))
@@ -631,14 +621,13 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             # Performing either before calling them will interfere with that processing.
             return super().call(__context, __obj, *args, **kwargs)
 
-        # DTFIX-U: consider replacing this with split decorators?
+        # DTFIX-MERGE: consider replacing this with split decorators?
         if (first_undefined := get_first_undefined_arg(args, kwargs)) is not None:
             return first_undefined
 
-        # DTFIX-U: There is currently no way for callables to avoid tripping undefined values, is there a case where that's needed?
-        #        The only callables should be global functions and methods on supported types -- we shouldn't need to worry about arbitrary types/methods.
         try:
             with JinjaCallContext(eager_trip_undefined=True):
+                # NB: arbitrary callables will always trip returned undefineds
                 call_res = super().call(__context, __obj, *proxy_args(args), **proxy_kwargs(kwargs))
 
                 if __obj is range:
@@ -658,7 +647,6 @@ _DEFAULT_UNDEF = AnsibleUndefined("Mandatory variable has not been overridden", 
 _sentinel: t.Final[object] = object()
 
 
-# DTFIX-U: give this a proper name
 def _undef(hint=None):
     """Jinja2 global function (undef) for creating custom undefined defaults with custom hints."""
     if hint is None or isinstance(hint, Undefined) or hint == '':
@@ -729,7 +717,7 @@ def _new_context(
     layers = []
 
     if jinja_locals:
-        # DTFIX-U: if we can't trip this in coverage, kill it off?
+        # DTFIX-MERGE: if we can't trip this in coverage, kill it off?
         if type(jinja_locals) is not dict:  # pylint: disable=unidiomatic-typecheck
             raise NotImplementedError("locals must be a dict")
 
@@ -762,7 +750,7 @@ def is_possibly_template(value: str, overrides: TemplateOverrides = TemplateOver
     A lightweight check to determine if the given string looks like it contains a template, even if that template is invalid.
     Return True if the given string starts with a Jinja overrides header or if it contains template start strings.
     """
-    return value.startswith(JINJA2_OVERRIDE) or overrides.contains_start_string(value)
+    return value.startswith(JINJA2_OVERRIDE) or overrides._contains_start_string(value)
 
 
 def is_possibly_all_template(value: str, overrides: TemplateOverrides = TemplateOverrides.DEFAULT):
@@ -770,7 +758,7 @@ def is_possibly_all_template(value: str, overrides: TemplateOverrides = Template
     A lightweight check to determine if the given string looks like it contains *only* a template, even if that template is invalid.
     Return True if the given string starts with a Jinja overrides header or if it starts and ends with Jinja template delimiters.
     """
-    return value.startswith(JINJA2_OVERRIDE) or overrides.starts_and_ends_with_jinja_delimiters(value)
+    return value.startswith(JINJA2_OVERRIDE) or overrides._starts_and_ends_with_jinja_delimiters(value)
 
 
 class FinalizeMode(enum.Enum):
@@ -779,11 +767,9 @@ class FinalizeMode(enum.Enum):
     POST_FINALIZE = enum.auto()
 
 
-# DTFIX-U: add tests to ensure this doesn't drift from allowed types
 def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
-    """
-    Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions.
-    """
+    """Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions."""
+    # DTFIX-MERGE: add tests to ensure this method doesn't drift from allowed types
     o_type = type(o)
 
     from ansible.vars.hostvars import HostVars, HostVarsVars  # DTFIX-PR: really bad idea, don't do this -- this is here just to see if the tests pass otherwise
