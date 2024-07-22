@@ -20,10 +20,8 @@ from __future__ import annotations
 
 import fnmatch
 import os
-import sys
 import re
 import itertools
-import traceback
 import typing as t
 
 from operator import attrgetter
