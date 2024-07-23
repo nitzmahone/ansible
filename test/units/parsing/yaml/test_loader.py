@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import collections.abc as c
 import datetime
+import functools
 import typing as t
 
 import pytest
@@ -464,3 +465,28 @@ def test_dump_data_types(value: str, expected: t.Any) -> None:
     result = yaml.dump(value, Dumper=AnsibleDumper, default_flow_style=True).rstrip()
 
     assert result == expected
+
+
+@pytest.mark.parametrize("trust_input_str, override_trust_value, expected_trust", (
+    (True, None, True),
+    (True, True, True),
+    (True, False, False),
+    (False, None, False),
+    (False, True, True),
+    (False, False, False),
+))
+def test_string_trust_propagation(trust_input_str: bool, override_trust_value: bool | None, expected_trust: bool) -> None:
+    """
+    Verify that input trust propagation behaves as expected. An explicit boolean `trusted_as_template` arg to the loader is always
+    respected; if not specified, the presence of trust on the input string determines if trust is applied to outputs.
+    """
+    data = "foo: bar"
+
+    if trust_input_str:
+        data = TrustedAsTemplate().tag(data)
+
+    loader = functools.partial(AnsibleLoader, trusted_as_template=override_trust_value) if override_trust_value is not None else AnsibleLoader
+
+    res = yaml.load(data, Loader=loader)
+
+    assert expected_trust == TrustedAsTemplate.is_tagged_on(res['foo'])

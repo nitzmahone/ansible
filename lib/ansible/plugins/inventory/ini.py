@@ -163,9 +163,9 @@ class InventoryModule(BaseFileInventoryPlugin):
         pending_declarations = {}
         groupname = 'ungrouped'
         state = 'hosts'
-        self._source_pos = AnsibleSourcePosition(src=path, line=0, col=1)
+        self._source_pos = AnsibleSourcePosition(src=path, line=0)
         for line in lines:
-            self._source_pos = AnsibleSourcePosition(src=path, line=self._source_pos.line + 1, col=1)
+            self._source_pos = AnsibleSourcePosition(src=path, line=self._source_pos.line + 1)
 
             line = line.strip()
             # Skip empty lines and comments
