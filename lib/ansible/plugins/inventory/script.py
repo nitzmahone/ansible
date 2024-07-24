@@ -219,7 +219,7 @@ class InventoryModule(BaseInventoryPlugin):
             try:
                 sp = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             except OSError as ex:
-                raise AnsibleParserError(f"Failed to execute inventory script command: {shlex.join(cmd)}") from ex
+                raise AnsibleParserError(f"Failed to execute inventory script command {shlex.join(cmd)!r}.") from ex
 
             (stdout, stderr) = sp.communicate()
 
@@ -254,7 +254,14 @@ class InventoryModule(BaseInventoryPlugin):
             try:
                 profile_name = detect_profile_name(data)
                 decoder = get_decoder(profile_name)
+            except Exception as ex:
+                raise AnsibleError(
+                    message="Unable to get JSON decoder for inventory script result.",
+                    help_text=stderr_help_text,
+                    # obj not set because it may contain sensitive data that should not be displayed
+                ) from ex
 
+            try:
                 try:
                     processed = json.loads(data, cls=decoder)
                 except Exception as json_ex:

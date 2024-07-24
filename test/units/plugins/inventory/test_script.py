@@ -69,7 +69,7 @@ class TestInventoryModule(unittest.TestCase):
 
         with pytest.raises(AnsibleError) as e:
             self.inventory_module.parse(self.inventory, self.loader, '/foo/bar/foobar.py')
-        assert e.value.message == "problem running /foo/bar/foobar.py --list (dummy text)"
+        assert e.value.message == "Failed to execute inventory script command '/foo/bar/foobar.py --list': dummy text"
 
     def test_parse_subprocess_err_code_fail(self):
         self.popen_result.stdout = to_bytes(u"fooébar", errors='surrogate_escape')
@@ -79,7 +79,8 @@ class TestInventoryModule(unittest.TestCase):
 
         with pytest.raises(AnsibleError) as e:
             self.inventory_module.parse(self.inventory, self.loader, '/foo/bar/foobar.py')
-        assert e.value.message == to_native("Inventory script (/foo/bar/foobar.py) had an execution error: dummyédata")
+        assert e.value.message == "Inventory script returned non-zero exit code 1."
+        assert e.value.help_text == "Standard error from inventory script:\ndummyédata\n"
 
     def test_parse_utf8_fail(self):
         self.popen_result.returncode = 0
@@ -88,8 +89,7 @@ class TestInventoryModule(unittest.TestCase):
         with pytest.raises(AnsibleError) as e:
             self.inventory_module.parse(self.inventory, self.loader, '/foo/bar/foobar.py')
 
-        assert e.value.message == to_native("failed to parse executable inventory script results from "
-                                            "/foo/bar/foobar.py: value is <class 'str'> instead of <class 'dict'>")
+        assert e.value.message == "Unable to get JSON decoder for inventory script result: value is <class 'str'> instead of <class 'dict'>"
 
     def test_parse_dict_fail(self):
         self.popen_result.returncode = 0
@@ -97,8 +97,7 @@ class TestInventoryModule(unittest.TestCase):
 
         with pytest.raises(AnsibleError) as e:
             self.inventory_module.parse(self.inventory, self.loader, '/foo/bar/foobar.py')
-        assert e.value.message == to_native("failed to parse executable inventory script results from "
-                                            "/foo/bar/foobar.py: value is <class 'str'> instead of <class 'dict'>")
+        assert e.value.message == "Unable to get JSON decoder for inventory script result: value is <class 'str'> instead of <class 'dict'>"
 
     def test_get_host_variables_subprocess_script_raises_error(self):
         self.popen_result.returncode = 1
