@@ -102,6 +102,9 @@ def parse_kv(args, check_raw=False):
     if tags:
         options = {AnsibleTagHelper.tag(k, tags): AnsibleTagHelper.tag(v, tags) for k, v in options.items()}
 
+    if src_tag:
+        options = src_tag.tag(options)
+
     return options
 
 

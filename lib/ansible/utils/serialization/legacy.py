@@ -8,11 +8,12 @@ from __future__ import annotations as _annotations
 import datetime as _datetime
 import typing as _t
 
-from ansible.utils.datatag import tags as _tags
 from ansible._internal import _serialization
 from ansible.module_utils import datatag as _datatag
 from ansible.module_utils.common import json as _json
+from ansible.module_utils._internal import _ambient_context
 from ansible.parsing import vault as _vault
+from ansible.utils.datatag import tags as _tags
 
 
 class _Untrusted:
@@ -76,7 +77,7 @@ class _LegacyVariableVisitor(_serialization.AnsibleVariableVisitor):
 
 
 class _Profile(_json._JSONSerializationProfile):
-    _visitor_type = _LegacyVariableVisitor
+    visitor_type = _LegacyVariableVisitor
 
     @classmethod
     def serialize_untrusted(cls, value: _Untrusted) -> dict[str, str] | str:
@@ -143,16 +144,15 @@ class _Profile(_json._JSONSerializationProfile):
         }
 
     @classmethod
-    def pre_serialize(cls, o: _t.Any) -> _t.Any:
-        avv = cls._visitor_type(invert_trust=True, allow_mapping=True)
+    def pre_serialize(cls, encoder: Encoder, o: _t.Any) -> _t.Any:
+        avv = cls.visitor_type(invert_trust=True, allow_mapping=True)
 
         return avv.visit(o)
 
     @classmethod
-    def post_deserialize(cls, o: _t.Any) -> _t.Any:
-        file_name = _json._DeserializationContext.current().file_name
-        source_position = _tags.AnsibleSourcePosition(src=file_name) if file_name else None
-        avv = cls._visitor_type(trusted_as_template=True, source_position=source_position)
+    def post_deserialize(cls, decoder: Decoder, o: _t.Any) -> _t.Any:
+        source_position = _tags.AnsibleSourcePosition(src=decoder._file_name) if decoder._file_name else None
+        avv = cls.visitor_type(trusted_as_template=decoder._trusted_as_template, source_position=source_position)
 
         return avv.visit(o)
 
@@ -173,11 +173,25 @@ class Encoder(_json.AnsibleProfileJSONEncoder):
 class Decoder(_json.AnsibleProfileJSONDecoder):
     _profile = _Profile
 
-    def __init__(self, *args, vault_secrets: list[tuple[str, _vault.VaultSecret]] | None = None, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+            self,
+            file_name: str | None = None,
+            trusted_as_template: bool | None = None,
+            vault_secrets: list[tuple[str, _vault.VaultSecret]] | None = None,
+            **kwargs,
+    ):
+        super().__init__(**kwargs)
 
+        self._file_name = file_name
+        self._trusted_as_template = trusted_as_template
         self._vault_secrets = vault_secrets
 
     def raw_decode(self, s: str, idx: int = 0) -> tuple[_t.Any, int]:
+        if not self._file_name and (src_pos := _tags.AnsibleSourcePosition.get_tag(s)):
+            self._file_name = src_pos.src
+
+        if self._trusted_as_template is None:
+            self._trusted_as_template = _tags.TrustedAsTemplate.is_tagged_on(s)
+
         with _vault.VaultSecretsContext(self._vault_secrets):
             return super().raw_decode(s, idx)

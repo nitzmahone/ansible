@@ -30,8 +30,6 @@ from ansible import context
 from ansible.errors import AnsibleError, AnsibleOptionsError
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text
-from ansible.module_utils.datatag import AnsibleTagHelper
-from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
 from ansible.parsing.splitter import parse_kv
 from ansible.parsing.dataloader import DataLoader
 
@@ -199,10 +197,10 @@ def load_extra_vars(loader: DataLoader) -> dict[str, t.Any]:
                 raise AnsibleOptionsError("Please prepend extra_vars filename '%s' with '@'" % extra_vars_opt)
             elif extra_vars_opt[0] in [u'[', u'{']:
                 # Arguments as YAML
-                data = loader.load(extra_vars_opt, trusted_as_template=True)
+                data = loader.load(extra_vars_opt)
             else:
                 # Arguments as Key-value
-                data = parse_kv(AnsibleTagHelper.tag(extra_vars_opt, [TrustedAsTemplate(), AnsibleSourcePosition(src='<CLI:extra-vars>')]))
+                data = parse_kv(extra_vars_opt)
 
             if isinstance(data, MutableMapping):
                 extra_vars = combine_vars(extra_vars, data)

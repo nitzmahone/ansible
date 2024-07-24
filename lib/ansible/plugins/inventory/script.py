@@ -153,8 +153,8 @@ EXAMPLES = r'''# fmt: code
 
 import json
 import os
+import shlex
 import subprocess
-import typing as t
 
 from collections.abc import Mapping
 
@@ -165,6 +165,8 @@ from ansible.plugins.inventory import BaseInventoryPlugin
 from ansible.utils.display import Display
 from ansible.module_utils.serialization import get_decoder
 from ansible.utils.serialization import legacy_inventory
+from ansible.utils.datatag.tags import TrustedAsTemplate, AnsibleSourcePosition
+from ansible.module_utils.datatag import AnsibleTagHelper
 
 display = Display()
 
@@ -216,36 +218,64 @@ class InventoryModule(BaseInventoryPlugin):
         try:
             try:
                 sp = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            except OSError as e:
-                raise AnsibleParserError("problem running %s (%s)" % (' '.join(cmd), to_native(e)))
+            except OSError as ex:
+                raise AnsibleParserError(f"Failed to execute inventory script command: {shlex.join(cmd)}") from ex
+
             (stdout, stderr) = sp.communicate()
 
             path = to_native(path)
             err = to_native(stderr or "")
 
+            source_name = f'<script-inventory-plugin:{path}>'  # DTFIX-MERGE: find a way to indicate pseudo-paths/sources without abusing AnsibleSourcePosition
+            stdout = AnsibleTagHelper.tag(stdout, (TrustedAsTemplate(), AnsibleSourcePosition(src=source_name)))
+
             if err and not err.endswith('\n'):
                 err += '\n'
 
+            stderr_help_text = f'Standard error from inventory script:\n{err}' if err.strip() else None
+
             if sp.returncode != 0:
-                raise AnsibleError("Inventory script (%s) had an execution error: %s " % (path, err))
+                raise AnsibleError(
+                    message=f"Inventory script returned non-zero exit code {sp.returncode}.",
+                    help_text=stderr_help_text,
+                    # obj not set because it may contain sensitive data that should not be displayed
+                )
 
             # make sure script output is unicode so that json loader will output unicode strings itself
             try:
                 data = to_text(stdout, errors="strict")
-            except Exception as e:
-                raise AnsibleError("Inventory {0} contained characters that cannot be interpreted as UTF-8: {1}".format(path, to_native(e)))
+            except Exception as ex:
+                raise AnsibleError(
+                    "Inventory script result contained characters that cannot be interpreted as UTF-8.",
+                    help_text=stderr_help_text,
+                    # obj not set because it may contain sensitive data that should not be displayed
+                ) from ex
 
             try:
-                processed = parse_inventory(data)
-            except Exception as e:
-                raise AnsibleError("failed to parse executable inventory script results from {0}: {1}\n{2}".format(path, to_native(e), err))
+                profile_name = detect_profile_name(data)
+                decoder = get_decoder(profile_name)
+
+                try:
+                    processed = json.loads(data, cls=decoder)
+                except Exception as json_ex:
+                    AnsibleJSONParserError.handle_exception(json_ex, src=source_name)
+            except Exception as ex:
+                raise AnsibleError(
+                    message="Inventory script result could not be parsed as JSON.",
+                    help_text=stderr_help_text,
+                    # obj not set because it may contain sensitive data that should not be displayed
+                ) from ex
 
             # if no other errors happened and you want to force displaying stderr, do so now
             if stderr and self.get_option('always_show_stderr'):
                 self.display.error(msg=to_text(err))
 
             if not isinstance(processed, Mapping):
-                raise AnsibleError("failed to parse executable inventory script results from {0}: needs to be a json dict\n{1}".format(path, err))
+                raise AnsibleError(
+                    message=f"Inventory script result must be a {dict} instead of a {type(processed)}.",
+                    help_text=stderr_help_text,
+                    # obj not set because it may contain sensitive data that should not be displayed
+                )
 
             group = None
             data_from_meta = None
@@ -273,8 +303,8 @@ class InventoryModule(BaseInventoryPlugin):
 
                 self._populate_host_vars([host], got)
 
-        except Exception as e:
-            raise AnsibleParserError(to_native(e))
+        except Exception:
+            raise  # TEMPFIX: remove this exception handler
 
     def _parse_group(self, group, data):
 
@@ -347,15 +377,3 @@ def detect_profile_name(value: str) -> str:
         raise TypeError(f'_meta.profile is {type(profile)} instead of {str}')
 
     return profile
-
-
-def parse_inventory(value: str) -> dict[str, t.Any]:
-    """Parse an inventory JSON document after auto-detecting the serialization profile."""
-    profile_name = detect_profile_name(value)
-    decoder = get_decoder(profile_name)
-    file_name = '<script inventory plugin>'  # DTFIX-MERGE: is there a better way to indicate the source than using a bogus file_name value?
-
-    try:
-        return json.loads(value, cls=decoder, file_name=file_name)
-    except Exception as json_ex:
-        AnsibleJSONParserError.handle_exception(json_ex, src=file_name)

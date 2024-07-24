@@ -25,7 +25,7 @@ from ansible.module_utils.datatag import AnsibleTagHelper
 from ansible.parsing.vault import VaultSecret
 from ansible.parsing.yaml.constructor import AnsibleConstructor
 from ansible.module_utils.common.yaml import HAS_LIBYAML
-from ansible.utils.datatag.tags import TrustedAsTemplate
+from ansible.utils.datatag.tags import TrustedAsTemplate, AnsibleSourcePosition
 
 if HAS_LIBYAML:
     from yaml.cyaml import CParser
@@ -58,6 +58,9 @@ class AnsibleLoader(_YamlParser, AnsibleConstructor, Resolver):
         trusted_as_template: bool | None = None,
     ) -> None:
         trusted_as_template = trusted_as_template if isinstance(trusted_as_template, bool) else TrustedAsTemplate.is_tagged_on(stream)
+
+        if not file_name and (src_pos := AnsibleSourcePosition.get_tag(stream)):
+            file_name = src_pos.src
 
         _YamlParser.__init__(self, stream)
         AnsibleConstructor.__init__(self, file_name=file_name, vault_secrets=vault_secrets, trusted_as_template=trusted_as_template)

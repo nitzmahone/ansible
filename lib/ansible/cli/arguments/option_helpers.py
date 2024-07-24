@@ -11,6 +11,7 @@ import os
 import os.path
 import sys
 import time
+import typing as t
 
 import yaml
 
@@ -23,7 +24,7 @@ from ansible.module_utils.common.yaml import HAS_LIBYAML, yaml_load
 from ansible.release import __version__
 from ansible.utils.path import unfrackpath
 
-from ...utils.datatag.tags import TrustedAsTemplate
+from ...utils.datatag.tags import TrustedAsTemplate, AnsibleSourcePosition
 
 
 #
@@ -41,16 +42,62 @@ class ArgumentParser(argparse.ArgumentParser):
 
         super().__init__(*args, **kwargs)
 
-    @staticmethod
-    def __trusted_cli_arg(value: str) -> str:
-        """Custom string type that applies trust to the value to allow it to be templated."""
-        return TrustedAsTemplate().tag(value)
-
     def register(self, registry_name, value, object):
+        """Track registration of actions so that they can be resolved later by name, without depending on the internals of ArgumentParser."""
         if registry_name == 'action':
             self.__actions[value] = object
 
         super().register(registry_name, value, object)
+
+    def _patch_argument(self, args: tuple[str, ...], kwargs: dict[str, t.Any]) -> None:
+        """
+        Patch `kwargs` for an `add_argument` call using the given `args` and `kwargs`.
+        This is used to apply tags to entire categories of CLI arguments.
+        """
+        name = args[0]
+        action = kwargs.get('action')
+        resolved_action = self.__actions.get(action, action)  # get the action by name, or use as-is (assume it's a subclass of argparse.Action)
+        action_signature = inspect.signature(resolved_action.__init__)
+
+        if action_signature.parameters.get('type'):
+            arg_type = kwargs.get('type', str)
+
+            if not callable(arg_type):
+                raise ValueError(f'Argument {name!r} requires a callable for the {"type"!r} parameter, not {arg_type!r}.')
+
+            wrapped_arg_type = _tagged_type_factory(name, arg_type)
+
+            kwargs.update(type=wrapped_arg_type)
+
+    def _patch_parser(self, parser):
+        """Patch and return the given parser to intercept the `add_argument` method for further patching."""
+        parser_add_argument = parser.add_argument
+
+        def add_argument(*ag_args, **ag_kwargs):
+            self._patch_argument(ag_args, ag_kwargs)
+
+            parser_add_argument(*ag_args, **ag_kwargs)
+
+        parser.add_argument = add_argument
+
+        return parser
+
+    def add_subparsers(self, *args, **kwargs):
+        sub = super().add_subparsers(*args, **kwargs)
+        sub_add_parser = sub.add_parser
+
+        def add_parser(*sub_args, **sub_kwargs):
+            return self._patch_parser(sub_add_parser(*sub_args, **sub_kwargs))
+
+        sub.add_parser = add_parser
+
+        return sub
+
+    def add_argument_group(self, *args, **kwargs):
+        return self._patch_parser(super().add_argument_group(*args, **kwargs))
+
+    def add_mutually_exclusive_group(self, *args, **kwargs):
+        return self._patch_parser(super().add_mutually_exclusive_group(*args, **kwargs))
 
     def add_argument(self, *args, **kwargs):
         action = kwargs.get('action')
@@ -59,15 +106,7 @@ class ArgumentParser(argparse.ArgumentParser):
             help = f'{help.rstrip(".")}. This argument may be specified multiple times.'
         kwargs['help'] = help
 
-        resolved_action = self.__actions.get(action, action)  # get the action by name, or use as-is (assume it's a subclass of argparse.Action)
-        action_signature = inspect.signature(resolved_action.__init__)
-
-        if action_signature.parameters.get('type'):
-            # DTFIX-MERGE: apply AnsibleSourcePosition (or its expanded provenance replacement) here?
-            if (arg_type := kwargs.get('type', 'str')) == 'str':
-                arg_type = self.__trusted_cli_arg  # all CLI strings are trusted by default
-
-            kwargs.update(type=arg_type)
+        self._patch_argument(args, kwargs)
 
         return super().add_argument(*args, **kwargs)
 
@@ -443,3 +482,23 @@ def add_vault_options(parser):
                             help='ask for vault password')
     base_group.add_argument('--vault-password-file', '--vault-pass-file', default=[], dest='vault_password_files',
                             help="vault password file", type=unfrack_path(follow=False), action='append')
+
+
+def _tagged_type_factory(name: str, func: t.Callable[[str], object], /) -> t.Callable[[str], object]:
+    """
+    Return a callable that wraps the given function.
+    The result of the wrapped function will be tagged with AnsibleSourcePosition.
+    It will also be tagged with TrustedAsTemplate if it is equal to the original input string.
+    """
+    def tag_value(value: str) -> object:
+        result = func(value)
+
+        if result == value:
+            result = TrustedAsTemplate().tag(result)  # values which are not mutated are automatically trusted for templating
+
+        # DTFIX-MERGE: we need a proper way to mark non-file sources instead of abusing AnsibleSourcePosition like this
+        return AnsibleSourcePosition(src=f'<CLI:{name}>').tag(result)
+
+    tag_value._name = name  # simplify debugging by attaching the argument name to the function
+
+    return tag_value

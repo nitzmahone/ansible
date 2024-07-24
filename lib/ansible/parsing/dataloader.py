@@ -17,7 +17,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleFileNotFound, AnsibleParserError
 from ansible.errors.utils import RedactAnnotatedSourceContext
 from ansible.module_utils.basic import is_executable
-from ansible.utils.datatag.tags import AnsibleSourcePosition
+from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
 from ansible.module_utils.six import binary_type, text_type
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
 from ansible.parsing.quoting import unquote
@@ -80,14 +80,13 @@ class DataLoader:
     def load(
             self,
             data: str,
-            file_name: str = '<string>',  # DTFIX-MERGE: do something better here, we don't want placeholders making their way into AnsibleSourcePosition
+            file_name: str | None = None,  # DTFIX-MERGE: consider deprecating this in favor of tagging AnsibleSourcePosition on data
             show_content: bool = True,  # deprecated: description='deprecate show_content in favor of RedactAnnotatedSourceContext' core_version='2.22'
             json_only: bool = False,
-            trusted_as_template: bool = False,
     ) -> t.Any:
         '''Backwards compat for now'''
         with RedactAnnotatedSourceContext.maybe(create=not show_content):
-            return from_yaml(data=data, file_name=file_name, vault_secrets=self._vault.secrets, json_only=json_only, trusted_as_template=trusted_as_template)
+            return from_yaml(data=data, file_name=file_name, vault_secrets=self._vault.secrets, json_only=json_only)
 
     def load_from_file(self, file_name: str, cache: str = 'all', unsafe: bool = False, json_only: bool = False, trusted_as_template: bool = False) -> t.Any:
         '''
@@ -113,8 +112,11 @@ class DataLoader:
             # Read the file contents and load the data structure from them
             (b_file_data, show_content) = self._get_file_contents(file_name)
 
+            if trusted_as_template:
+                b_file_data = TrustedAsTemplate().tag(b_file_data)
+
             file_data = to_text(b_file_data, errors='surrogate_or_strict')
-            parsed_data = self.load(data=file_data, file_name=file_name, json_only=json_only, trusted_as_template=trusted_as_template)
+            parsed_data = self.load(data=file_data, file_name=file_name, json_only=json_only)
 
             # Cache the file contents for next time based on the cache option
             if cache == 'all':
@@ -155,7 +157,7 @@ class DataLoader:
         if encrypted_source := is_encrypted(b_data):
             b_data = self._vault.decrypt(b_data)
 
-        # DTFIX-MERGE: clean this up, invert, use a dataclass, something...
+        # DTFIX-MERGE: clean this up, invert, use a dataclass, something... (can we use a tag instead?)
         return b_data, not encrypted_source
 
     def get_text_file_contents(self, file_name: str) -> str:

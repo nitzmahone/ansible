@@ -12,7 +12,6 @@ import json
 import typing as t
 
 from ..import _internal
-from .._internal import _ambient_context
 from ..common import messages as _messages
 from ..datatag import (
     AnsibleSerializable,
@@ -142,11 +141,11 @@ class _JSONSerializationProfile:
     """
 
     @classmethod
-    def pre_serialize(cls, o: t.Any) -> t.Any:
+    def pre_serialize(cls, encoder: AnsibleProfileJSONEncoder, o: t.Any) -> t.Any:
         return o
 
     @classmethod
-    def post_deserialize(cls, o: t.Any) -> t.Any:
+    def post_deserialize(cls, decoder: AnsibleProfileJSONDecoder, o: t.Any) -> t.Any:
         return o
 
     @classmethod
@@ -265,7 +264,7 @@ class AnsibleProfileJSONEncoder(json.JSONEncoder):
         cls.profile_name = cls._profile.profile_name
 
     def encode(self, o):
-        o = self.maybe_wrap(self._profile.pre_serialize(o))
+        o = self.maybe_wrap(self._profile.pre_serialize(self, o))
 
         return super().encode(o)
 
@@ -361,11 +360,6 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         return value
 
 
-class _DeserializationContext(_ambient_context.AmbientContextBase):
-    def __init__(self, file_name: str | None = None) -> None:
-        self.file_name = file_name
-
-
 class AnsibleProfileJSONDecoder(json.JSONDecoder):
     """Profile based JSON decoder capable of handling Ansible internal types."""
 
@@ -373,29 +367,26 @@ class AnsibleProfileJSONDecoder(json.JSONDecoder):
 
     profile_name: str
 
-    def __init__(self, *args, file_name: str | None = None, **kwargs):
-        self._file_name = file_name
-
+    def __init__(self, **kwargs):
         kwargs.update(object_hook=self.object_hook)
 
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
 
     def __init_subclass__(cls, **kwargs) -> None:
         cls.profile_name = cls._profile.profile_name
 
     def raw_decode(self, s: str, idx: int = 0) -> tuple[t.Any, int]:
-        with _DeserializationContext(self._file_name):
-            obj, end = super().raw_decode(s, idx)
+        obj, end = super().raw_decode(s, idx)
 
-            if _string_encoding_check_enabled():
-                try:
-                    _recursively_check_string_encoding(obj)
-                except UnicodeEncodeError as ex:
-                    raise _create_encoding_check_error() from ex
+        if _string_encoding_check_enabled():
+            try:
+                _recursively_check_string_encoding(obj)
+            except UnicodeEncodeError as ex:
+                raise _create_encoding_check_error() from ex
 
-            obj = self._profile.post_deserialize(obj)
+        obj = self._profile.post_deserialize(self, obj)
 
-            return obj, end
+        return obj, end
 
     def object_hook(self, pairs: dict[str, object]) -> object:
         if _string_encoding_check_enabled():
@@ -422,12 +413,6 @@ class AnsibleJSONDecoder(json.JSONDecoder):
         kwargs['object_hook'] = self.object_hook
 
         super().__init__(*args, **kwargs)
-
-    def raw_decode(self, s: str, idx: int = 0) -> tuple[t.Any, int]:
-        with _DeserializationContext(self._file_name):
-            obj, end = super().raw_decode(s, idx)
-
-            return obj, end
 
     @staticmethod
     def object_hook(pairs) -> object:

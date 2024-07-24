@@ -198,7 +198,7 @@ class AnsibleJSONParserError(AnsibleParserError):
 
         message = str(exception)
 
-        error = cls(message, obj=err_pos.tag(''))
+        error = cls(message, obj=err_pos)
 
         raise error from exception
 

@@ -153,7 +153,7 @@ Should be:
 
             message = re.sub(r'\s+', ' ', message).strip()
 
-        error = cls(message, obj=source_context.source_position.tag(''))
+        error = cls(message, obj=source_context.source_position)
         error.formatted_source_context = str(source_context)
         error.help_text = help_text
 

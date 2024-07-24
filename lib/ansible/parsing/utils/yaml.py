@@ -13,18 +13,27 @@ from ansible.errors.utils import RedactAnnotatedSourceContext
 from ansible.parsing.vault import VaultSecret
 from ansible.parsing.yaml.loader import AnsibleLoader
 from ansible.parsing.yaml.errors import AnsibleYAMLParserError
+from ansible.utils.datatag.tags import AnsibleSourcePosition
 from ansible.utils.serialization import legacy
 
 
 def from_yaml(
     data: str,
-    file_name: str = '<string>',  # DTFIX-MERGE: do something better here, we don't want placeholders making their way into AnsibleSourcePosition
+    file_name: str | None = None,  # DTFIX-MERGE: consider deprecating this in favor of tagging AnsibleSourcePosition on data
     show_content: bool = True,  # deprecated: description='deprecate show_content in favor of RedactAnnotatedSourceContext' core_version='2.22'
     vault_secrets: list[tuple[str, VaultSecret]] | None = None,
     json_only: bool = False,
-    trusted_as_template: bool = False,
 ) -> t.Any:
     """Creates a Python data structure from the given data, which can be either a JSON or YAML string."""
+    if not file_name:
+        # DTFIX-MERGE: the JSON an YAML deserializers already handle this, but handle_exception doesn't see file_name, do we have a better option?
+        if src_pos := AnsibleSourcePosition.get_tag(data):
+            file_name = src_pos.src
+        else:
+            file_name = '<string>'
+
+    # DTFIX-MERGE: provide Ansible-specific top-level APIs to expose JSON and YAML serialization/deserialization to hide the error handling logic
+
     with RedactAnnotatedSourceContext.maybe(create=not show_content):
         # FIXME: this whole two-step should be unnecessary, implement this natively in the YAML decoder or delegate?
         try:
@@ -39,7 +48,7 @@ def from_yaml(
             # The JSON error is not included in the YAML error, since it's usually noise, but it will be visible when showing the traceback.
 
             try:
-                return AnsibleLoader(data, file_name=file_name, vault_secrets=vault_secrets, trusted_as_template=trusted_as_template).get_single_data()
+                return AnsibleLoader(data, file_name=file_name, vault_secrets=vault_secrets).get_single_data()
             except Exception as yaml_ex:
                 # DTFIX-MERGE: how can we indicate in AnsibleSourcePosition that the data is in-memory only, to support context information -- is that useful?
                 #        we'd need to pass data to handle_exception so it could be used as the content instead of reading from disk

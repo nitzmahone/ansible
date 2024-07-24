@@ -32,7 +32,7 @@ def test_json_parser_error() -> None:
     assert get_chained_message(error.value) == expected_message
     assert str(error.value) == expected_message
 
-    assert AnsibleSourcePosition.get_tag(error.value.obj) == AnsibleSourcePosition(src=str(source_path), line=line, col=col)
+    assert error.value.obj == AnsibleSourcePosition(src=str(source_path), line=line, col=col)
 
     if expect_help_text:
         assert error.value.help_text is not None  # DTFIX-FUTURE: check the content later once it's less volatile

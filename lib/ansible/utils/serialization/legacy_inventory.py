@@ -26,7 +26,7 @@ class _InventoryVariableVisitor(_legacy._LegacyVariableVisitor, _serialization.S
 
 
 class _Profile(_legacy._Profile):
-    _visitor_type = _InventoryVariableVisitor
+    visitor_type = _InventoryVariableVisitor
     encode_strings_as_utf8 = True
 
 

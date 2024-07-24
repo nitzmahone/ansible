@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 import json
 
@@ -13,7 +14,7 @@ from collections.abc import Mapping
 from datetime import date, datetime, timezone, timedelta
 
 from ansible.module_utils.common.json import AnsibleJSONEncoder
-from ansible.utils.datatag.tags import VaultedValue, UndecryptableVaultedValue
+from ansible.utils.datatag.tags import VaultedValue, UndecryptableVaultedValue, TrustedAsTemplate
 from ansible.module_utils.serialization import get_decoder, get_encoder
 from ansible.utils.serialization import legacy
 
@@ -47,7 +48,7 @@ def vault_data():
     profile = legacy
 
     with open(os.path.join(os.path.dirname(__file__), 'fixtures/ajson.json')) as f:
-        data = json.load(f, cls=get_decoder(profile))
+        data = json.load(f, cls=get_decoder(profile), trusted_as_template=True)
 
     data_0 = data['password']
     data_1 = data['bar']['baz'][0]['password']
@@ -176,3 +177,26 @@ class TestAnsibleJSONEncoder:
         AnsibleJSONEncoder.default() invokes 'default()' method of json.JSONEncoder superclass.
         """
         assert ansible_json_encoder.default(test_input) == expected
+
+
+@pytest.mark.parametrize("trust_input_str, override_trust_value, expected_trust", (
+    (True, None, True),
+    (True, True, True),
+    (True, False, False),
+    (False, None, False),
+    (False, True, True),
+    (False, False, False),
+))
+def test_string_trust_propagation(trust_input_str: bool, override_trust_value: bool | None, expected_trust: bool) -> None:
+    """
+    Verify that input trust propagation behaves as expected. An explicit boolean `trusted_as_template` arg to the decoder is always
+    respected; if not specified, the presence of trust on the input string determines if trust is applied to outputs.
+    """
+    data = '{"foo": "bar"}'
+
+    if trust_input_str:
+        data = TrustedAsTemplate().tag(data)
+
+    res = json.loads(data, cls=legacy.Decoder, trusted_as_template=override_trust_value)
+
+    assert expected_trust == TrustedAsTemplate.is_tagged_on(res['foo'])

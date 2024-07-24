@@ -9,7 +9,7 @@ import pathlib
 
 import ansible.constants as C
 from ansible.errors import AnsibleError
-from ansible.utils.datatag.tags import AnsibleSourcePosition
+from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_native, to_text
 from ansible.plugins.action import ActionBase
@@ -236,10 +236,15 @@ class ActionModule(ActionBase):
             err_msg = ('{0} does not have a valid extension: {1}'.format(to_native(filename), ', '.join(self.valid_extensions)))
         else:
             b_data, show_content = self._loader._get_file_contents(filename)
+            b_data = TrustedAsTemplate().tag(b_data)
+
             data = to_text(b_data, errors='surrogate_or_strict')
 
             self.show_content = show_content
-            data = self._loader.load(data, file_name=filename, trusted_as_template=True)
+            # DTFIX-MERGE: why isn't this using load_from_file?
+            #  1) load_from_file doesn't return show_content -- but we already have another DTFIX for dealing with that (a tag would be ideal here)
+            #  2) load_from_file caches, but that can be disabled
+            data = self._loader.load(data, file_name=filename)
             if not data:
                 data = dict()
             if not isinstance(data, dict):

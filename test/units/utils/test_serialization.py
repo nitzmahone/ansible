@@ -201,7 +201,7 @@ def test_legacy(value: t.Any) -> None:
     )
     profile = legacy
     payload = json.dumps(args, cls=get_encoder(profile))
-    result = json.loads(payload, cls=get_decoder(profile))
+    result = json.loads(payload, cls=get_decoder(profile), trusted_as_template=True)
 
     untagged_value = result['untagged_value']
     tagged_value = result['tagged_value']
