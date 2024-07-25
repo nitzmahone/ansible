@@ -7,7 +7,7 @@ import datetime as _datetime
 from ansible.module_utils.common import json as _json
 
 
-class _Profile(_json._JSONSerializationProfile):
+class _Profile(_json._JSONSerializationProfile["Encoder", "Decoder"]):
     @classmethod
     def post_init(cls) -> None:
         cls.serialize_map = {}

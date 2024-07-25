@@ -75,7 +75,7 @@ class _LegacyVariableVisitor(_serialization.AnsibleVariableVisitor):
         return result
 
 
-class _Profile(_json._JSONSerializationProfile):
+class _Profile(_json._JSONSerializationProfile["Encoder", "Decoder"]):
     visitor_type = _LegacyVariableVisitor
 
     @classmethod

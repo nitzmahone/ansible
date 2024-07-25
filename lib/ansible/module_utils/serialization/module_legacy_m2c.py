@@ -8,7 +8,7 @@ from ansible.module_utils.common import json as _json
 from ansible.module_utils.common.text.converters import to_text as _to_text
 
 
-class _Profile(_json._JSONSerializationProfile):
+class _Profile(_json._JSONSerializationProfile["Encoder", "Decoder"]):
     @classmethod
     def bytes_to_text(cls, value: bytes) -> str:
         return _to_text(value, errors='surrogateescape')

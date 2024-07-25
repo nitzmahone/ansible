@@ -94,9 +94,12 @@ _common_module_response_types: frozenset[type[AnsibleSerializable]] = frozenset(
 })
 """Types that must be supported for all Ansible module-to-controller serialization profiles."""
 
+_T_encoder = t.TypeVar('_T_encoder', bound="AnsibleProfileJSONEncoder")
+_T_decoder = t.TypeVar('_T_decoder', bound="AnsibleProfileJSONDecoder")
+
 
 # DTFIX-MERGE: we probably need to hollow out this module, moving most to _internal and leaving whatever facade/public types behind that make sense
-class _JSONSerializationProfile:
+class _JSONSerializationProfile(t.Generic[_T_encoder, _T_decoder]):
     serialize_map: t.ClassVar[dict[type, t.Callable]]
     """
     Each concrete non-JSON type must be included in this mapping to support serialization.
@@ -141,11 +144,11 @@ class _JSONSerializationProfile:
     """
 
     @classmethod
-    def pre_serialize(cls, encoder: AnsibleProfileJSONEncoder, o: t.Any) -> t.Any:
+    def pre_serialize(cls, encoder: _T_encoder, o: t.Any) -> t.Any:
         return o
 
     @classmethod
-    def post_deserialize(cls, decoder: AnsibleProfileJSONDecoder, o: t.Any) -> t.Any:
+    def post_deserialize(cls, decoder: _T_decoder, o: t.Any) -> t.Any:
         return o
 
     @classmethod

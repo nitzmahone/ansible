@@ -8,7 +8,7 @@ from ansible.module_utils import datatag as _datatag
 from ansible.module_utils.common import json as _json
 
 
-class _Profile(_json._JSONSerializationProfile):
+class _Profile(_json._JSONSerializationProfile["Encoder", "Decoder"]):
     encode_strings_as_utf8 = True
 
     @classmethod
