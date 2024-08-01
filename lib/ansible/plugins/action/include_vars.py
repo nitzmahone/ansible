@@ -9,9 +9,9 @@ import pathlib
 
 import ansible.constants as C
 from ansible.errors import AnsibleError
-from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
+from ansible.utils.datatag.tags import AnsibleSourcePosition, _EncryptedSource
 from ansible.module_utils.six import string_types
-from ansible.module_utils.common.text.converters import to_native, to_text
+from ansible.module_utils.common.text.converters import to_native
 from ansible.plugins.action import ActionBase
 from ansible.utils.vars import combine_vars
 
@@ -169,6 +169,7 @@ class ActionModule(ActionBase):
                 )
                 self.source_dir = path_to_use
         else:
+            # DTFIX-MERGE: source position tags should be advisory, not used for runtime behavior or flow control- glean this path information differently
             if tag := AnsibleSourcePosition.get_tag(self._task._ds):
                 current_dir = (
                     "/".join(tag.src.split('/')[:-1])
@@ -235,18 +236,13 @@ class ActionModule(ActionBase):
             failed = True
             err_msg = ('{0} does not have a valid extension: {1}'.format(to_native(filename), ', '.join(self.valid_extensions)))
         else:
-            b_data, show_content = self._loader._get_file_contents(filename)
-            b_data = TrustedAsTemplate().tag(b_data)
+            data = self._loader.load_from_file(filename, cache='none')
 
-            data = to_text(b_data, errors='surrogate_or_strict')
+            self.show_content = not _EncryptedSource.is_tagged_on(data)
 
-            self.show_content = show_content
-            # DTFIX-MERGE: why isn't this using load_from_file?
-            #  1) load_from_file doesn't return show_content -- but we already have another DTFIX for dealing with that (a tag would be ideal here)
-            #  2) load_from_file caches, but that can be disabled
-            data = self._loader.load(data, file_name=filename)
-            if not data:
+            if data is None:  # support empty files, but not falsey values
                 data = dict()
+
             if not isinstance(data, dict):
                 failed = True
                 err_msg = ('{0} must be stored as a dictionary/hash'.format(to_native(filename)))

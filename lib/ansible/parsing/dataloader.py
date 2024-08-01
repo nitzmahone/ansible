@@ -17,7 +17,7 @@ from ansible import constants as C
 from ansible.errors import AnsibleFileNotFound, AnsibleParserError
 from ansible.errors.utils import RedactAnnotatedSourceContext
 from ansible.module_utils.basic import is_executable
-from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
+from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, _EncryptedSource
 from ansible.module_utils.six import binary_type, text_type
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
 from ansible.parsing.quoting import unquote
@@ -118,6 +118,10 @@ class DataLoader:
             file_data = to_text(b_file_data, errors='surrogate_or_strict')
             parsed_data = self.load(data=file_data, file_name=file_name, json_only=json_only)
 
+            # we're tagging the resulting container with _EncryptedSource if it was loaded from a vaulted file, since this method doesn't expose show_content
+            if not show_content:
+                parsed_data = _EncryptedSource().tag(parsed_data)
+
             # Cache the file contents for next time based on the cache option
             if cache == 'all':
                 self._FILE_CACHE[file_name] = parsed_data
@@ -157,7 +161,6 @@ class DataLoader:
         if encrypted_source := is_encrypted(b_data):
             b_data = self._vault.decrypt(b_data)
 
-        # DTFIX-MERGE: clean this up, invert, use a dataclass, something... (can we use a tag instead?)
         return b_data, not encrypted_source
 
     def get_text_file_contents(self, file_name: str) -> str:
