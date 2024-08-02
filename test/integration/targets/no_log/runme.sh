@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 
-set -eux
+set -eux -o pipefail
+
+# ensure _ansible_no_log returned by actions is actually respected
+ansible-playbook ansible_no_log_in_result.yml -vvvvv > "${OUTPUT_DIR}/output.log" 2> /dev/null
+
+[ "$(cat "${OUTPUT_DIR}/output.log" | grep -c "action result should be masked")" = "0" ]
+[ "$(cat "${OUTPUT_DIR}/output.log" | grep -c "the output has been hidden")" = "1" ]
 
 # This test expects 7 loggable vars and 0 non-loggable ones.
 # If either mismatches it fails, run the ansible-playbook command to debug.

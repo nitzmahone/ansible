@@ -172,9 +172,8 @@ class TaskExecutor:
             return res
         except Exception as ex:
             result = ActionBase.result_dict_from_exception(ex)
-            result.update(
-                _ansible_no_log=self._task.no_log_with_fallback(self._task_templar),
-            )
+
+            self._task.update_result_no_log(self._task_templar, result)
 
             if not isinstance(ex, AnsibleError):
                 result.update(msg=f'Unexpected failure during task execution: {result["msg"]}')
@@ -425,7 +424,7 @@ class TaskExecutor:
                         changed=False,
                     )
 
-            result.update(_ansible_no_log=self._task.no_log_with_fallback(templar))
+            self._task.update_result_no_log(templar, result)
 
         # The warnings/deprecations in the result have already been captured in the _DeferredWarningContext by _apply_task_result_compat.
         # The captured warnings/deprecations are a superset of the ones from the result, and may have been converted from a dict to a dataclass.
