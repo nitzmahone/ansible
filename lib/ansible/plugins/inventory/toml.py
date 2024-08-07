@@ -10,9 +10,6 @@ DOCUMENTATION = r'''
     description:
         - TOML based inventory format
         - File MUST have a valid '.toml' file extension
-    notes:
-        - >
-          Requires one of the following python libraries: 'toml', 'tomli', or 'tomllib'
 '''
 
 EXAMPLES = r'''# fmt: toml
