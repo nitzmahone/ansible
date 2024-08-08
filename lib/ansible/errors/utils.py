@@ -182,10 +182,11 @@ class SourceContext:
     target_line: str | None
 
     def __str__(self) -> str:
-        msg_lines = [
-            f'Path: {self.source_position}',
-            '',
-        ] + self.annotated_source_lines
+        msg_lines = [f'Path: {self.source_position}']
+
+        if self.annotated_source_lines:
+            msg_lines.append('')
+            msg_lines.extend(self.annotated_source_lines)
 
         return '\n'.join(msg_lines)
 
@@ -197,6 +198,7 @@ class SourceContext:
 
         if isinstance(value, AnsibleSourcePosition):
             position = value
+            value = None
         else:
             position = AnsibleSourcePosition.get_tag(value)
 
@@ -208,21 +210,26 @@ class SourceContext:
             return cls.error('content redacted')
 
         # DTFIX-RELEASE: redaction context may not be sufficient to avoid secret disclosure without SensitiveData and other enhancements
-        truncated_value = textwrap.shorten(str(value), width=120)
+        if value is None:
+            truncated_value = None
+            annotated_source_lines = []
+        else:
+            # DTFIX-FUTURE: cleanup/share width
+            truncated_value = textwrap.shorten(str(value), width=120)
+            annotated_source_lines = [truncated_value]
 
         return SourceContext(
             # DTFIX-MERGE: implement Origin tag support here
             source_position=position or AnsibleSourcePosition(src="<string>"),
-            # DTFIX-FUTURE: cleanup/share width
-            annotated_source_lines=[truncated_value],
+            annotated_source_lines=annotated_source_lines,
             target_line=truncated_value,
         )
 
     @staticmethod
-    def error(message: str, position: AnsibleSourcePosition | None = None) -> SourceContext:
+    def error(message: str | None, position: AnsibleSourcePosition | None = None) -> SourceContext:
         return SourceContext(
             source_position=position,
-            annotated_source_lines=[f'(source not shown: {message})'],
+            annotated_source_lines=[f'(source not shown: {message})'] if message else [],
             target_line=None,
         )
 
@@ -246,7 +253,7 @@ class SourceContext:
             return cls.error('content redacted', position)
 
         if not target_line_num or target_line_num < 1:
-            return cls.error('line number not provided', position)
+            return cls.error(None, position)  # message omitted since lack of line number is obvious from pos
 
         start_line_idx = max(0, (target_line_num - 1) - context_line_count)  # if near start of file
         target_col_num = position.col

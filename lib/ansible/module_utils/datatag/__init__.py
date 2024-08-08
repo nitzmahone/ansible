@@ -82,9 +82,13 @@ class AnsibleTagHelper:
         return frozenset(tags)
 
     @staticmethod
-    def get_friendly_type_name(type_or_value: t.Any, /) -> str:
+    def base_type_name(type_or_value: t.Any, /) -> str:
         """Return the friendly name of the given type or value. If the type is an AnsibleTaggedObject, the native type will be used."""
-        # DTFIX-MERGE: provide a way to report the real type for debugging purposes
+        return AnsibleTagHelper.base_type(type_or_value).__name__
+
+    @staticmethod
+    def base_type(type_or_value: t.Any, /) -> str:
+        """Return the friendly type of the given type or value. If the type is an AnsibleTaggedObject, the native type will be used."""
         if isinstance(type_or_value, type):
             the_type = type_or_value
         else:
@@ -93,7 +97,8 @@ class AnsibleTagHelper:
         if issubclass(the_type, AnsibleTaggedObject):
             the_type = type_or_value._native_type
 
-        return the_type.__name__
+        # DTFIX-MERGE: provide a way to report the real type for debugging purposes
+        return the_type
 
     @staticmethod
     def as_untagged_type(value: _T) -> _T:

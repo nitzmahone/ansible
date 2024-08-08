@@ -1,0 +1,13 @@
+- shell: ansible-inventory -i {{ role_path | quote }}/{{ item.script_name | default('script_inventory_fixture.py') }} --list --export
+  environment:
+    ANSIBLE_INVENTORY_PLUGIN_SCRIPT_STDERR: '{{ item.show_stderr | default(omit) }}'
+    INVENTORY_TEST_MODE: '{{ item.mode | default(omit) }}'
+    INVENTORY_EMIT_STDERR: '{{ item.emit_stderr | default(omit) }}'
+  register: inv_out
+
+- name: test mode `{{ item.mode }}`
+  assert:
+    that:
+      - inv_out.stderr is contains("this is stderr") == ((item.show_stderr | default(0)) and (item.emit_stderr | default(0))) is truthy
+      - inv_out.stderr is not contains("No inventory was parsed")
+      # DTFIX-U: actually validate the inventory results?

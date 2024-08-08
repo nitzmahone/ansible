@@ -34,6 +34,7 @@ from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.parsing.utils.addresses import parse_address
 from ansible.plugins.loader import inventory_loader
+from ansible.utils.datatag.tags import AnsibleSourcePosition
 from ansible.utils.helpers import deduplicate_list
 from ansible.utils.path import unfrackpath
 from ansible.utils.display import Display
@@ -302,10 +303,16 @@ class InventoryManager(object):
                         parsed = True
                         display.vvv('Parsed %s inventory source with %s plugin' % (source, plugin_name))
                         break
-                    except AnsibleParserError as e:
-                        failures.append({'src': source, 'plugin': plugin_name, 'exc': e})
-                    except Exception as e:
-                        failures.append({'src': source, 'plugin': plugin_name, 'exc': e})
+                    except AnsibleError as ex:
+                        if not ex.obj:
+                            ex.obj = AnsibleSourcePosition(src=source)  # omit line number to prevent contextual display of script or possibly sensitive info
+                        failures.append({'src': source, 'plugin': plugin_name, 'exc': ex})
+                    except Exception as ex:
+                        try:
+                            # omit line number to prevent contextual display of script or possibly sensitive info
+                            raise AnsibleError(str(ex), obj=AnsibleSourcePosition(src=source)) from ex
+                        except AnsibleError as ex:
+                            failures.append({'src': source, 'plugin': plugin_name, 'exc': ex})
                 else:
                     display.vvv("%s declined parsing %s as it did not pass its verify_file() method" % (plugin_name, source))
 
@@ -319,7 +326,8 @@ class InventoryManager(object):
                 if failures:
                     # only if no plugin processed files should we show errors.
                     for fail in failures:
-                        display.error_as_warning(msg=f'Failed to parse {fail["src"]!r} with {fail["plugin"]!r} plugin.', exception=fail['exc'])
+                        # `obj` should always be set
+                        display.error_as_warning(msg=f'Failed to parse inventory with {fail["plugin"]!r} plugin.', exception=fail['exc'])
 
                 # final error/warning on inventory source failure
                 if C.INVENTORY_ANY_UNPARSED_IS_FAILED:

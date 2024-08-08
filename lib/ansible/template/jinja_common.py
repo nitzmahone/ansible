@@ -53,7 +53,7 @@ class AnsibleUndefined(StrictUndefined, Tripwire):
         **kwargs,
     ) -> None:
         if not hint and name and obj is not missing:
-            hint = f"object of type {AnsibleTagHelper.get_friendly_type_name(obj)!r} has no attribute {name!r}"
+            hint = f"object of type {AnsibleTagHelper.base_type_name(obj)!r} has no attribute {name!r}"
 
         kwargs.update(
             hint=hint,

@@ -44,7 +44,7 @@ def get_serialization_module_name(name: str | types.ModuleType) -> str:
     elif isinstance(name, types.ModuleType):
         return name.__name__
     else:
-        raise TypeError(f'name is {type(name)} intead of {str} or {types.ModuleType}')
+        raise TypeError(f'Name is {type(name)} intead of {str} or {types.ModuleType}.')
 
     if importlib.util.find_spec(target_name):
         return target_name
@@ -52,4 +52,4 @@ def get_serialization_module_name(name: str | types.ModuleType) -> str:
     if importlib.util.find_spec(controller_name):
         return controller_name
 
-    raise ValueError(f'unknown profile name: {name}')
+    raise ValueError(f'Unknown profile name {name!r}.')

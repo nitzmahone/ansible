@@ -539,7 +539,7 @@ class Templar:
         bool_result = bool(result)
 
         msg = (
-            f'Conditional result was {textwrap.shorten(str(result), width=40)!r} of type {AnsibleTagHelper.get_friendly_type_name(result)!r}, '
+            f'Conditional result was {textwrap.shorten(str(result), width=40)!r} of type {AnsibleTagHelper.base_type_name(result)!r}, '
             f'which evaluates to {bool_result}. Conditionals must have a boolean result.'
         )
 

@@ -743,7 +743,7 @@ def create_container_test_cases(types: t.Iterable[t.Type[t.Collection]]) -> t.Li
     (_AnsibleTaggedStr, 'str'),
 ))
 def test_friendly_name(value: object, expected_type_name: str) -> None:
-    assert AnsibleTagHelper.get_friendly_type_name(value) == expected_type_name
+    assert AnsibleTagHelper.base_type_name(value) == expected_type_name
 
 
 def test_deserialize_unknown_type() -> None:
