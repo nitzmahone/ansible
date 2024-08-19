@@ -1187,9 +1187,7 @@ VAULT_CIPHER:
     'aes256': AES 256 with kdf and double hexlify byte shield
     'aesv2': Cryptography's fernet API with dual keys, AES 128, CBC and sCrypt, with base64 byte shield
   description:
-    - The cipher to use for the vault encryption. Decryption works by reading the cipher used in the vault itself
-    - We set the default considering the best security and perforamnce
-    - The included aes256 is not considered secure anymore, but it is kept for backwards compatibility
+    - Vault cipher to use for encryption.
   env: [{name: ANSIBLE_VAULT_CIPHER}]
   cli:
     - name: vault_cipher

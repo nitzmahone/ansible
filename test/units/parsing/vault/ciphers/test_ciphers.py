@@ -4,10 +4,14 @@ import typing as t
 
 import pytest
 
-from ansible.parsing.vault import VaultSecret, load_vault_cipher
+from ansible.parsing.vault import VaultSecret, load_vault_cipher, AnsibleVaultError
 from ansible.parsing.vault.ciphers import VaultSecretError
+from .rot13 import patch_rot13_import
 
 from ..test_decrypt import get_cipher_names
+
+
+pytestmark = pytest.mark.usefixtures(patch_rot13_import.__name__)
 
 
 @pytest.mark.parametrize("cipher_name", get_cipher_names())
@@ -62,3 +66,10 @@ def test_incorrect_password(cipher_name: str) -> None:
 
     with pytest.raises(VaultSecretError):
         cipher.decrypt(ciphertext, VaultSecret(b'not the correct secret'))
+
+
+def test_bogus_cipher():
+    with pytest.raises(AnsibleVaultError) as error:
+        load_vault_cipher('bogus')
+
+    assert "Invalid cipher" in error.value.message
