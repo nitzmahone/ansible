@@ -69,7 +69,7 @@ SETTINGS = {
 }
 
 
-GALAXY_IMPORTER = b'''
+GALAXY_IMPORTER = b"""
 [galaxy-importer]
 ansible_local_tmp=~/.ansible/tmp
 ansible_test_local_image=false
@@ -84,7 +84,7 @@ run_ansible_doc=false
 run_ansible_lint=false
 run_ansible_test=false
 run_flake8=false
-'''.strip()
+""".strip()
 
 
 class GalaxyProvider(CloudProvider):

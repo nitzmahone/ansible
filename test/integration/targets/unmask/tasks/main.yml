@@ -1,0 +1,21 @@
+- transform_factory:
+  vars:
+    ansible_deprecation_warnings: true
+  register: transformed
+
+- debug:
+    var: transformed.deprecations
+
+- name: validate transformed and unmasked values
+  assert:
+    that:
+      - transformed.warnings | length > 0
+      - transformed.warnings[0] | type_debug == 'str'
+      - transformed.deprecations | length > 0
+      - transformed.deprecations[0] | type_debug == 'dict'
+      - (transformed.warnings | ansible._protomatter.unmask('WarningMessageDetail'))[0] | type_debug == 'WarningMessageDetail'
+      - (transformed.deprecations | ansible._protomatter.unmask('DeprecationMessageDetail'))[0] | type_debug == 'DeprecationMessageDetail'
+      # unmask the wrong type, ensure that the transform still occurs
+      - (transformed.warnings | ansible._protomatter.unmask('Bang'))[0] | type_debug == 'str'
+      # unmask at a higher level, validate that it propagates to child lazies
+      - (transformed | ansible._protomatter.unmask('WarningMessageDetail')).warnings[0] | type_debug == 'WarningMessageDetail'

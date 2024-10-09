@@ -23,7 +23,6 @@ import os
 import os.path
 import stat
 import tempfile
-import traceback
 
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleFileNotFound
@@ -389,7 +388,7 @@ class ActionModule(ActionBase):
         return result
 
     def _create_content_tempfile(self, content):
-        ''' Create a tempfile containing defined content '''
+        """ Create a tempfile containing defined content """
         fd, content_tempfile = tempfile.mkstemp(dir=C.DEFAULT_LOCAL_TMP, prefix='.')
         f = os.fdopen(fd, 'wb')
         content = to_bytes(content)
@@ -407,7 +406,7 @@ class ActionModule(ActionBase):
             os.remove(content_tempfile)
 
     def run(self, tmp=None, task_vars=None):
-        ''' handler for file transfer operations '''
+        """ handler for file transfer operations """
         if task_vars is None:
             task_vars = dict()
 
@@ -467,10 +466,9 @@ class ActionModule(ActionBase):
             try:
                 # find in expected paths
                 source = self._find_needle('files', source)
-            except AnsibleError as e:
-                result['failed'] = True
-                result['msg'] = to_text(e)
-                result['exception'] = traceback.format_exc()
+            except AnsibleError as ex:
+                result.update(self.result_dict_from_exception(ex))
+
                 return self._ensure_invocation(result)
 
             if trailing_slash != source.endswith(os.path.sep):

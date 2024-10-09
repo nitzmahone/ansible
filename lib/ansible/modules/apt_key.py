@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
 ---
 module: apt_key
 author:
@@ -79,9 +79,9 @@ options:
               on personally controlled sites using self-signed certificates.
         type: bool
         default: 'yes'
-'''
+"""
 
-EXAMPLES = '''
+EXAMPLES = """
 - name: One way to avoid apt_key once it is removed from your distro, armored keys should use .asc extension, binary should use .gpg
   block:
     - name: somerepo | no apt key
@@ -133,9 +133,9 @@ EXAMPLES = '''
     id: 9FED2BCBDCD29CDF762678CBAED4B06F473041FA
     file: /tmp/apt.gpg
     state: present
-'''
+"""
 
-RETURN = '''
+RETURN = """
 after:
     description: List of apt key ids or fingerprints after any modification
     returned: on change
@@ -166,12 +166,9 @@ short_id:
     returned: always
     type: str
     sample: "A88D21E9"
-'''
+"""
 
 import os
-
-# FIXME: standardize into module_common
-from traceback import format_exc
 
 from ansible.module_utils.common.text.converters import to_native
 from ansible.module_utils.basic import AnsibleModule
@@ -310,7 +307,7 @@ def download_key(module, url):
 
         return rsp.read()
     except Exception:
-        module.fail_json(msg="error getting key id from url: %s" % url, traceback=format_exc())
+        module.fail_json(msg=f"Error getting key id from url: {url}")
 
 
 def get_key_id_from_file(module, filename, data=None):

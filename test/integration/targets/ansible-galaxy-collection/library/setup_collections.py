@@ -11,7 +11,7 @@ ANSIBLE_METADATA = {
     'supported_by': 'community'
 }
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
 ---
 module: setup_collections
 short_description: Set up test collections based on the input
@@ -57,9 +57,9 @@ options:
         default: '{}'
 author:
 - Jordan Borean (@jborean93)
-'''
+"""
 
-EXAMPLES = '''
+EXAMPLES = """
 - name: Build test collections
   setup_collections:
     path: ~/ansible/collections/ansible_collections
@@ -70,17 +70,19 @@ EXAMPLES = '''
     - namespace: namespace1
       name: name1
       version: 0.0.2
-'''
+"""
 
-RETURN = '''
+RETURN = """
 #
-'''
+"""
 
 import datetime
 import os
+import random
 import subprocess
 import tarfile
 import tempfile
+import time
 import yaml
 
 from ansible.module_utils.basic import AnsibleModule
@@ -99,6 +101,8 @@ def publish_collection(module, collection):
     version = collection['version']
     dependencies = collection['dependencies']
     use_symlink = collection['use_symlink']
+
+    time.sleep(random.random())  # inject some time wobble into parallel publish operations since Galaxy publish DB key generation is not mutex'd
 
     result = {}
     collection_dir = os.path.join(module.tmpdir, "%s-%s-%s" % (namespace, name, version))

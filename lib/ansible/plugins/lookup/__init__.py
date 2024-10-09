@@ -29,6 +29,8 @@ __all__ = ['LookupBase']
 
 
 class LookupBase(AnsiblePlugin):
+    accept_deferred_marker = False
+    """Declare support for markers. Plugins with `False` here will never be invoked with markers for top-level arguments."""
 
     def __init__(self, loader=None, templar=None, **kwargs):
 
@@ -104,9 +106,9 @@ class LookupBase(AnsiblePlugin):
         pass
 
     def find_file_in_search_path(self, myvars, subdir, needle, ignore_missing=False):
-        '''
+        """
         Return a file (needle) in the task's expected search path.
-        '''
+        """
 
         if 'ansible_search_path' in myvars:
             paths = myvars['ansible_search_path']

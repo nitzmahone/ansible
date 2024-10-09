@@ -9,6 +9,8 @@ import locale
 import os
 import sys
 
+from ansible.utils.datatag.tags import NotATemplate
+
 # Used for determining if the system is running a new enough python version
 # and should only restrict on our documented minimum versions
 if sys.version_info < (3, 11):
@@ -86,13 +88,14 @@ try:
     from ansible import constants as C
     from ansible.utils.display import Display
     display = Display()
-except Exception as e:
-    print('ERROR: %s' % e, file=sys.stderr)
+except Exception as ex:
+    print(f'ERROR: {ex}\n\n{"".join(traceback.format_exception(ex))}', file=sys.stderr)
     sys.exit(5)
+
 
 from ansible import context
 from ansible.cli.arguments import option_helpers as opt_help
-from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleParserError
+from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleParserError, ExitCode
 from ansible.inventory.manager import InventoryManager
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_bytes, to_text
@@ -105,7 +108,6 @@ from ansible.release import __version__
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.collection_loader._collection_finder import _get_collection_name_from_path
 from ansible.utils.path import unfrackpath
-from ansible.utils.unsafe_proxy import to_unsafe_text
 from ansible.vars.manager import VariableManager
 
 try:
@@ -116,7 +118,7 @@ except ImportError:
 
 
 class CLI(ABC):
-    ''' code behind bin/ansible* programs '''
+    """ code behind bin/ansible* programs """
 
     PAGER = C.config.get_config_value('PAGER')
 
@@ -137,6 +139,9 @@ class CLI(ABC):
         self.parser = None
         self.callback = callback
 
+        self.show_devel_warning()
+
+    def show_devel_warning(self) -> None:
         if C.DEVEL_WARNING and __version__.endswith('dev0'):
             display.warning(
                 'You are running the development version of Ansible. You should only run Ansible from "devel" if '
@@ -308,21 +313,16 @@ class CLI(ABC):
         return vault_secrets
 
     @staticmethod
-    def _get_secret(prompt):
-
-        secret = getpass.getpass(prompt=prompt)
-        if secret:
-            secret = to_unsafe_text(secret)
-        return secret
+    def _get_secret(prompt: str) -> str:
+        return NotATemplate().tag(getpass.getpass(prompt=prompt))
 
     @staticmethod
     def ask_passwords():
-        ''' prompt for connection and become passwords if needed '''
+        """ prompt for connection and become passwords if needed """
 
         op = context.CLIARGS
         sshpass = None
         becomepass = None
-        become_prompt = ''
 
         become_prompt_method = "BECOME" if C.AGNOSTIC_BECOME_PROMPT else op['become_method'].upper()
 
@@ -344,10 +344,10 @@ class CLI(ABC):
         except EOFError:
             pass
 
-        return (sshpass, becomepass)
+        return sshpass, becomepass
 
     def validate_conflicts(self, op, runas_opts=False, fork_opts=False):
-        ''' check for conflicting options '''
+        """ check for conflicting options """
 
         if fork_opts:
             if op.forks < 1:
@@ -459,7 +459,7 @@ class CLI(ABC):
 
     @staticmethod
     def version_info(gitinfo=False):
-        ''' return full ansible version info '''
+        """ return full ansible version info """
         if gitinfo:
             # expensive call, user with care
             ansible_version_string = opt_help.version()
@@ -485,7 +485,7 @@ class CLI(ABC):
 
     @staticmethod
     def pager(text):
-        ''' find reasonable way to display text '''
+        """ find reasonable way to display text """
         # this is a much simpler form of what is in pydoc.py
         if not sys.stdout.isatty():
             display.display(text, screen_only=True)
@@ -504,7 +504,7 @@ class CLI(ABC):
 
     @staticmethod
     def pager_pipe(text):
-        ''' pipe text through a pager '''
+        """ pipe text through a pager """
         if 'less' in CLI.PAGER:
             os.environ['LESS'] = CLI.LESS_OPTS
         try:
@@ -575,10 +575,9 @@ class CLI(ABC):
         return hosts
 
     @staticmethod
-    def get_password_from_file(pwd_file):
-
+    def get_password_from_file(pwd_file: str) -> str:
         b_pwd_file = to_bytes(pwd_file)
-        secret = None
+
         if b_pwd_file == b'-':
             # ensure its read as bytes
             secret = sys.stdin.buffer.read()
@@ -598,14 +597,13 @@ class CLI(ABC):
 
             stdout, stderr = p.communicate()
             if p.returncode != 0:
-                raise AnsibleError("The password script %s returned an error (rc=%s): %s" % (pwd_file, p.returncode, stderr))
+                raise AnsibleError("The password script %s returned an error (rc=%s): %s" % (pwd_file, p.returncode, to_text(stderr)))
             secret = stdout
 
         else:
             try:
-                f = open(b_pwd_file, "rb")
-                secret = f.read().strip()
-                f.close()
+                with open(b_pwd_file, "rb") as password_file:
+                    secret = password_file.read().strip()
             except (OSError, IOError) as e:
                 raise AnsibleError("Could not read password file %s: %s" % (pwd_file, e))
 
@@ -614,7 +612,7 @@ class CLI(ABC):
         if not secret:
             raise AnsibleError('Empty password was provided from file (%s)' % pwd_file)
 
-        return to_unsafe_text(secret)
+        return NotATemplate().tag(to_text(secret))
 
     @classmethod
     def cli_executor(cls, args=None):
@@ -635,54 +633,22 @@ class CLI(ABC):
             else:
                 display.debug("Created the '%s' directory" % ansible_dir)
 
-            try:
-                args = [to_text(a, errors='surrogate_or_strict') for a in args]
-            except UnicodeError:
-                display.error('Command line args are not in utf-8, unable to continue.  Ansible currently only understands utf-8')
-                display.display(u"The full traceback was:\n\n%s" % to_text(traceback.format_exc()))
-                exit_code = 6
-            else:
-                cli = cls(args)
-                exit_code = cli.run()
-
-        except AnsibleOptionsError as e:
-            cli.parser.print_help()
-            display.error(to_text(e), wrap_text=False)
-            exit_code = 5
-        except AnsibleParserError as e:
-            display.error(to_text(e), wrap_text=False)
-            exit_code = 4
-    # TQM takes care of these, but leaving comment to reserve the exit codes
-    #    except AnsibleHostUnreachable as e:
-    #        display.error(str(e))
-    #        exit_code = 3
-    #    except AnsibleHostFailed as e:
-    #        display.error(str(e))
-    #        exit_code = 2
-        except AnsibleError as e:
-            display.error(to_text(e), wrap_text=False)
-            exit_code = 1
+            cli = cls(args)
+            exit_code = cli.run()
+        except AnsibleError as ex:
+            display.error(ex)
+            exit_code = ex.exit_code
         except KeyboardInterrupt:
             display.error("User interrupted execution")
-            exit_code = 99
-        except Exception as e:
-            if C.DEFAULT_DEBUG:
-                # Show raw stacktraces in debug mode, It also allow pdb to
-                # enter post mortem mode.
-                raise
-            have_cli_options = bool(context.CLIARGS)
-            display.error("Unexpected Exception, this is probably a bug: %s" % to_text(e), wrap_text=False)
-            if not have_cli_options or have_cli_options and context.CLIARGS['verbosity'] > 2:
-                log_only = False
-                if hasattr(e, 'orig_exc'):
-                    display.vvv('\nexception type: %s' % to_text(type(e.orig_exc)))
-                    why = to_text(e.orig_exc)
-                    if to_text(e) != why:
-                        display.vvv('\noriginal msg: %s' % why)
-            else:
-                display.display("to see the full traceback, use -vvv")
-                log_only = True
-            display.display(u"the full traceback was:\n\n%s" % to_text(traceback.format_exc()), log_only=log_only)
-            exit_code = 250
+            exit_code = ExitCode.KEYBOARD_INTERRUPT
+        except Exception as ex:
+            try:
+                raise AnsibleError("Unexpected Exception, this is probably a bug.") from ex
+            except AnsibleError as ex2:
+                # DTFIX-RELEASE: clean this up so we're not hacking the internals- re-wrap in an AnsibleCLIUnhandledError that always shows TB, or?
+                from ansible.module_utils._internal import _traceback
+                _traceback._is_traceback_enabled = lambda *_args, **_kwargs: True
+                display.error(ex2)
+                exit_code = ExitCode.UNKNOWN_ERROR
 
         sys.exit(exit_code)

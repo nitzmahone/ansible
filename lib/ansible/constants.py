@@ -21,7 +21,7 @@ config = ConfigManager()
 
 
 def _warning(msg):
-    ''' display is not guaranteed here, nor it being the full class, but try anyways, fallback to sys.stderr.write '''
+    """ display is not guaranteed here, nor it being the full class, but try anyways, fallback to sys.stderr.write """
     try:
         from ansible.utils.display import Display
         Display().warning(msg)
@@ -31,7 +31,7 @@ def _warning(msg):
 
 
 def _deprecated(msg, version):
-    ''' display is not guaranteed here, nor it being the full class, but try anyways, fallback to sys.stderr.write '''
+    """ display is not guaranteed here, nor it being the full class, but try anyways, fallback to sys.stderr.write """
     try:
         from ansible.utils.display import Display
         Display().deprecated(msg, version=version)
@@ -63,7 +63,7 @@ def handle_config_noise(display=None):
 
 
 def set_constant(name, value, export=vars()):
-    ''' sets constants and returns resolved options dict '''
+    """ sets constants and returns resolved options dict """
     export[name] = value
 
 
@@ -179,6 +179,7 @@ INTERNAL_STATIC_VARS = frozenset(
 )
 LOCALHOST = ('127.0.0.1', 'localhost', '::1')
 WIN_MOVED = ['ansible.windows.win_command', 'ansible.windows.win_shell']
+# DTFIX-MERGE: make this dynamic opt-in from the action instead of a hardcoded list
 MODULE_REQUIRE_ARGS_SIMPLE = ['command', 'raw', 'script', 'shell', 'win_command', 'win_shell']
 MODULE_REQUIRE_ARGS = tuple(add_internal_fqcns(MODULE_REQUIRE_ARGS_SIMPLE) + WIN_MOVED)
 MODULE_NO_JSON = tuple(add_internal_fqcns(('command', 'win_command', 'shell', 'win_shell', 'raw')) + WIN_MOVED)

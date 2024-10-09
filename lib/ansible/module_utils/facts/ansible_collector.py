@@ -30,8 +30,7 @@ from __future__ import annotations
 
 import fnmatch
 import sys
-
-import ansible.module_utils.compat.typing as t
+import typing as t
 
 from ansible.module_utils.facts import timeout
 from ansible.module_utils.facts import collector
@@ -39,13 +38,13 @@ from ansible.module_utils.common.collections import is_string
 
 
 class AnsibleFactCollector(collector.BaseFactCollector):
-    '''A FactCollector that returns results under 'ansible_facts' top level key.
+    """A FactCollector that returns results under 'ansible_facts' top level key.
 
        If a namespace if provided, facts will be collected under that namespace.
        For ex, a ansible.module_utils.facts.namespace.PrefixFactNamespace(prefix='ansible_')
 
        Has a 'from_gather_subset() constructor that populates collectors based on a
-       gather_subset specifier.'''
+       gather_subset specifier."""
 
     def __init__(self, collectors=None, namespace=None, filter_spec=None):
 
@@ -102,7 +101,7 @@ class AnsibleFactCollector(collector.BaseFactCollector):
 
 
 class CollectorMetaDataCollector(collector.BaseFactCollector):
-    '''Collector that provides a facts with the gather_subset metadata.'''
+    """Collector that provides a facts with the gather_subset metadata."""
 
     name = 'gather_subset'
     _fact_ids = set()  # type: t.Set[str]

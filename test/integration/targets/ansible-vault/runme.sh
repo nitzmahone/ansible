@@ -443,7 +443,7 @@ ansible-playbook test_vault.yml          -i ../../inventory -v "$@" --vault-pass
 
 # install TOML for parse toml inventory
 # test playbooks using vaulted files(toml)
-pip install toml
+pip install tomli
 ansible-vault encrypt  ./inventory.toml -v "$@" --vault-password-file=./vault-password
 ansible-playbook test_vaulted_inventory_toml.yml -i ./inventory.toml -v "$@" --vault-password-file vault-password
 ansible-vault decrypt  ./inventory.toml -v "$@" --vault-password-file=./vault-password
@@ -558,7 +558,7 @@ if ansible-vault encrypt_string content --encrypt-vault-id id1 > out.txt 2>&1; t
   exit 1
 fi
 grep out.txt -e '\[WARNING\]: Error getting vault password file (id1)'
-grep out.txt -e "ERROR! Did not find a match for --encrypt-vault-id=id1 in the known vault-ids \['id3'\]"
+grep out.txt -e "\[ERROR\]: Did not find a match for --encrypt-vault-id=id1 in the known vault-ids \['id3'\]"
 
 # Try to use an inaccessible vault password file
 if ansible-vault encrypt_string content --encrypt-vault-id id2 > out.txt 2>&1; then
@@ -566,7 +566,7 @@ if ansible-vault encrypt_string content --encrypt-vault-id id2 > out.txt 2>&1; t
   exit 1
 fi
 grep out.txt -e "\[WARNING\]: Error in vault password file loading (id2)"
-grep out.txt -e "ERROR! Did not find a match for --encrypt-vault-id=id2 in the known vault-ids \['id3'\]"
+grep out.txt -e "\[ERROR\]: Did not find a match for --encrypt-vault-id=id2 in the known vault-ids \['id3'\]"
 
 unset ANSIBLE_VAULT_IDENTITY_LIST
 
@@ -578,7 +578,7 @@ ansible-playbook symlink.yml "$@" --vault-password-file symlink/get-password-sym
 
 ### NEGATIVE TESTS
 
-ER='Attempting to decrypt'
+ER='Attempt to use undecryptable variable'
 #### no secrets
 # 'real script'
 ansible-playbook realpath.yml "$@" 2>&1 |grep "${ER}"
@@ -586,7 +586,7 @@ ansible-playbook realpath.yml "$@" 2>&1 |grep "${ER}"
 # using symlink
 ansible-playbook symlink.yml "$@" 2>&1 |grep "${ER}"
 
-ER='Decryption failed'
+ER='Attempt to use undecryptable variable'
 ### wrong secrets
 # 'real script'
 ansible-playbook realpath.yml "$@" --vault-password-file symlink/get-password-symlink 2>&1 |grep "${ER}"

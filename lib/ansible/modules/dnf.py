@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
 ---
 module: dnf
 version_added: 1.9
@@ -306,9 +306,9 @@ author:
   - Cristian van Ee (@DJMuggs) <cristian at cvee.org>
   - Berend De Schouwer (@berenddeschouwer)
   - Adam Miller (@maxamillion) <admiller@redhat.com>
-'''
+"""
 
-EXAMPLES = '''
+EXAMPLES = """
 - name: Install the latest version of Apache
   ansible.builtin.dnf:
     name: httpd
@@ -394,7 +394,7 @@ EXAMPLES = '''
   ansible.builtin.dnf:
     name: '@postgresql/client'
     state: present
-'''
+"""
 
 import os
 import sys
@@ -408,10 +408,10 @@ from ansible.module_utils.common.respawn import has_respawned, probe_interpreter
 from ansible.module_utils.yumdnf import YumDnf, yumdnf_argument_spec
 
 
-# NOTE dnf Python bindings import is postponed, see DnfModule._ensure_dnf(),
-# because we need AnsibleModule object to use get_best_parsable_locale()
-# to set proper locale before importing dnf to be able to scrape
-# the output in some cases (FIXME?).
+# FIXME: NOTE dnf Python bindings import is postponed, see DnfModule._ensure_dnf(),
+#  because we need AnsibleModule object to use get_best_parsable_locale()
+#  to set proper locale before importing dnf to be able to scrape
+#  the output in some cases.
 dnf = None
 
 

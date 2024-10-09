@@ -10,7 +10,6 @@ from ansible.cli import CLI
 
 import os
 import shlex
-import subprocess
 import sys
 import yaml
 
@@ -47,14 +46,14 @@ def yaml_short(data):
 
 
 def get_constants():
-    ''' helper method to ensure we can template based on existing constants '''
+    """ helper method to ensure we can template based on existing constants """
     if not hasattr(get_constants, 'cvars'):
         get_constants.cvars = {k: getattr(C, k) for k in dir(C) if not k.startswith('__')}
     return get_constants.cvars
 
 
 def _ansible_env_vars(varname):
-    ''' return true or false depending if variable name is possibly a 'configurable' ansible env variable '''
+    """ return true or false depending if variable name is possibly a 'configurable' ansible env variable """
     return all(
         [
             varname.startswith("ANSIBLE_"),
@@ -178,8 +177,6 @@ class ConfigCLI(CLI):
             except Exception:
                 if context.CLIARGS['action'] in ['view']:
                     raise
-                elif context.CLIARGS['action'] in ['edit', 'update']:
-                    display.warning("File does not exist, used empty file: %s" % self.config_file)
 
         elif context.CLIARGS['action'] == 'view':
             raise AnsibleError('Invalid or no config file was supplied')
@@ -187,53 +184,15 @@ class ConfigCLI(CLI):
         # run the requested action
         context.CLIARGS['func']()
 
-    def execute_update(self):
-        '''
-        Updates a single setting in the specified ansible.cfg
-        '''
-        raise AnsibleError("Option not implemented yet")
-
-        # pylint: disable=unreachable
-        if context.CLIARGS['setting'] is None:
-            raise AnsibleOptionsError("update option requires a setting to update")
-
-        (entry, value) = context.CLIARGS['setting'].split('=')
-        if '.' in entry:
-            (section, option) = entry.split('.')
-        else:
-            section = 'defaults'
-            option = entry
-        subprocess.call([
-            'ansible',
-            '-m', 'ini_file',
-            'localhost',
-            '-c', 'local',
-            '-a', '"dest=%s section=%s option=%s value=%s backup=yes"' % (self.config_file, section, option, value)
-        ])
-
     def execute_view(self):
-        '''
+        """
         Displays the current config file
-        '''
+        """
         try:
             with open(self.config_file, 'rb') as f:
                 self.pager(to_text(f.read(), errors='surrogate_or_strict'))
         except Exception as e:
             raise AnsibleError("Failed to open config file: %s" % to_native(e))
-
-    def execute_edit(self):
-        '''
-        Opens ansible.cfg in the default EDITOR
-        '''
-        raise AnsibleError("Option not implemented yet")
-
-        # pylint: disable=unreachable
-        try:
-            editor = shlex.split(C.config.get_config_value('EDITOR'))
-            editor.append(self.config_file)
-            subprocess.call(editor)
-        except Exception as e:
-            raise AnsibleError("Failed to open editor: %s" % to_native(e))
 
     def _list_plugin_settings(self, ptype, plugins=None):
         entries = {}
@@ -266,9 +225,9 @@ class ConfigCLI(CLI):
         return entries
 
     def _list_entries_from_args(self):
-        '''
+        """
         build a dict with the list requested configs
-        '''
+        """
 
         config_entries = {}
         if context.CLIARGS['type'] in ('base', 'all'):
@@ -294,9 +253,9 @@ class ConfigCLI(CLI):
         return config_entries
 
     def execute_list(self):
-        '''
+        """
         list and output available configs
-        '''
+        """
 
         config_entries = self._list_entries_from_args()
         if context.CLIARGS['format'] == 'yaml':
@@ -495,11 +454,12 @@ class ConfigCLI(CLI):
         # Add base
         config = self.config.get_configuration_definitions(ignore_private=True)
         # convert to settings
+        settings = {}
         for setting in config.keys():
             v, o = C.config.get_config_value_and_origin(setting, cfile=self.config_file, variables=get_constants())
-            config[setting] = Setting(setting, v, o, None)
+            settings[setting] = Setting(setting, v, o, None)
 
-        return self._render_settings(config)
+        return self._render_settings(settings)
 
     def _get_plugin_configs(self, ptype, plugins):
 
@@ -599,9 +559,9 @@ class ConfigCLI(CLI):
         return output
 
     def execute_dump(self):
-        '''
+        """
         Shows the current settings, merges ansible.cfg if specified
-        '''
+        """
         output = []
         if context.CLIARGS['type'] in ('base', 'all'):
             # deal with base

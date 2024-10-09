@@ -35,20 +35,19 @@ import platform
 import select
 import shlex
 import subprocess
-import traceback
 
 from ansible.module_utils.six import PY2, b
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 
 
 def sysv_is_enabled(name, runlevel=None):
-    '''
+    """
     This function will check if the service name supplied
     is enabled in any of the sysv runlevels
 
     :arg name: name of the service to test for
     :kw runlevel: runlevel to check (default: None)
-    '''
+    """
     if runlevel:
         if not os.path.isdir('/etc/rc0.d/'):
             return bool(glob.glob('/etc/init.d/rc%s.d/S??%s' % (runlevel, name)))
@@ -60,12 +59,12 @@ def sysv_is_enabled(name, runlevel=None):
 
 
 def get_sysv_script(name):
-    '''
+    """
     This function will return the expected path for an init script
     corresponding to the service name supplied.
 
     :arg name: name or path of the service to test for
-    '''
+    """
     if name.startswith('/'):
         result = name
     else:
@@ -75,19 +74,19 @@ def get_sysv_script(name):
 
 
 def sysv_exists(name):
-    '''
+    """
     This function will return True or False depending on
     the existence of an init script corresponding to the service name supplied.
 
     :arg name: name of the service to test for
-    '''
+    """
     return os.path.exists(get_sysv_script(name))
 
 
 def get_ps(module, pattern):
-    '''
+    """
     Last resort to find a service by trying to match pattern to programs in memory
-    '''
+    """
     found = False
     if platform.system() == 'SunOS':
         flags = '-ef'
@@ -106,7 +105,7 @@ def get_ps(module, pattern):
 
 
 def fail_if_missing(module, found, service, msg=''):
-    '''
+    """
     This function will return an error or exit gracefully depending on check mode status
     and if the service is missing or not.
 
@@ -114,16 +113,16 @@ def fail_if_missing(module, found, service, msg=''):
     :arg found: boolean indicating if services were found or not
     :arg service: name of service
     :kw msg: extra info to append to error/success msg when missing
-    '''
+    """
     if not found:
         module.fail_json(msg='Could not find the requested service %s: %s' % (service, msg))
 
 
 def fork_process():
-    '''
+    """
     This function performs the double fork process to detach from the
     parent process and execute.
-    '''
+    """
     pid = os.fork()
 
     if pid == 0:
@@ -162,7 +161,7 @@ def fork_process():
 
 
 def daemonize(module, cmd):
-    '''
+    """
     Execute a command while detaching as a daemon, returns rc, stdout, and stderr.
 
     :arg module: is an AnsibleModule object, used for it's utility methods
@@ -171,7 +170,7 @@ def daemonize(module, cmd):
     This is complex because daemonization is hard for people.
     What we do is daemonize a part of this module, the daemon runs the command,
     picks up the return code and output, and returns it to the main process.
-    '''
+    """
 
     # init some vars
     chunk = 4096  # FIXME: pass in as arg?
@@ -182,9 +181,9 @@ def daemonize(module, cmd):
         pipe = os.pipe()
         pid = fork_process()
     except OSError:
-        module.fail_json(msg="Error while attempting to fork: %s", exception=traceback.format_exc())
+        module.fail_json(msg="Error while attempting to fork: %s")
     except Exception as exc:
-        module.fail_json(msg=to_text(exc), exception=traceback.format_exc())
+        module.fail_json(msg=to_text(exc))
 
     # we don't do any locking as this should be a unique module/process
     if pid == 0:

@@ -19,12 +19,14 @@ from __future__ import annotations
 
 import ansible.constants as C
 from ansible.errors import AnsibleParserError, AnsibleError, AnsibleAssertionError
+from ansible.module_utils.datatag import AnsibleTagHelper
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.sentinel import Sentinel
 from ansible.module_utils.common.text.converters import to_text
 from ansible.parsing.splitter import parse_kv, split_args
 from ansible.plugins.loader import module_loader, action_loader
-from ansible.template import Templar
+from ansible.template.jinja_bits import is_possibly_template
+from ansible.template.templar import Templar
 from ansible.utils.fqcn import add_internal_fqcns
 
 
@@ -129,26 +131,26 @@ class ModuleArgsParser:
         self._task_attrs.update(['local_action', 'static'])
         self._task_attrs = frozenset(self._task_attrs)
 
-        self.resolved_action = None
-
-    def _split_module_string(self, module_string):
-        '''
+    def _split_module_string(self, module_string: str) -> tuple[str, str]:
+        """
         when module names are expressed like:
         action: copy src=a dest=b
         the first part of the string is the name of the module
         and the rest are strings pertaining to the arguments.
-        '''
+        """
 
         tokens = split_args(module_string)
         if len(tokens) > 1:
-            return (tokens[0].strip(), " ".join(tokens[1:]))
+            result = (tokens[0].strip(), " ".join(tokens[1:]))
         else:
-            return (tokens[0].strip(), "")
+            result = (tokens[0].strip(), "")
+
+        return AnsibleTagHelper.tag_copy(module_string, result[0]), AnsibleTagHelper.tag_copy(module_string, result[1])
 
     def _normalize_parameters(self, thing, action=None, additional_args=None):
-        '''
+        """
         arguments can be fuzzy.  Deal with all the forms.
-        '''
+        """
 
         additional_args = {} if additional_args is None else additional_args
 
@@ -157,9 +159,9 @@ class ModuleArgsParser:
         # than those which may be parsed/normalized next
         final_args = dict()
         if additional_args:
-            if isinstance(additional_args, string_types):
-                templar = Templar(loader=None)
-                if templar.is_template(additional_args):
+            if isinstance(additional_args, str):
+                # DTFIX-MERGE: should this be is_possibly_template?
+                if Templar().is_template(additional_args):
                     final_args['_variable_params'] = additional_args
                 else:
                     raise AnsibleParserError("Complex args containing variables cannot use bare variables (without Jinja2 delimiters), "
@@ -205,7 +207,7 @@ class ModuleArgsParser:
         return (action, final_args)
 
     def _normalize_new_style_args(self, thing, action):
-        '''
+        """
         deals with fuzziness in new style module invocations
         accepting key=value pairs and dictionaries, and returns
         a dictionary of arguments
@@ -215,7 +217,7 @@ class ModuleArgsParser:
             {'region': 'xyz'}, 'ec2'
         standardized outputs like:
             { _raw_params: 'echo hi', _uses_shell: True }
-        '''
+        """
 
         if isinstance(thing, dict):
             # form is like: { xyz: { x: 2, y: 3 } }
@@ -232,7 +234,7 @@ class ModuleArgsParser:
         return args
 
     def _normalize_old_style_args(self, thing):
-        '''
+        """
         deals with fuzziness in old-style (action/local_action) module invocations
         returns tuple of (module_name, dictionary_args)
 
@@ -242,7 +244,7 @@ class ModuleArgsParser:
            {'module': 'ec2', 'x': 1 }
         standardized outputs like:
            ('ec2', { 'x': 1} )
-        '''
+        """
 
         action = None
         args = None
@@ -270,13 +272,11 @@ class ModuleArgsParser:
         return (action, args)
 
     def parse(self, skip_action_validation=False):
-        '''
+        """
         Given a task in one of the supported forms, parses and returns
         returns the action, arguments, and delegate_to values for the
         task, dealing with all sorts of levels of fuzziness.
-        '''
-
-        thing = None
+        """
 
         action = None
         delegate_to = self._task_ds.get('delegate_to', Sentinel)
@@ -292,7 +292,7 @@ class ModuleArgsParser:
         if 'action' in self._task_ds:
             # an old school 'action' statement
             thing = self._task_ds['action']
-            action, args = self._normalize_parameters(thing, action=action, additional_args=additional_args)
+            action, args = self._normalize_parameters(thing, additional_args=additional_args)
 
         # local_action
         if 'local_action' in self._task_ds:
@@ -301,12 +301,7 @@ class ModuleArgsParser:
                 raise AnsibleParserError("action and local_action are mutually exclusive", obj=self._task_ds)
             thing = self._task_ds.get('local_action', '')
             delegate_to = 'localhost'
-            action, args = self._normalize_parameters(thing, action=action, additional_args=additional_args)
-
-        if action is not None and not skip_action_validation:
-            context = _get_action_context(action, self._collection_list)
-            if context is not None and context.resolved:
-                self.resolved_action = context.resolved_fqcn
+            action, args = self._normalize_parameters(thing, additional_args=additional_args)
 
         # module: <stuff> is the more new-style invocation
 
@@ -315,14 +310,15 @@ class ModuleArgsParser:
 
         # walk the filtered input dictionary to see if we recognize a module name
         for item, value in non_task_ds.items():
-            context = None
-            is_action_candidate = False
             if item in BUILTIN_TASKS:
                 is_action_candidate = True
             elif skip_action_validation:
                 is_action_candidate = True
+            elif not skip_action_validation and is_possibly_template(item):
+                is_action_candidate = True
             else:
                 try:
+                    # DTFIX-FUTURE: extract to a helper method, shared with Task.post_validate_args
                     context = _get_action_context(item, self._collection_list)
                 except AnsibleError as e:
                     if e.obj is None:
@@ -335,9 +331,6 @@ class ModuleArgsParser:
                 # finding more than one module name is a problem
                 if action is not None:
                     raise AnsibleParserError("conflicting action statements: %s, %s" % (action, item), obj=self._task_ds)
-
-                if context is not None and context.resolved:
-                    self.resolved_action = context.resolved_fqcn
 
                 action = item
                 thing = value
@@ -353,14 +346,5 @@ class ModuleArgsParser:
             else:
                 raise AnsibleParserError("no module/action detected in task.",
                                          obj=self._task_ds)
-        elif args.get('_raw_params', '') != '' and action not in RAW_PARAM_MODULES:
-            templar = Templar(loader=None)
-            raw_params = args.pop('_raw_params')
-            if templar.is_template(raw_params):
-                args['_variable_params'] = raw_params
-            else:
-                raise AnsibleParserError(
-                    "this task '%s' has extra params, which is only allowed in the following modules: %s" % (action, ", ".join(RAW_PARAM_MODULES_SIMPLE)),
-                    obj=self._task_ds)
 
-        return (action, args, delegate_to)
+        return action, args, delegate_to

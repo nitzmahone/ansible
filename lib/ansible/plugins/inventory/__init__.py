@@ -17,23 +17,29 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import os
 import string
+import typing as t
 
 from collections.abc import Mapping
 
 from ansible.errors import AnsibleError, AnsibleParserError
 from ansible.inventory.group import to_safe_group_name as original_safe
 from ansible.parsing.utils.addresses import parse_address
+from ansible.parsing.dataloader import DataLoader
 from ansible.plugins import AnsiblePlugin
 from ansible.plugins.cache import CachePluginAdjudicator as CacheObject
 from ansible.module_utils.common.text.converters import to_bytes, to_native
-from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.six import string_types
-from ansible.template import Templar
+from ansible.template.templar import Templar, TemplateOptions, TemplateMode
 from ansible.utils.display import Display
 from ansible.utils.vars import combine_vars, load_extra_vars
+from ansible._internal import _serialization
+
+if t.TYPE_CHECKING:
+    from ansible.inventory.data import InventoryData
 
 display = Display()
 
@@ -45,17 +51,17 @@ def to_safe_group_name(name):
 
 
 def detect_range(line=None):
-    '''
+    """
     A helper function that checks a given host line to see if it contains
     a range pattern described in the docstring above.
 
     Returns True if the given line contains a pattern, else False.
-    '''
+    """
     return '[' in line
 
 
 def expand_hostname_range(line=None):
-    '''
+    """
     A helper function that expands a given line that contains a pattern
     specified in top docstring, and returns a list that consists of the
     expanded version.
@@ -65,7 +71,7 @@ def expand_hostname_range(line=None):
     string splitting.
 
     References: https://docs.ansible.com/ansible/latest/user_guide/intro_inventory.html#hosts-and-groups
-    '''
+    """
     all_hosts = []
     if line:
         # A hostname such as db[1:6]-node is considered to consists
@@ -145,8 +151,13 @@ def get_cache_plugin(plugin_name, **kwargs):
     return cache
 
 
-class BaseInventoryPlugin(AnsiblePlugin):
-    """ Parses an Inventory Source"""
+class _BaseInventoryPlugin(AnsiblePlugin):
+    """
+    Internal base implementation for inventory plugins.
+
+    Do not inherit from this directly, use one of its public subclasses instead.
+    Used to introduce an extra layer in the class hierarchy to allow Constructed to subclass this while remaining a mixin for existing inventory plugins.
+    """
 
     TYPE = 'generator'
 
@@ -156,17 +167,32 @@ class BaseInventoryPlugin(AnsiblePlugin):
     # it by default.
     _sanitize_group_name = staticmethod(to_safe_group_name)
 
-    def __init__(self):
+    def __init__(self) -> None:
 
-        super(BaseInventoryPlugin, self).__init__()
+        super().__init__()
 
         self._options = {}
-        self.inventory = None
         self.display = display
-        self._vars = {}
 
-    def parse(self, inventory, loader, path, cache=True):
-        ''' Populates inventory from the given data. Raises an error on any parse failure
+        # These attributes are set by the parse() method on this (base) class.
+        self.loader: DataLoader | None = None
+        self.inventory: InventoryData | None = None
+        self._vars: dict[str, t.Any] | None = None
+
+    trusted_by_default: bool = False
+    """Inventory plugins that only source templates from trusted sources can set this True to have trust automatically applied to all templates."""
+
+    @functools.cached_property
+    def templar(self) -> Templar:
+        if self.trusted_by_default:
+            return _AutoTrustInputTemplar(loader=self.loader)
+
+        # DTFIX-FUTURE: implement an optional "strict" mode that always uses the AnsibleVariableVisitor to check for unsupported types
+
+        return Templar(loader=self.loader)
+
+    def parse(self, inventory: InventoryData, loader: DataLoader, path: str, cache: bool = True) -> None:
+        """ Populates inventory from the given data. Raises an error on any parse failure
             :arg inventory: a copy of the previously accumulated inventory data,
                  to be updated with any new data this plugin provides.
                  The inventory can be empty if no other source/plugin ran successfully.
@@ -177,20 +203,18 @@ class BaseInventoryPlugin(AnsiblePlugin):
                  but it can also be a raw string for this plugin to consume
             :arg cache: a boolean that indicates if the plugin should use the cache or not
                  you can ignore if this plugin does not implement caching.
-        '''
-
+        """
         self.loader = loader
         self.inventory = inventory
-        self.templar = Templar(loader=loader)
         self._vars = load_extra_vars(loader)
 
     def verify_file(self, path):
-        ''' Verify if file is usable by this plugin, base does minimal accessibility check
+        """ Verify if file is usable by this plugin, base does minimal accessibility check
             :arg path: a string that was passed as an inventory source,
                  it normally is a path to a config file, but this is not a requirement,
                  it can also be parsed itself as the inventory data to process.
                  So only call this base class if you expect it to be a file.
-        '''
+        """
 
         valid = False
         b_path = to_bytes(path, errors='surrogate_or_strict')
@@ -210,15 +234,14 @@ class BaseInventoryPlugin(AnsiblePlugin):
                 self.inventory.set_variable(host, k, variables[k])
 
     def _read_config_data(self, path):
-        ''' validate config and set options as appropriate
+        """ validate config and set options as appropriate
             :arg path: path to common yaml format config file for this plugin
-        '''
+        """
 
-        config = {}
         try:
             # avoid loader cache so meta: refresh_inventory can pick up config changes
             # if we read more than once, fs cache should be good enough
-            config = self.loader.load_from_file(path, cache='none')
+            config = self.loader.load_from_file(path, cache='none', trusted_as_template=True)
         except Exception as e:
             raise AnsibleParserError(to_native(e))
 
@@ -244,20 +267,20 @@ class BaseInventoryPlugin(AnsiblePlugin):
         return config
 
     def _consume_options(self, data):
-        ''' update existing options from alternate configuration sources not normally used by Ansible.
+        """ update existing options from alternate configuration sources not normally used by Ansible.
             Many API libraries already have existing configuration sources, this allows plugin author to leverage them.
             :arg data: key/value pairs that correspond to configuration options for this plugin
-        '''
+        """
 
         for k in self._options:
             if k in data:
                 self._options[k] = data.pop(k)
 
     def _expand_hostpattern(self, hostpattern):
-        '''
+        """
         Takes a single host pattern and returns a list of hostnames and an
         optional port number that applies to all of them.
-        '''
+        """
         # Can the given hostpattern be parsed as a host with an optional port
         # specification?
 
@@ -279,7 +302,11 @@ class BaseInventoryPlugin(AnsiblePlugin):
         return (hostnames, port)
 
 
-class BaseFileInventoryPlugin(BaseInventoryPlugin):
+class BaseInventoryPlugin(_BaseInventoryPlugin):
+    """ Parses an Inventory Source """
+
+
+class BaseFileInventoryPlugin(_BaseInventoryPlugin):
     """ Parses a File based Inventory Source"""
 
     TYPE = 'storage'
@@ -307,7 +334,7 @@ class Cacheable(object):
         return "{0}_{1}".format(self.NAME, self._get_cache_prefix(path))
 
     def _get_cache_prefix(self, path):
-        ''' create predictable unique prefix for plugin/inventory '''
+        """ create predictable unique prefix for plugin/inventory """
 
         m = hashlib.sha1()
         m.update(to_bytes(self.NAME, errors='surrogate_or_strict'))
@@ -329,11 +356,11 @@ class Cacheable(object):
         self._cache.set_cache()
 
 
-class Constructable(object):
-
-    def _compose(self, template, variables, disable_lookups=True):
-        ''' helper method for plugins to compose variables for Ansible based on jinja2 expression and inventory vars'''
-        t = self.templar
+class Constructable(_BaseInventoryPlugin):
+    def _compose(self, template, variables, disable_lookups=...):
+        """ helper method for plugins to compose variables for Ansible based on jinja2 expression and inventory vars"""
+        if disable_lookups is not ...:
+            self.display.deprecated("The disable_lookups arg has no effect.", version="2.21")
 
         try:
             use_extra = self.get_option('use_extra_vars')
@@ -341,15 +368,14 @@ class Constructable(object):
             use_extra = False
 
         if use_extra:
-            t.available_variables = combine_vars(variables, self._vars)
+            self.templar.available_variables = combine_vars(variables, self._vars)
         else:
-            t.available_variables = variables
+            self.templar.available_variables = variables
 
-        return t.template('%s%s%s' % (t.environment.variable_start_string, template, t.environment.variable_end_string),
-                          disable_lookups=disable_lookups)
+        return self.templar.evaluate_expression(template)
 
     def _set_composite_vars(self, compose, variables, host, strict=False):
-        ''' loops over compose entries to create vars for hosts '''
+        """ loops over compose entries to create vars for hosts """
         if compose and isinstance(compose, dict):
             for varname in compose:
                 try:
@@ -361,17 +387,17 @@ class Constructable(object):
                 self.inventory.set_variable(host, varname, composite)
 
     def _add_host_to_composed_groups(self, groups, variables, host, strict=False, fetch_hostvars=True):
-        ''' helper to create complex groups for plugins based on jinja2 conditionals, hosts that meet the conditional are added to group'''
+        """ helper to create complex groups for plugins based on jinja2 conditionals, hosts that meet the conditional are added to group"""
         # process each 'group entry'
         if groups and isinstance(groups, dict):
             if fetch_hostvars:
                 variables = combine_vars(variables, self.inventory.get_host(host).get_vars())
             self.templar.available_variables = variables
             for group_name in groups:
-                conditional = "{%% if %s %%} True {%% else %%} False {%% endif %%}" % groups[group_name]
+                conditional = groups[group_name]
                 group_name = self._sanitize_group_name(group_name)
                 try:
-                    result = boolean(self.templar.template(conditional))
+                    result = self.templar.evaluate_conditional(conditional)
                 except Exception as e:
                     if strict:
                         raise AnsibleParserError("Could not add host %s to group %s: %s" % (host, group_name, to_native(e)))
@@ -384,7 +410,7 @@ class Constructable(object):
                     self.inventory.add_child(group_name, host)
 
     def _add_host_to_keyed_groups(self, keys, variables, host, strict=False, fetch_hostvars=True):
-        ''' helper to create groups for plugins based on variable values and add the corresponding hosts to it'''
+        """ helper to create groups for plugins based on variable values and add the corresponding hosts to it"""
         if keys and isinstance(keys, list):
             for keyed in keys:
                 if keyed and isinstance(keyed, dict):
@@ -405,13 +431,14 @@ class Constructable(object):
                         prefix = keyed.get('prefix', '')
                         sep = keyed.get('separator', '_')
                         raw_parent_name = keyed.get('parent_group', None)
-                        if raw_parent_name:
-                            try:
-                                raw_parent_name = self.templar.template(raw_parent_name)
-                            except AnsibleError as e:
-                                if strict:
-                                    raise AnsibleParserError("Could not generate parent group %s for group %s: %s" % (raw_parent_name, key, to_native(e)))
-                                continue
+
+                        try:
+                            raw_parent_name = self.templar.template(raw_parent_name, options=TemplateOptions(value_for_omit=None))
+                        except Exception as ex:
+                            if strict:
+                                raise AnsibleParserError(f'Could not generate parent group {raw_parent_name!r} for group {key!r}: {ex}') from ex
+
+                            continue
 
                         new_raw_group_names = []
                         if isinstance(key, string_types):
@@ -459,3 +486,29 @@ class Constructable(object):
                             raise AnsibleParserError("No key or key resulted empty for %s in host %s, invalid entry" % (keyed.get('key'), host))
                 else:
                     raise AnsibleParserError("Invalid keyed group entry, it must be a dictionary: %s " % keyed)
+
+
+class _AutoTrustInputTemplar(Templar):
+    """Compatibility wrapper around Templar that automatically trusts templates passed directly to some templating methods."""
+
+    # DTFIX-MERGE: bikeshed name and location of this class
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        self._visitor = _serialization.AnsibleVariableVisitor(trusted_as_template=True)
+
+    def template(
+        self,
+        variable: t.Any,  # DTFIX-MERGE: once we settle the new/old API boundaries, rename this (here and in other methods)
+        *,
+        options: TemplateOptions | None = None,
+        mode: TemplateMode = TemplateMode.DEFAULT,
+        template_locals: dict[str, t.Any] | None = None,
+    ) -> t.Any:
+        return super().template(self._visitor.visit(variable), options=options, mode=mode, template_locals=template_locals)
+
+    def evaluate_expression(self, expression: str, escape_backslashes=True, template_locals: dict[str, t.Any] | None = None) -> t.Any:
+        return super().evaluate_expression(self._visitor.visit(expression), escape_backslashes=escape_backslashes, template_locals=template_locals)
+
+    def evaluate_conditional(self, conditional: str | bool | None) -> bool:
+        return super().evaluate_conditional(self._visitor.visit(conditional))

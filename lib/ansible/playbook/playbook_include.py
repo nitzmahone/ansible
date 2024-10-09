@@ -22,16 +22,16 @@ import os
 import ansible.constants as C
 from ansible.errors import AnsibleParserError, AnsibleAssertionError
 from ansible.module_utils.common.text.converters import to_bytes
+from ansible.module_utils.datatag import AnsibleTagHelper
 from ansible.module_utils.six import string_types
 from ansible.parsing.splitter import split_args
-from ansible.parsing.yaml.objects import AnsibleBaseYAMLObject, AnsibleMapping
 from ansible.playbook.attribute import NonInheritableFieldAttribute
 from ansible.playbook.base import Base
 from ansible.playbook.conditional import Conditional
 from ansible.playbook.taggable import Taggable
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.collection_loader._collection_finder import _get_collection_name_from_path, _get_collection_playbook_path
-from ansible.template import Templar
+from ansible.template.templar import Templar
 from ansible.utils.display import Display
 
 display = Display()
@@ -47,10 +47,10 @@ class PlaybookInclude(Base, Conditional, Taggable):
         return PlaybookInclude().load_data(ds=data, basedir=basedir, variable_manager=variable_manager, loader=loader)
 
     def load_data(self, ds, variable_manager=None, loader=None, basedir=None):
-        '''
+        """
         Overrides the base load_data(), as we're actually going to return a new
         Playbook() object rather than a PlaybookInclude object
-        '''
+        """
 
         # import here to avoid a dependency loop
         from ansible.playbook import Playbook
@@ -122,19 +122,17 @@ class PlaybookInclude(Base, Conditional, Taggable):
         return pb
 
     def preprocess_data(self, ds):
-        '''
+        """
         Reorganizes the data for a PlaybookInclude datastructure to line
         up with what we expect the proper attributes to be
-        '''
+        """
 
         if not isinstance(ds, dict):
             raise AnsibleAssertionError('ds (%s) should be a dict but was a %s' % (ds, type(ds)))
 
-        # the new, cleaned datastructure, which will have legacy
-        # items reduced to a standard structure
-        new_ds = AnsibleMapping()
-        if isinstance(ds, AnsibleBaseYAMLObject):
-            new_ds.ansible_pos = ds.ansible_pos
+        # the new, cleaned datastructure, which will have legacy items reduced to a standard structure suitable for the
+        # attributes of the task class; copy any tagged data to preserve things like source position
+        new_ds = AnsibleTagHelper.tag_copy(ds, {})
 
         for (k, v) in ds.items():
             if k in C._ACTION_IMPORT_PLAYBOOK:
@@ -152,9 +150,9 @@ class PlaybookInclude(Base, Conditional, Taggable):
         return super(PlaybookInclude, self).preprocess_data(new_ds)
 
     def _preprocess_import(self, ds, new_ds, k, v):
-        '''
+        """
         Splits the playbook import line up into filename and parameters
-        '''
+        """
         if v is None:
             raise AnsibleParserError("playbook import parameter is missing", obj=ds)
         elif not isinstance(v, string_types):
@@ -166,4 +164,4 @@ class PlaybookInclude(Base, Conditional, Taggable):
         if len(items) == 0:
             raise AnsibleParserError("import_playbook statements must specify the file name to import", obj=ds)
 
-        new_ds['import_playbook'] = items[0].strip()
+        new_ds['import_playbook'] = AnsibleTagHelper.tag_copy(v, items[0].strip())

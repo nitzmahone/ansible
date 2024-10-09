@@ -16,7 +16,7 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
     name: free
     short_description: Executes tasks without waiting for all hosts
     description:
@@ -27,7 +27,7 @@ DOCUMENTATION = '''
           won't hold up the rest of the hosts and tasks.
     version_added: "2.0"
     author: Ansible Core Team
-'''
+"""
 
 import time
 
@@ -37,8 +37,8 @@ from ansible.playbook.handler import Handler
 from ansible.playbook.included_file import IncludedFile
 from ansible.plugins.loader import action_loader
 from ansible.plugins.strategy import StrategyBase
-from ansible.template import Templar
-from ansible.module_utils.common.text.converters import to_text
+from ansible.template.templar import Templar, as_non_templatable_text
+from ansible.template.marker_behaviors import ReplacingMarkerBehavior
 from ansible.utils.display import Display
 
 display = Display()
@@ -54,7 +54,7 @@ class StrategyModule(StrategyBase):
         self._host_pinned = False
 
     def run(self, iterator, play_context):
-        '''
+        """
         The "free" strategy is a bit more complex, in that it allows tasks to
         be sent to hosts as quickly as they can be processed. This means that
         some hosts may finish very quickly if run tasks result in little or no
@@ -65,7 +65,7 @@ class StrategyModule(StrategyBase):
         and starting the search from there as opposed to the top of the hosts
         list again, which would end up favoring hosts near the beginning of the
         list.
-        '''
+        """
 
         # the last host to be given a task
         last_host = 0
@@ -129,8 +129,8 @@ class StrategyModule(StrategyBase):
 
                         try:
                             throttle = int(templar.template(task.throttle))
-                        except Exception as e:
-                            raise AnsibleError("Failed to convert the throttle value to an integer.", obj=task._ds, orig_exc=e)
+                        except Exception as ex:
+                            raise AnsibleError("Failed to convert the throttle value to an integer.", obj=task.throttle) from ex
 
                         if throttle > 0:
                             same_tasks = 0
@@ -155,13 +155,8 @@ class StrategyModule(StrategyBase):
                             # corresponding action plugin
                             action = None
 
-                        try:
-                            task.name = to_text(templar.template(task.name, fail_on_undefined=False), nonstring='empty')
-                            display.debug("done templating", host=host_name)
-                        except Exception:
-                            # just ignore any errors during task name templating,
-                            # we don't care if it just shows the raw name
-                            display.debug("templating failed for some reason", host=host_name)
+                        with ReplacingMarkerBehavior.warning_context() as replacing_behavior:
+                            task.name = as_non_templatable_text(templar.extend(marker_behavior=replacing_behavior).template(task.name))
 
                         run_once = templar.template(task.run_once) or action and getattr(action, 'BYPASS_HOST_LOOP', False)
                         if run_once:
@@ -255,11 +250,12 @@ class StrategyModule(StrategyBase):
                         iterator.handlers = [h for b in iterator._play.handlers for h in b.block]
                     except AnsibleParserError:
                         raise
-                    except AnsibleError as e:
-                        display.error(to_text(e), wrap_text=False)
+                    except AnsibleError as ex:
+                        # FIXME: send the error to the callback; don't directly write to display here
+                        display.error(ex)
                         for r in included_file._results:
                             r._result['failed'] = True
-                            r._result['reason'] = str(e)
+                            r._result['reason'] = str(ex)
                             self._tqm._stats.increment('failures', r._host.name)
                             self._tqm.send_callback('v2_runner_on_failed', r)
                             failed_includes_hosts.add(r._host)

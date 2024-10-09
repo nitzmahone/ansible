@@ -24,19 +24,19 @@ string_to_vars = {
 
 
 def _var2string(value):
-    ''' reverse lookup of the dict above '''
+    """ reverse lookup of the dict above """
     for k, v in string_to_vars.items():
         if v == value:
             return k
 
 
 def _init_doc_dict():
-    ''' initialize a return dict for docs with the expected structure '''
+    """ initialize a return dict for docs with the expected structure """
     return {k: None for k in string_to_vars.values()}
 
 
 def read_docstring_from_yaml_file(filename, verbose=True, ignore_errors=True):
-    ''' Read docs from 'sidecar' yaml file doc for a plugin '''
+    """ Read docs from 'sidecar' yaml file doc for a plugin """
 
     data = _init_doc_dict()
     file_data = {}
@@ -44,12 +44,13 @@ def read_docstring_from_yaml_file(filename, verbose=True, ignore_errors=True):
     try:
         with open(filename, 'rb') as yamlfile:
             file_data = AnsibleLoader(yamlfile.read(), file_name=filename).get_single_data()
-    except Exception as e:
-        msg = "Unable to parse yaml file '%s': %s" % (filename, to_native(e))
+    except Exception as ex:
+        msg = f"Unable to parse yaml file {filename}"
+        # DTFIX-MERGE: find a better pattern for this
         if not ignore_errors:
-            raise AnsibleParserError(msg, orig_exc=e)
+            raise AnsibleParserError(f'{msg}.') from ex
         elif verbose:
-            display.error(msg)
+            display.error(f'{msg}: {ex}')
 
     if file_data:
         for key in string_to_vars:
@@ -104,12 +105,13 @@ def read_docstring_from_python_module(filename, verbose=True, ignore_errors=True
                     # yaml load the data
                     try:
                         data[next_string] = AnsibleLoader(value, file_name=filename).get_single_data()
-                    except Exception as e:
-                        msg = "Unable to parse docs '%s' in python file '%s': %s" % (_var2string(next_string), filename, to_native(e))
+                    except Exception as ex:
+                        msg = f"Unable to parse docs {_var2string(next_string)!r} in python file {filename!r}"
+                        # DTFIX-MERGE: use a better pattern to just conditionally send augmented exception to display.error or raise
                         if not ignore_errors:
-                            raise AnsibleParserError(msg, orig_exc=e)
+                            raise AnsibleParserError(f'{msg}.') from ex
                         elif verbose:
-                            display.error(msg)
+                            display.error(f'{msg}: {ex}')
 
                 next_string = None
 
@@ -157,18 +159,19 @@ def read_docstring_from_python_file(filename, verbose=True, ignore_errors=True):
 
                         display.debug('Documentation assigned: %s' % varkey)
 
-    except Exception as e:
-        msg = "Unable to parse documentation in python file '%s': %s" % (filename, to_native(e))
+    except Exception as ex:
+        msg = f"Unable to parse documentation in python file {filename!r}"
+        # DTFIX-MERGE: better pattern to conditionally raise/display
         if not ignore_errors:
-            raise AnsibleParserError(msg, orig_exc=e)
+            raise AnsibleParserError(f'{msg}.') from ex
         elif verbose:
-            display.error(msg)
+            display.error(f'{msg}: {ex}.')
 
     return data
 
 
 def read_docstring(filename, verbose=True, ignore_errors=True):
-    ''' returns a documentation dictionary from Ansible plugin docstrings '''
+    """ returns a documentation dictionary from Ansible plugin docstrings """
 
     # NOTE: adjacency of doc file to code file is responsibility of caller
     if filename.endswith(C.YAML_DOC_EXTENSIONS):

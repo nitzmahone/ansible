@@ -20,26 +20,29 @@ from __future__ import annotations
 
 import fnmatch
 import os
-import sys
 import re
 import itertools
-import traceback
+import typing as t
 
 from operator import attrgetter
 from random import shuffle
 
 from ansible import constants as C
-from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleParserError
-from ansible.inventory.data import InventoryData
+from ansible.errors import AnsibleError, AnsibleOptionsError
+from ansible.inventory.data import InventoryData, _InventoryDataWrapper
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.parsing.utils.addresses import parse_address
 from ansible.plugins.loader import inventory_loader
+from ansible.utils.datatag.tags import AnsibleSourcePosition
 from ansible.utils.helpers import deduplicate_list
 from ansible.utils.path import unfrackpath
 from ansible.utils.display import Display
 from ansible.utils.vars import combine_vars
 from ansible.vars.plugins import get_vars_from_inventory_sources
+
+if t.TYPE_CHECKING:
+    from ansible.plugins.inventory import BaseInventoryPlugin
 
 display = Display()
 
@@ -50,7 +53,7 @@ IGNORED_EXTS = [b'%s$' % to_bytes(re.escape(x)) for x in C.INVENTORY_IGNORE_EXTS
 IGNORED = re.compile(b'|'.join(IGNORED_ALWAYS + IGNORED_PATTERNS + IGNORED_EXTS))
 
 PATTERN_WITH_SUBSCRIPT = re.compile(
-    r'''^
+    r"""^
         (.+)                    # A pattern expression ending with...
         \[(?:                   # A [subscript] expression comprising:
             (-?[0-9]+)|         # A single positive or negative number
@@ -58,12 +61,12 @@ PATTERN_WITH_SUBSCRIPT = re.compile(
             ([0-9]*)
         )\]
         $
-    ''', re.X
+    """, re.X
 )
 
 
 def order_patterns(patterns):
-    ''' takes a list of patterns and reorders them by modifier to apply them consistently '''
+    """ takes a list of patterns and reorders them by modifier to apply them consistently """
 
     # FIXME: this goes away if we apply patterns incrementally or by groups
     pattern_regular = []
@@ -125,19 +128,19 @@ def split_host_pattern(pattern):
             # This mishandles IPv6 addresses, and is retained only for backwards
             # compatibility.
             patterns = re.findall(
-                to_text(r'''(?:     # We want to match something comprising:
+                to_text(r"""(?:     # We want to match something comprising:
                         [^\s:\[\]]  # (anything other than whitespace or ':[]'
                         |           # ...or...
                         \[[^\]]*\]  # a single complete bracketed expression)
                     )+              # occurring once or more
-                '''), pattern, re.X
+                """), pattern, re.X
             )
 
     return [p.strip() for p in patterns if p.strip()]
 
 
 class InventoryManager(object):
-    ''' Creates and manages inventory '''
+    """ Creates and manages inventory """
 
     def __init__(self, loader, sources=None, parse=True, cache=True):
 
@@ -196,12 +199,12 @@ class InventoryManager(object):
     def get_host(self, hostname):
         return self._inventory.get_host(hostname)
 
-    def _fetch_inventory_plugins(self):
-        ''' sets up loaded inventory plugins for usage '''
+    def _fetch_inventory_plugins(self) -> list[BaseInventoryPlugin]:
+        """ sets up loaded inventory plugins for usage """
 
         display.vvvv('setting up inventory plugins')
 
-        plugins = []
+        plugins: list[BaseInventoryPlugin] = []
         for name in C.INVENTORY_ENABLED:
             plugin = inventory_loader.get(name)
             if plugin:
@@ -215,7 +218,7 @@ class InventoryManager(object):
         return plugins
 
     def parse_sources(self, cache=False):
-        ''' iterate over inventory sources and parse each one to populate it'''
+        """ iterate over inventory sources and parse each one to populate it"""
 
         parsed = False
         # allow for multiple inventory parsing
@@ -243,7 +246,7 @@ class InventoryManager(object):
             host.vars = combine_vars(host.vars, get_vars_from_inventory_sources(self._loader, self._sources, [host], 'inventory'))
 
     def parse_source(self, source, cache=False):
-        ''' Generate or update inventory for the source provided '''
+        """ Generate or update inventory for the source provided """
 
         parsed = False
         failures = []
@@ -276,7 +279,6 @@ class InventoryManager(object):
 
             # try source with each plugin
             for plugin in self._fetch_inventory_plugins():
-
                 plugin_name = to_text(getattr(plugin, '_load_name', getattr(plugin, '_original_path', '')))
                 display.debug(u'Attempting to use plugin %s (%s)' % (plugin_name, plugin._original_path))
 
@@ -287,9 +289,14 @@ class InventoryManager(object):
                     plugin_wants = False
 
                 if plugin_wants:
+                    # have this tag ready to apply to errors or output; str-ify source since it is often tagged by the CLI
+                    origin_tag = AnsibleSourcePosition(description=f'<inventory plugin {plugin_name!r} with source {str(source)!r}>')
                     try:
-                        # FIXME in case plugin fails 1/2 way we have partial inventory
-                        plugin.parse(self._inventory, self._loader, source, cache=cache)
+                        inventory_wrapper = _InventoryDataWrapper(self._inventory, target_plugin=plugin, origin_tag=origin_tag)
+
+                        # DTFIX-MERGE: now that we have a wrapper around inventory, we can have it use ChainMaps to preview the in-progress inventory,
+                        #  but be able to roll back partial inventory failures by discarding the outermost layer
+                        plugin.parse(inventory_wrapper, self._loader, source, cache=cache)
                         try:
                             plugin.update_cache_if_changed()
                         except AttributeError:
@@ -298,14 +305,16 @@ class InventoryManager(object):
                         parsed = True
                         display.vvv('Parsed %s inventory source with %s plugin' % (source, plugin_name))
                         break
-                    except AnsibleParserError as e:
-                        display.debug('%s was not parsable by %s' % (source, plugin_name))
-                        tb = ''.join(traceback.format_tb(sys.exc_info()[2]))
-                        failures.append({'src': source, 'plugin': plugin_name, 'exc': e, 'tb': tb})
-                    except Exception as e:
-                        display.debug('%s failed while attempting to parse %s' % (plugin_name, source))
-                        tb = ''.join(traceback.format_tb(sys.exc_info()[2]))
-                        failures.append({'src': source, 'plugin': plugin_name, 'exc': AnsibleError(e), 'tb': tb})
+                    except AnsibleError as ex:
+                        if not ex.obj:
+                            ex.obj = origin_tag
+                        failures.append({'src': source, 'plugin': plugin_name, 'exc': ex})
+                    except Exception as ex:
+                        try:
+                            # omit line number to prevent contextual display of script or possibly sensitive info
+                            raise AnsibleError(str(ex), obj=origin_tag) from ex
+                        except AnsibleError as ex:
+                            failures.append({'src': source, 'plugin': plugin_name, 'exc': ex})
                 else:
                     display.vvv("%s declined parsing %s as it did not pass its verify_file() method" % (plugin_name, source))
 
@@ -319,9 +328,8 @@ class InventoryManager(object):
                 if failures:
                     # only if no plugin processed files should we show errors.
                     for fail in failures:
-                        display.warning(u'\n* Failed to parse %s with %s plugin: %s' % (to_text(fail['src']), fail['plugin'], to_text(fail['exc'])))
-                        if 'tb' in fail:
-                            display.vvv(to_text(fail['tb']))
+                        # `obj` should always be set
+                        display.error_as_warning(msg=f'Failed to parse inventory with {fail["plugin"]!r} plugin.', exception=fail['exc'])
 
                 # final error/warning on inventory source failure
                 if C.INVENTORY_ANY_UNPARSED_IS_FAILED:
@@ -335,12 +343,12 @@ class InventoryManager(object):
         return parsed
 
     def clear_caches(self):
-        ''' clear all caches '''
+        """ clear all caches """
         self._hosts_patterns_cache = {}
         self._pattern_cache = {}
 
     def refresh_inventory(self):
-        ''' recalculate inventory '''
+        """ recalculate inventory """
 
         self.clear_caches()
         self._inventory = InventoryData()
@@ -657,9 +665,9 @@ class InventoryManager(object):
         self._pattern_cache = {}
 
     def add_dynamic_host(self, host_info, result_item):
-        '''
+        """
         Helper function to add a new host to inventory based on a task result.
-        '''
+        """
 
         changed = False
         if not result_item.get('refresh'):
@@ -697,10 +705,10 @@ class InventoryManager(object):
             result_item['changed'] = changed
 
     def add_dynamic_group(self, host, result_item):
-        '''
+        """
         Helper function to add a group (if it does not exist), and to assign the
         specified host to that group.
-        '''
+        """
 
         changed = False
 

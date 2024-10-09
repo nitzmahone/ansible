@@ -3,17 +3,16 @@
 
 from __future__ import annotations
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
     name: constructed_with_hostvars
     options:
       plugin:
         description: the load name of the plugin
     extends_documentation_fragment:
       - constructed
-'''
+"""
 
 from ansible.errors import AnsibleParserError
-from ansible.module_utils.common.text.converters import to_native
 from ansible.plugins.inventory import BaseInventoryPlugin, Constructable
 
 
@@ -39,5 +38,5 @@ class InventoryModule(BaseInventoryPlugin, Constructable):
                 # constructed groups based variable values
                 self._add_host_to_keyed_groups(self.get_option('keyed_groups'), hostvars, host, strict=strict, fetch_hostvars=True)
 
-        except Exception as e:
-            raise AnsibleParserError("failed to parse %s: %s " % (to_native(path), to_native(e)), orig_exc=e)
+        except Exception as ex:
+            raise AnsibleParserError(f"Failed to parse {path}.") from ex

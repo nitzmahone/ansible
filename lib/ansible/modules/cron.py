@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 
-DOCUMENTATION = r'''
+DOCUMENTATION = r"""
 ---
 module: cron
 short_description: Manage cron.d and crontab entries
@@ -150,9 +150,9 @@ attributes:
     platform:
         support: full
         platforms: posix
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 - name: Ensure a job that runs at 2 and 5 exists. Creates an entry like "0 5,2 * * ls -alh > /dev/null"
   ansible.builtin.cron:
     name: "check dirs"
@@ -205,9 +205,9 @@ EXAMPLES = r'''
     name: APP_HOME
     env: yes
     state: absent
-'''
+"""
 
-RETURN = r'''#'''
+RETURN = r"""#"""
 
 import os
 import platform
@@ -272,7 +272,7 @@ class CronTab(object):
             except Exception:
                 raise CronTabError("Unexpected error:", sys.exc_info()[0])
         else:
-            # using safely quoted shell for now, but this really should be two non-shell calls instead.  FIXME
+            # FIXME: using safely quoted shell for now, but this really should be two non-shell calls instead.
             (rc, out, err) = self.module.run_command(self._read_user_execute(), use_unsafe_shell=True)
 
             if rc != 0 and rc != 1:  # 1 can mean that there are no jobs.
@@ -323,7 +323,7 @@ class CronTab(object):
 
         # Add the entire crontab back to the user crontab
         if not self.cron_file:
-            # quoting shell args for now but really this should be two non-shell calls.  FIXME
+            # FIXME: quoting shell args for now but really this should be two non-shell calls.
             (rc, out, err) = self.module.run_command(self._write_execute(path), use_unsafe_shell=True)
             os.unlink(path)
 

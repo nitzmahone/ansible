@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
+import sys
 
-DOCUMENTATION = r'''
+DOCUMENTATION = r"""
 ---
 module: async_status
 short_description: Obtain status of asynchronous task
@@ -51,9 +52,9 @@ seealso:
 author:
 - Ansible Core Team
 - Michael DeHaan
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 ---
 - name: Asynchronous dnf task
   ansible.builtin.dnf:
@@ -75,9 +76,9 @@ EXAMPLES = r'''
   ansible.builtin.async_status:
     jid: '{{ dnf_sleeper.ansible_job_id }}'
     mode: cleanup
-'''
+"""
 
-RETURN = r'''
+RETURN = r"""
 ansible_job_id:
   description: The asynchronous job id
   returned: success
@@ -105,14 +106,12 @@ erased:
   description: Path to erased job file
   returned: when file is erased
   type: str
-'''
+"""
 
 import json
 import os
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.six import iteritems
-from ansible.module_utils.common.text.converters import to_native
 
 
 def main():
@@ -163,10 +162,9 @@ def main():
     elif 'finished' not in data:
         data['finished'] = 0
 
-    # Fix error: TypeError: exit_json() keywords must be strings
-    data = {to_native(k): v for k, v in iteritems(data)}
-
-    module.exit_json(**data)
+    # just write the module output directly to stdout and exit; bypass other processing done by exit_json since it's already been done
+    print(f"\n{json.dumps(data)}")  # pylint: disable=ansible-bad-function
+    sys.exit(0)  # pylint: disable=ansible-bad-function
 
 
 if __name__ == '__main__':

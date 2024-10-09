@@ -18,7 +18,7 @@ from __future__ import annotations
 
 
 from ansible.errors import AnsibleAction, AnsibleActionFail
-from ansible.executor.module_common import get_action_args_with_defaults
+from ansible.executor.module_common import _apply_action_arg_defaults
 from ansible.plugins.action import ActionBase
 
 
@@ -35,7 +35,7 @@ class ActionModule(ActionBase):
     BUILTIN_SVC_MGR_MODULES = set(['openwrt_init', 'service', 'systemd', 'sysvinit'])
 
     def run(self, tmp=None, task_vars=None):
-        ''' handler for package operations '''
+        """ handler for package operations """
 
         self._supports_check_mode = True
         self._supports_async = True
@@ -48,9 +48,10 @@ class ActionModule(ActionBase):
         if module == 'auto':
             try:
                 if self._task.delegate_to:  # if we delegate, we should use delegated host's facts
-                    module = self._templar.template("{{hostvars['%s']['ansible_facts']['service_mgr']}}" % self._task.delegate_to)
+                    module = self._templar.template_literal_expression("hostvars[__delegate_to]['ansible_facts']['service_mgr']",
+                                                                       var_overrides=dict(__delegate_to=self._task.delegate_to))
                 else:
-                    module = self._templar.template('{{ansible_facts.service_mgr}}')
+                    module = self._templar.resolve_variable_expression('ansible_facts.service_mgr')
             except Exception:
                 pass  # could not get it from template!
 
@@ -79,10 +80,7 @@ class ActionModule(ActionBase):
 
                 # get defaults for specific module
                 context = self._shared_loader_obj.module_loader.find_plugin_with_context(module, collection_list=self._task.collections)
-                new_module_args = get_action_args_with_defaults(
-                    context.resolved_fqcn, new_module_args, self._task.module_defaults, self._templar,
-                    action_groups=self._task._parent._play._action_groups
-                )
+                new_module_args = _apply_action_arg_defaults(context.resolved_fqcn, self._task, new_module_args)
 
                 # collection prefix known internal modules to avoid collisions from collections search, while still allowing library/ overrides
                 if module in self.BUILTIN_SVC_MGR_MODULES:

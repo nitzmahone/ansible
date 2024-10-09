@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 
-DOCUMENTATION = '''
+DOCUMENTATION = """
 ---
 module: pip
 short_description: Manages Python library dependencies
@@ -145,9 +145,9 @@ requirements:
 - setuptools or packaging
 author:
 - Matt Wright (@mattupstate)
-'''
+"""
 
-EXAMPLES = '''
+EXAMPLES = """
 - name: Install bottle python package
   ansible.builtin.pip:
     name: bottle
@@ -262,9 +262,9 @@ EXAMPLES = '''
   vars:
     venv_dir: /tmp/pick-a-better-venv-path
     venv_python: "{{ venv_dir }}/bin/python"
-'''
+"""
 
-RETURN = '''
+RETURN = """
 cmd:
   description: pip command used by the module
   returned: success
@@ -290,7 +290,7 @@ virtualenv:
   returned: success, if a virtualenv path was provided
   type: str
   sample: "/tmp/virtualenv"
-'''
+"""
 
 import argparse
 import os
@@ -299,7 +299,6 @@ import sys
 import tempfile
 import operator
 import shlex
-import traceback
 
 from ansible.module_utils.compat.version import LooseVersion
 
@@ -309,10 +308,10 @@ HAS_SETUPTOOLS = False
 try:
     from packaging.requirements import Requirement as parse_requirement
     HAS_PACKAGING = True
-except Exception:
+except Exception as ex:
     # This is catching a generic Exception, due to packaging on EL7 raising a TypeError on import
     HAS_PACKAGING = False
-    PACKAGING_IMP_ERR = traceback.format_exc()
+    PACKAGING_IMP_ERR = ex
     try:
         from pkg_resources import Requirement
         parse_requirement = Requirement.parse  # type: ignore[misc,assignment]
@@ -417,7 +416,7 @@ def _get_cmd_options(module, cmd):
 
 
 def _get_packages(module, pip, chdir):
-    '''Return results of pip command to get packages.'''
+    """Return results of pip command to get packages."""
     # Try 'pip list' command first.
     command = pip + ['list', '--format=freeze']
     locale = get_best_parsable_locale(module)
@@ -435,7 +434,7 @@ def _get_packages(module, pip, chdir):
 
 
 def _is_present(module, req, installed_pkgs, pkg_command):
-    '''Return whether or not package is installed.'''
+    """Return whether or not package is installed."""
     for pkg in installed_pkgs:
         if '==' in pkg:
             pkg_name, pkg_version = pkg.split('==')

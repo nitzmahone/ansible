@@ -75,13 +75,13 @@ def daemonize_self():
 # NB: this function copied from module_utils/json_utils.py. Ensure any changes are propagated there.
 # FUTURE: AnsibleModule-ify this module so it's Ansiballz-compatible and can use the module_utils copy of this function.
 def _filter_non_json_lines(data):
-    '''
+    """
     Used to filter unrelated output around module JSON output, like messages from
     tcagetattr, or where dropbear spews MOTD on every single command (which is nuts).
 
     Filters leading lines before first line-starting occurrence of '{', and filter all
     trailing lines after matching close character (working from the bottom of output).
-    '''
+    """
     warnings = []
 
     # Filter initial junk
@@ -147,6 +147,8 @@ def jwrite(info):
 
 def _run_module(wrapped_cmd, jid):
 
+    # DTFIX-FUTURE: needs rework for serialization profiles
+
     jwrite({"started": 1, "finished": 0, "ansible_job_id": jid})
 
     result = {}
@@ -188,6 +190,9 @@ def _run_module(wrapped_cmd, jid):
             module_warnings = result.get('warnings', [])
             if not isinstance(module_warnings, list):
                 module_warnings = [module_warnings]
+
+            # this relies on the controller's fallback conversion of string warnings to WarningMessageDetail instances, and assumes
+            # that the module result and warning collection are basic JSON datatypes (eg, no tags or other custom collections).
             module_warnings.extend(json_warnings)
             result['warnings'] = module_warnings
 

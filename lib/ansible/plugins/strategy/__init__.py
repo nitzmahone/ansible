@@ -30,18 +30,15 @@ import typing as t
 from collections import deque
 from multiprocessing import Lock
 
-from jinja2.exceptions import UndefinedError
-
 from ansible import constants as C
 from ansible import context
-from ansible.errors import AnsibleError, AnsibleFileNotFound, AnsibleUndefinedVariable, AnsibleParserError
+from ansible.errors import AnsibleError, AnsibleFileNotFound, AnsibleParserError, AnsibleTemplateError
 from ansible.executor import action_write_locks
 from ansible.executor.play_iterator import IteratingStates, PlayIterator
 from ansible.executor.process.worker import WorkerProcess
 from ansible.executor.task_result import TaskResult
-from ansible.executor.task_queue_manager import CallbackSend, DisplaySend, PromptSend
+from ansible.executor.task_queue_manager import CallbackSend, DisplaySend, PromptSend, TaskQueueManager
 from ansible.module_utils.six import string_types
-from ansible.module_utils.common.sentinel import Sentinel
 from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.connection import Connection, ConnectionError
 from ansible.playbook.conditional import Conditional
@@ -50,10 +47,10 @@ from ansible.playbook.helpers import load_list_of_blocks
 from ansible.playbook.task import Task
 from ansible.playbook.task_include import TaskInclude
 from ansible.plugins import loader as plugin_loader
-from ansible.template import Templar
+from ansible.template.templar import Templar
 from ansible.utils.display import Display
 from ansible.utils.fqcn import add_internal_fqcns
-from ansible.utils.unsafe_proxy import wrap_var
+from ansible.utils.sentinel import Sentinel
 from ansible.utils.vars import combine_vars
 from ansible.vars.clean import strip_internal_keys, module_response_deepcopy
 
@@ -222,17 +219,17 @@ def debug_closure(func):
 
 class StrategyBase:
 
-    '''
+    """
     This is the base class for strategy plugins, which contains some common
     code useful to all strategies like running handlers, cleanup actions, etc.
-    '''
+    """
 
     # by default, strategies should support throttling but we allow individual
     # strategies to disable this and either forego supporting it or managing
     # the throttling internally (as `free` does)
     ALLOW_BASE_THROTTLING = True
 
-    def __init__(self, tqm):
+    def __init__(self, tqm: TaskQueueManager) -> None:
         self._tqm = tqm
         self._inventory = tqm.get_inventory()
         self._workers = tqm._workers
@@ -245,7 +242,7 @@ class StrategyBase:
         # the task cache is a dictionary of tuples of (host.name, task._uuid)
         # used to find the original task object of in-flight tasks and to store
         # the task args/vars and play context info used to queue the task.
-        self._queued_task_cache = {}
+        self._queued_task_cache: dict[tuple[str, str], dict[str, t.Any]] = {}
 
         # Backwards compat: self._display isn't really needed, just import the global display and use that.
         self._display = display
@@ -256,12 +253,10 @@ class StrategyBase:
 
         # this dictionary is used to keep track of hosts that have
         # outstanding tasks still in queue
-        self._blocked_hosts = dict()
+        self._blocked_hosts: dict[str, bool] = dict()
 
-        self._results = deque()
+        self._results: deque[TaskResult] = deque()
         self._results_lock = threading.Condition(threading.Lock())
-
-        self._worker_queues = dict()
 
         # create the result processing thread for reading results in the background
         self._results_thread = threading.Thread(target=results_thread_main, args=(self,))
@@ -270,13 +265,13 @@ class StrategyBase:
 
         # holds the list of active (persistent) connections to be shutdown at
         # play completion
-        self._active_connections = dict()
+        self._active_connections: dict[str, str] = dict()
 
         # Caches for get_host calls, to avoid calling excessively
         # These values should be set at the top of the ``run`` method of each
         # strategy plugin. Use ``_set_hosts_cache`` to set these values
-        self._hosts_cache = []
-        self._hosts_cache_all = []
+        self._hosts_cache: list[str] = []
+        self._hosts_cache_all: list[str] = []
 
         self.debugger_active = C.ENABLE_TASK_DEBUGGER
 
@@ -288,7 +283,7 @@ class StrategyBase:
         if not refresh and all((self._hosts_cache, self._hosts_cache_all)):
             return
 
-        if not play.finalized and Templar(None).is_template(play.hosts):
+        if not play.finalized and Templar().is_template(play.hosts):
             _pattern = 'all'
         else:
             _pattern = play.hosts or 'all'
@@ -340,15 +335,15 @@ class StrategyBase:
         return [host for host in self._hosts_cache if host in self._tqm._failed_hosts]
 
     def add_tqm_variables(self, vars, play):
-        '''
+        """
         Base class method to add extra variables/information to the list of task
         vars sent through the executor engine regarding the task queue manager state.
-        '''
+        """
         vars['ansible_current_hosts'] = self.get_hosts_remaining(play)
         vars['ansible_failed_hosts'] = self.get_failed_hosts(play)
 
     def _queue_task(self, host, task, task_vars, play_context):
-        ''' handles queueing the task up to be sent to a worker '''
+        """ handles queueing the task up to be sent to a worker """
 
         display.debug("entering _queue_task() for %s/%s" % (host.name, task.action))
 
@@ -372,8 +367,8 @@ class StrategyBase:
 
         try:
             throttle = int(templar.template(task.throttle))
-        except Exception as e:
-            raise AnsibleError("Failed to convert the throttle value to an integer.", obj=task._ds, orig_exc=e)
+        except Exception as ex:
+            raise AnsibleError("Failed to convert the throttle value to an integer.", obj=task.throttle) from ex
 
         # and then queue the new task
         try:
@@ -507,34 +502,38 @@ class StrategyBase:
         return task_result
 
     def search_handlers_by_notification(self, notification: str, iterator: PlayIterator) -> t.Generator[Handler, None, None]:
-        templar = Templar(None)
         handlers = [h for b in reversed(iterator._play.handlers) for h in b.block]
         # iterate in reversed order since last handler loaded with the same name wins
         for handler in handlers:
             if not handler.name:
                 continue
+
             if not handler.cached_name:
-                if templar.is_template(handler.name):
-                    templar.available_variables = self._variable_manager.get_vars(
+                def variables_factory() -> dict[str, t.Any]:
+                    return self._variable_manager.get_vars(
                         play=iterator._play,
                         task=handler,
                         _hosts=self._hosts_cache,
                         _hosts_all=self._hosts_cache_all
                     )
-                    try:
-                        handler.name = templar.template(handler.name)
-                    except (UndefinedError, AnsibleUndefinedVariable) as e:
-                        # We skip this handler due to the fact that it may be using
-                        # a variable in the name that was conditionally included via
-                        # set_fact or some other method, and we don't want to error
-                        # out unnecessarily
-                        if not handler.listen:
-                            display.warning(
-                                "Handler '%s' is unusable because it has no listen topics and "
-                                "the name could not be templated (host-specific variables are "
-                                "not supported in handler names). The error: %s" % (handler.name, to_text(e))
-                            )
-                        continue
+
+                templar = Templar(variables_factory=variables_factory)
+
+                try:
+                    handler.name = templar.template(handler.name)
+                except AnsibleTemplateError as e:
+                    # We skip this handler due to the fact that it may be using
+                    # a variable in the name that was conditionally included via
+                    # set_fact or some other method, and we don't want to error
+                    # out unnecessarily
+                    if not handler.listen:
+                        display.warning(
+                            "Handler '%s' is unusable because it has no listen topics and "
+                            "the name could not be templated (host-specific variables are "
+                            "not supported in handler names). The error: %s" % (handler.name, to_text(e))
+                        )
+                    continue
+
                 handler.cached_name = True
 
             # first we check with the full result of get_name(), which may
@@ -559,10 +558,10 @@ class StrategyBase:
 
     @debug_closure
     def _process_pending_results(self, iterator, one_pass=False, max_passes=None):
-        '''
+        """
         Reads results off the final queue and takes appropriate action
         based on the result (executing callbacks, updating state, etc.).
-        '''
+        """
         ret_results = []
         cur_pass = 0
         while True:
@@ -608,7 +607,7 @@ class StrategyBase:
                         self._variable_manager.set_nonpersistent_facts(
                             original_host.name,
                             dict(
-                                ansible_failed_task=wrap_var(original_task.serialize()),
+                                ansible_failed_task=original_task.serialize(),
                                 ansible_failed_result=task_result._result,
                             ),
                         )
@@ -691,7 +690,7 @@ class StrategyBase:
                             all_task_vars = combine_vars(found_task_vars, item_vars)
                         else:
                             all_task_vars = found_task_vars
-                        all_task_vars[original_task.register] = wrap_var(result_item)
+                        all_task_vars[original_task.register] = result_item
                         post_process_whens(result_item, original_task, Templar(self._loader), all_task_vars)
                         if original_task.loop or original_task.loop_with:
                             new_item_result = TaskResult(
@@ -797,10 +796,10 @@ class StrategyBase:
         return ret_results
 
     def _wait_on_pending_results(self, iterator):
-        '''
+        """
         Wait for the shared counter to drop to zero, using a short sleep
         between checks to ensure we don't spin lock
-        '''
+        """
 
         ret_results = []
 
@@ -820,9 +819,9 @@ class StrategyBase:
         return ret_results
 
     def _copy_included_file(self, included_file):
-        '''
+        """
         A proven safe and performant way to create a copy of an included file
-        '''
+        """
         ti_copy = included_file._task.copy(exclude_parent=True)
         ti_copy._parent = included_file._task._parent
 
@@ -833,13 +832,13 @@ class StrategyBase:
         return ti_copy
 
     def _load_included_file(self, included_file, iterator, is_handler=False, handle_stats_and_callbacks=True):
-        '''
+        """
         Loads an included YAML file of tasks, applying the optional set of variables.
 
         Raises AnsibleError exception in case of a failure during including a file,
         in such case the caller is responsible for marking the host(s) as failed
         using PlayIterator.mark_host_failed().
-        '''
+        """
         if handle_stats_and_callbacks:
             display.deprecated(
                 "Reporting play recap stats and running callbacks functionality for "
@@ -851,7 +850,7 @@ class StrategyBase:
             )
         display.debug("loading included file: %s" % included_file._filename)
         try:
-            data = self._loader.load_from_file(included_file._filename)
+            data = self._loader.load_from_file(included_file._filename, trusted_as_template=True)
             if data is None:
                 return []
             elif not isinstance(data, list):
@@ -920,6 +919,7 @@ class StrategyBase:
         display.warning("%s task does not support when conditional" % task_name)
 
     def _execute_meta(self, task, play_context, iterator, target_host):
+        task.resolved_action = 'ansible.builtin.meta'  # _post_validate_args is never called for meta actions, so resolved_action hasn't been set
 
         # meta tasks store their args in the _raw_params field of args,
         # since they do not use k=v pairs, so get that
@@ -1105,7 +1105,7 @@ class StrategyBase:
         return play._get_cached_role(task._role)
 
     def get_hosts_left(self, iterator):
-        ''' returns list of available hosts for this iterator by filtering out unreachables '''
+        """ returns list of available hosts for this iterator by filtering out unreachables """
 
         hosts_left = []
         for host in self._hosts_cache:
@@ -1117,7 +1117,7 @@ class StrategyBase:
         return hosts_left
 
     def update_active_connections(self, results):
-        ''' updates the current active persistent connections '''
+        """ updates the current active persistent connections """
         for r in results:
             if 'args' in r._task_fields:
                 socket_path = r._task_fields['args'].get('_ansible_socket')
@@ -1189,7 +1189,7 @@ class Debugger(cmd.Cmd):
 
     def do_update_task(self, args):
         """Recreate the task from ``task._ds``, and template with updated ``task_vars``"""
-        templar = Templar(None, variables=self.scope['task_vars'])
+        templar = Templar(variables=self.scope['task_vars'])
         task = self.scope['task']
         task = task.load_data(task._ds)
         task.post_validate(templar)

@@ -52,7 +52,6 @@ lib/ansible/module_utils/six/__init__.py pylint:trailing-comma-tuple
 lib/ansible/module_utils/six/__init__.py pylint:unidiomatic-typecheck
 lib/ansible/module_utils/six/__init__.py replace-urlopen
 lib/ansible/module_utils/urls.py replace-urlopen
-lib/ansible/parsing/yaml/objects.py pylint:arguments-renamed
 lib/ansible/playbook/collectionsearch.py required-and-default-attributes  # https://github.com/ansible/ansible/issues/61460
 lib/ansible/playbook/role/include.py pylint:arguments-renamed
 lib/ansible/plugins/action/normal.py action-plugin-docs # default action plugin for modules without a dedicated action plugin
@@ -60,6 +59,12 @@ lib/ansible/plugins/cache/base.py ansible-doc!skip  # not a plugin, but a stub f
 lib/ansible/plugins/callback/__init__.py pylint:arguments-renamed
 lib/ansible/plugins/inventory/advanced_host_list.py pylint:arguments-renamed
 lib/ansible/plugins/inventory/host_list.py pylint:arguments-renamed
+lib/ansible/utils/collection_loader/_collection_finder.py pylint:deprecated-class
+lib/ansible/utils/_wrapt.py mypy-3.11!skip # vendored code
+lib/ansible/utils/_wrapt.py mypy-3.12!skip # vendored code
+lib/ansible/utils/_wrapt.py mypy-3.13!skip # vendored code
+lib/ansible/utils/_wrapt.py pep8!skip # vendored code
+lib/ansible/utils/_wrapt.py pylint!skip # vendored code
 test/integration/targets/ansible-test-sanity/ansible_collections/ns/col/tests/integration/targets/hello/files/bad.py pylint:ansible-bad-function # ignore, required for testing
 test/integration/targets/ansible-test-sanity/ansible_collections/ns/col/tests/integration/targets/hello/files/bad.py pylint:ansible-bad-import-from # ignore, required for testing
 test/integration/targets/ansible-test-sanity/ansible_collections/ns/col/tests/integration/targets/hello/files/bad.py pylint:ansible-bad-import # ignore, required for testing
@@ -74,8 +79,6 @@ test/integration/targets/ansible-test-docker/ansible_collections/ns/col/tests/un
 test/integration/targets/ansible-test-no-tty/ansible_collections/ns/col/vendored_pty.py pep8!skip # vendored code
 test/integration/targets/collections_relative_imports/collection_root/ansible_collections/my_ns/my_col/plugins/modules/my_module.py pylint:relative-beyond-top-level
 test/integration/targets/collections_relative_imports/collection_root/ansible_collections/my_ns/my_col/plugins/module_utils/my_util2.py pylint:relative-beyond-top-level
-test/integration/targets/config/lookup_plugins/casting.py pylint:unidiomatic-typecheck
-test/integration/targets/config/lookup_plugins/casting_individual.py pylint:unidiomatic-typecheck
 test/integration/targets/fork_safe_stdio/vendored_pty.py pep8!skip # vendored code
 test/integration/targets/gathering_facts/library/bogus_facts shebang
 test/integration/targets/gathering_facts/library/dummy1 shebang
@@ -132,6 +135,8 @@ test/support/windows-integration/plugins/modules/win_user_right.ps1 pslint!skip
 test/support/windows-integration/plugins/modules/win_user.ps1 pslint!skip
 test/support/windows-integration/plugins/modules/win_wait_for.ps1 pslint!skip
 test/support/windows-integration/plugins/modules/win_whoami.ps1 pslint!skip
+test/units/module_utils/basic/test_deprecate_warn.py pylint:ansible-deprecated-no-version
+test/units/module_utils/basic/test_deprecate_warn.py pylint:ansible-deprecated-version
 test/units/module_utils/urls/fixtures/multipart.txt line-endings  # Fixture for HTTP tests that use CRLF
 test/units/utils/collection_loader/fixtures/collections/ansible_collections/testns/testcoll/plugins/action/my_action.py pylint:relative-beyond-top-level
 test/units/utils/collection_loader/fixtures/collections/ansible_collections/testns/testcoll/plugins/modules/__init__.py empty-init  # testing that collections don't need inits
@@ -148,8 +153,6 @@ README.md pymarkdown:line-length
 test/units/cli/test_data/role_skeleton/README.md pymarkdown:line-length
 test/integration/targets/find/files/hello_world.gbk no-smart-quotes
 test/integration/targets/find/files/hello_world.gbk no-unwanted-characters
-lib/ansible/plugins/action/__init__.py pylint:ansible-deprecated-version  # 2.18 deprecation
-lib/ansible/template/__init__.py pylint:ansible-deprecated-version  # 2.18 deprecation
 lib/ansible/module_utils/facts/hardware/aix.py pylint:used-before-assignment
 lib/ansible/modules/rpm_key.py pylint:used-before-assignment
 lib/ansible/modules/service.py pylint:used-before-assignment
@@ -233,3 +236,5 @@ test/units/module_utils/facts/test_facts.py mypy-3.8:assignment
 test/units/modules/mount_facts_data.py mypy-3.8:arg-type
 test/units/modules/test_apt.py mypy-3.8:name-match
 test/units/modules/test_mount_facts.py mypy-3.8:index
+test/integration/targets/interpreter_discovery_python/library/test_non_python_interpreter.py shebang  # test needs non-standard shebang
+test/integration/targets/inventory_script/bad_shebang shebang  # test needs an invalid shebang

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 
-DOCUMENTATION = r'''
+DOCUMENTATION = r"""
 ---
 module: copy
 version_added: historical
@@ -154,9 +154,9 @@ attributes:
   vault:
     support: full
     version_added: '2.2'
-'''
+"""
 
-EXAMPLES = r'''
+EXAMPLES = r"""
 - name: Copy file with owner and permissions
   ansible.builtin.copy:
     src: /srv/myfiles/foo.conf
@@ -219,9 +219,9 @@ EXAMPLES = r'''
     src: /etc/foo.conf
     dest: /path/to/link  # link to /path/to/file
     follow: no
-'''
+"""
 
-RETURN = r'''
+RETURN = r"""
 dest:
     description: Destination file/path.
     returned: success
@@ -282,7 +282,7 @@ state:
     returned: success
     type: str
     sample: file
-'''
+"""
 
 import errno
 import filecmp
@@ -293,7 +293,6 @@ import pwd
 import shutil
 import stat
 import tempfile
-import traceback
 
 from ansible.module_utils.common.text.converters import to_bytes, to_native
 from ansible.module_utils.basic import AnsibleModule
@@ -305,9 +304,9 @@ class AnsibleModuleError(Exception):
 
 
 def split_pre_existing_dir(dirname):
-    '''
+    """
     Return the first pre-existing directory and a list of the new directories that will be created.
-    '''
+    """
     head, tail = os.path.split(dirname)
     b_head = to_bytes(head, errors='surrogate_or_strict')
     if head == '':
@@ -323,9 +322,9 @@ def split_pre_existing_dir(dirname):
 
 
 def adjust_recursive_directory_permissions(pre_existing_dir, new_directory_list, module, directory_args, changed):
-    '''
+    """
     Walk the new directories list and make sure that permissions are as we would expect
-    '''
+    """
 
     if new_directory_list:
         working_dir = os.path.join(pre_existing_dir, new_directory_list.pop(0))
@@ -682,7 +681,7 @@ def main():
                 module.atomic_move(b_mysrc, dest, unsafe_writes=module.params['unsafe_writes'], keep_dest_attrs=not remote_src)
 
             except (IOError, OSError):
-                module.fail_json(msg="failed to copy: %s to %s" % (src, dest), traceback=traceback.format_exc())
+                module.fail_json(msg=f"Failed to copy {src!r} to {dest!r}.")
         changed = True
 
     # If neither have checksums, both src and dest are directories.

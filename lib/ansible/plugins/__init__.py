@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-from abc import ABC
+import abc
 
 import types
 import typing as t
@@ -48,7 +48,7 @@ def get_plugin_class(obj):
         return obj.__class__.__name__.lower().replace('module', '')
 
 
-class AnsiblePlugin(ABC):
+class AnsiblePlugin(metaclass=abc.ABCMeta):
 
     # Set by plugin loader
     _load_name: str
@@ -102,13 +102,13 @@ class AnsiblePlugin(ABC):
         C.handle_config_noise(display)
 
     def set_options(self, task_keys=None, var_options=None, direct=None):
-        '''
+        """
         Sets the _options attribute with the configuration/keyword information for this plugin
 
         :arg task_keys: Dict with playbook keywords that affect this option
         :arg var_options: Dict with either 'connection variables'
         :arg direct: Dict with 'direct assignment'
-        '''
+        """
         self._options = C.config.get_plugin_options(self.plugin_type, self._load_name, keys=task_keys, variables=var_options, direct=direct)
 
         # allow extras/wildcards from vars that are not directly consumed in configuration
@@ -137,23 +137,48 @@ class AnsiblePlugin(ABC):
         # FIXME: standardize required check based on config
         pass
 
+    def __repr__(self):
+        load_name = getattr(self, '_load_name', '(unknown)')
+        return f'{type(self).__name__}(plugin_type={self.plugin_type!r}, {load_name=!r})'
 
-class AnsibleJinja2Plugin(AnsiblePlugin):
 
-    def __init__(self, function):
-
+class AnsibleJinja2Plugin(AnsiblePlugin, metaclass=abc.ABCMeta):
+    def __init__(self, function: t.Callable) -> None:
         super(AnsibleJinja2Plugin, self).__init__()
         self._function = function
 
-    @property
-    def plugin_type(self):
-        return self.__class__.__name__.lower().replace('ansiblejinja2', '')
+        # DTFIX-MERGE: should this come from sidecar config or another more user/doc-friendly mechanism?
+        # Declare support for markers. Plugins with `False` here will never be invoked with markers for top-level arguments.
+        self.accept_deferred_marker = getattr(self._function, 'accept_deferred_marker', False)
 
-    def _no_options(self, *args, **kwargs):
+    @property
+    @abc.abstractmethod
+    def plugin_type(self) -> str:
+        ...
+
+    def _no_options(self, *args, **kwargs) -> t.NoReturn:
         raise NotImplementedError()
 
     has_option = get_option = get_options = option_definitions = set_option = set_options = _no_options
 
     @property
-    def j2_function(self):
+    def j2_function(self) -> t.Callable:
         return self._function
+
+
+_TCallable = t.TypeVar('_TCallable', bound=t.Callable)
+
+
+def accept_deferred_marker(plugin: _TCallable) -> _TCallable:
+    """
+    A decorator to mark a Jinja plugin as capable of handling `DeferredMarker` values.
+
+    When the decorator is not applied to a plugin:
+      * The plugin invocation is skipped if any top-level argument to it is a `DeferredMarker`, with the first such value substituted for its return value.
+      * Lazy containers will raise `DeferredMarkerError` when a plugin attempts to retrieve a `DeferredMarker`.
+
+    This ensures that a plugin will never see a `DeferredMarker` instance unless it has declared support for the feature.
+    """
+    plugin.accept_deferred_marker = True
+
+    return plugin

@@ -9,14 +9,15 @@ import itertools
 import operator
 import os
 
+import typing as t
+
 from copy import copy as shallowcopy
 from functools import cache
 
-from jinja2.exceptions import UndefinedError
-
 from ansible import constants as C
 from ansible import context
-from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError
+from ansible.errors import AnsibleError, AnsibleParserError, AnsibleAssertionError, AnsibleValueOmittedError, AnsibleFieldAttributeError
+from ansible.utils.datatag.tags import AnsibleSourcePosition
 from ansible.module_utils.six import string_types
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.common.sentinel import Sentinel
@@ -26,7 +27,8 @@ from ansible.playbook.attribute import Attribute, FieldAttribute, ConnectionFiel
 from ansible.plugins.loader import module_loader, action_loader
 from ansible.utils.collection_loader._collection_finder import _get_collection_metadata, AnsibleCollectionRef
 from ansible.utils.display import Display
-from ansible.utils.vars import combine_vars, isidentifier, get_unique_id
+from ansible.utils.vars import combine_vars, get_unique_id, validate_variable_name
+from ansible.template.templar import Templar
 
 display = Display()
 
@@ -111,15 +113,12 @@ class FieldAttributeBase:
         # every object gets a random uuid:
         self._uuid = get_unique_id()
 
-        # init vars, avoid using defaults in field declaration as it lives across plays
-        self.vars = dict()
-
     @property
     def finalized(self):
         return self._finalized
 
     def dump_me(self, depth=0):
-        ''' this is never called from production code, it is here to be used when debugging as a 'complex print' '''
+        """ this is never called from production code, it is here to be used when debugging as a 'complex print' """
         if depth == 0:
             display.debug("DUMPING OBJECT ------------------------------------------------------")
         display.debug("%s- %s (%s, id=%s)" % (" " * depth, self.__class__.__name__, self, id(self)))
@@ -133,11 +132,11 @@ class FieldAttributeBase:
             self._play.dump_me(depth + 2)
 
     def preprocess_data(self, ds):
-        ''' infrequently used method to do some pre-processing of legacy terms '''
+        """ infrequently used method to do some pre-processing of legacy terms """
         return ds
 
     def load_data(self, ds, variable_manager=None, loader=None):
-        ''' walk the input datastructure and assign any values '''
+        """ walk the input datastructure and assign any values """
 
         if ds is None:
             raise AnsibleAssertionError('ds (%s) should not be None but it is.' % ds)
@@ -191,25 +190,29 @@ class FieldAttributeBase:
         return self._variable_manager
 
     def _post_validate_debugger(self, attr, value, templar):
-        value = templar.template(value)
+        try:
+            value = templar.template(value)
+        except AnsibleValueOmittedError:
+            value = self.set_to_context(attr.name)
+
         valid_values = frozenset(('always', 'on_failed', 'on_unreachable', 'on_skipped', 'never'))
         if value and isinstance(value, string_types) and value not in valid_values:
             raise AnsibleParserError("'%s' is not a valid value for debugger. Must be one of %s" % (value, ', '.join(valid_values)), obj=self.get_ds())
         return value
 
     def _validate_attributes(self, ds):
-        '''
+        """
         Ensures that there are no keys in the datastructure which do
         not map to attributes for this object.
-        '''
+        """
 
         valid_attrs = frozenset(self.fattributes)
         for key in ds:
             if key not in valid_attrs:
-                raise AnsibleParserError("'%s' is not a valid attribute for a %s" % (key, self.__class__.__name__), obj=ds)
+                raise AnsibleParserError("'%s' is not a valid attribute for a %s" % (key, self.__class__.__name__), obj=key)
 
     def validate(self, all_vars=None):
-        ''' validation that is done at parse time, not load time '''
+        """ validation that is done at parse time, not load time """
         all_vars = {} if all_vars is None else all_vars
 
         if not self._validated:
@@ -244,7 +247,8 @@ class FieldAttributeBase:
                 raise AnsibleParserError(
                     "The field 'module_defaults' is supposed to be a dictionary or list of dictionaries, "
                     "the keys of which must be static action, module, or group names. Only the values may contain "
-                    "templates. For example: {'ping': \"{{ ping_defaults }}\"}"
+                    "templates. For example: {'ping': \"{{ ping_defaults }}\"}",
+                    obj=defaults_dict,
                 )
 
             validated_defaults_dict = {}
@@ -402,25 +406,25 @@ class FieldAttributeBase:
         display.vvvvv("Could not resolve action %s in module_defaults" % action_name)
 
     def squash(self):
-        '''
+        """
         Evaluates all attributes and sets them to the evaluated version,
         so that all future accesses of attributes do not need to evaluate
         parent attributes.
-        '''
+        """
         if not self._squashed:
             for name in self.fattributes:
                 setattr(self, name, getattr(self, name))
             self._squashed = True
 
     def copy(self):
-        '''
+        """
         Create a copy of this object and return it.
-        '''
+        """
 
         try:
             new_me = self.__class__()
-        except RuntimeError as e:
-            raise AnsibleError("Exceeded maximum object depth. This may have been caused by excessive role recursion", orig_exc=e)
+        except RecursionError as ex:
+            raise AnsibleError("Exceeded maximum object depth. This may have been caused by excessive role recursion.") from ex
 
         for name in self.fattributes:
             setattr(new_me, name, shallowcopy(getattr(self, f'_{name}', Sentinel)))
@@ -438,6 +442,12 @@ class FieldAttributeBase:
         return new_me
 
     def get_validated_value(self, name, attribute, value, templar):
+        try:
+            return self._get_validated_value(name, attribute, value, templar)
+        except (TypeError, ValueError):
+            raise AnsibleError(f"The value {value!r} could not be converted to {attribute.isa!r}.", obj=value)
+
+    def _get_validated_value(self, name, attribute, value, templar):
         if attribute.isa == 'string':
             value = to_text(value)
         elif attribute.isa == 'int':
@@ -471,23 +481,11 @@ class FieldAttributeBase:
                     elif attribute.required and attribute.listof == string_types:
                         if item is None or item.strip() == "":
                             raise AnsibleParserError("the field '%s' is required, and cannot have empty values" % (name,), obj=self.get_ds())
-        elif attribute.isa == 'set':
-            if value is None:
-                value = set()
-            elif not isinstance(value, (list, set)):
-                if isinstance(value, string_types):
-                    value = value.split(',')
-                else:
-                    # Making a list like this handles strings of
-                    # text and bytes properly
-                    value = [value]
-            if not isinstance(value, set):
-                value = set(value)
         elif attribute.isa == 'dict':
             if value is None:
                 value = dict()
             elif not isinstance(value, dict):
-                raise TypeError("%s is not a dictionary" % value)
+                raise AnsibleError(f"{value!r} is not a dictionary")
         elif attribute.isa == 'class':
             if not isinstance(value, attribute.class_type):
                 raise TypeError("%s is not a valid %s (got a %s instead)" % (name, attribute.class_type, type(value)))
@@ -496,119 +494,127 @@ class FieldAttributeBase:
             raise AnsibleAssertionError(f"Unknown value for attribute.isa: {attribute.isa}")
         return value
 
-    def set_to_context(self, name):
-        ''' set to parent inherited value or Sentinel as appropriate'''
+    def set_to_context(self, name: str) -> t.Any:
+        """ set to parent inherited value or Sentinel as appropriate"""
 
         attribute = self.fattributes[name]
         if isinstance(attribute, NonInheritableFieldAttribute):
             # setting to sentinel will trigger 'default/default()' on getter
-            setattr(self, name, Sentinel)
+            value = Sentinel
         else:
             try:
-                setattr(self, name, self._get_parent_attribute(name, omit=True))
+                value = self._get_parent_attribute(name, omit=True)
             except AttributeError:
                 # mostly playcontext as only tasks/handlers/blocks really resolve parent
-                setattr(self, name, Sentinel)
+                value = Sentinel
+
+        setattr(self, name, value)
+        return value
 
     def post_validate(self, templar):
-        '''
+        """
         we can't tell that everything is of the right type until we have
         all the variables.  Run basic types (from isa) as well as
         any _post_validate_<foo> functions.
-        '''
-
-        # save the omit value for later checking
-        omit_value = templar.available_variables.get('omit')
+        """
 
         for (name, attribute) in self.fattributes.items():
-            if attribute.static:
-                value = getattr(self, name)
+            value = self.post_validate_attribute(templar, name, attribute)
 
-                # we don't template 'vars' but allow template as values for later use
-                if name not in ('vars',) and templar.is_template(value):
-                    display.warning('"%s" is not templatable, but we found: %s, '
-                                    'it will not be templated and will be used "as is".' % (name, value))
-                continue
-
-            if getattr(self, name) is None:
-                if not attribute.required:
-                    continue
-                else:
-                    raise AnsibleParserError("the field '%s' is required but was not set" % name)
-            elif not attribute.always_post_validate and self.__class__.__name__ not in ('Task', 'Handler', 'PlayContext'):
-                # Intermediate objects like Play() won't have their fields validated by
-                # default, as their values are often inherited by other objects and validated
-                # later, so we don't want them to fail out early
-                continue
-
-            try:
-                # Run the post-validator if present. These methods are responsible for
-                # using the given templar to template the values, if required.
-                method = getattr(self, '_post_validate_%s' % name, None)
-                if method:
-                    value = method(attribute, getattr(self, name), templar)
-                elif attribute.isa == 'class':
-                    value = getattr(self, name)
-                else:
-                    # if the attribute contains a variable, template it now
-                    value = templar.template(getattr(self, name))
-
-                # If this evaluated to the omit value, set the value back to inherited by context
-                # or default specified in the FieldAttribute and move on
-                if omit_value is not None and value == omit_value:
-                    self.set_to_context(name)
-                    continue
-
-                # and make sure the attribute is of the type it should be
-                if value is not None:
-                    value = self.get_validated_value(name, attribute, value, templar)
-
+            if value is not Sentinel:
                 # and assign the massaged value back to the attribute field
                 setattr(self, name, value)
-            except (TypeError, ValueError) as e:
-                value = getattr(self, name)
-                raise AnsibleParserError(f"the field '{name}' has an invalid value ({value!r}), and could not be converted to {attribute.isa}.",
-                                         obj=self.get_ds(), orig_exc=e)
-            except (AnsibleUndefinedVariable, UndefinedError) as e:
-                if templar._fail_on_undefined_errors and name != 'name':
-                    if name == 'args':
-                        msg = "The task includes an option with an undefined variable."
-                    else:
-                        msg = f"The field '{name}' has an invalid value, which includes an undefined variable."
-                    raise AnsibleParserError(msg, obj=self.get_ds(), orig_exc=e)
 
         self._finalized = True
 
-    def _load_vars(self, attr, ds):
-        '''
-        Vars in a play must be specified as a dictionary.
-        '''
+    def post_validate_attribute(self, templar: Templar, name: str, attribute: FieldAttribute):
+        # DTFIX-FUTURE: this can probably be used in many getattr cases below, but the value may be out-of-date in some cases
+        original_value = getattr(self, name)  # we save this original (likely Origin-tagged) value to pass as `obj` for errors
 
-        def _validate_variable_keys(ds):
-            for key in ds:
-                if not isidentifier(key):
-                    raise TypeError("'%s' is not a valid variable name" % key)
+        if attribute.static:
+            value = getattr(self, name)
+
+            # we don't template 'vars' but allow template as values for later use
+            if name not in ('vars',) and templar.is_template(value):
+                display.warning('"%s" is not templatable, but we found: %s, '
+                                'it will not be templated and will be used "as is".' % (name, value))
+            return Sentinel
+
+        if getattr(self, name) is None:
+            if not attribute.required:
+                return Sentinel
+
+            raise AnsibleFieldAttributeError(f'The field {name!r} is required but was not set.', obj=self.get_ds())
+
+        # FIXME: compare types, not strings
+        if not attribute.always_post_validate and self.__class__.__name__ not in ('Task', 'Handler', 'PlayContext', 'IncludeRole', 'TaskInclude'):
+            # Intermediate objects like Play() won't have their fields validated by
+            # default, as their values are often inherited by other objects and validated
+            # later, so we don't want them to fail out early
+            return Sentinel
+
+        try:
+            # Run the post-validator if present. These methods are responsible for
+            # using the given templar to template the values, if required.
+            method = getattr(self, '_post_validate_%s' % name, None)
+
+            if method:
+                value = method(attribute, getattr(self, name), templar)
+            elif attribute.isa == 'class':
+                value = getattr(self, name)
+            else:
+                try:
+                    # if the attribute contains a variable, template it now
+                    value = templar.template(getattr(self, name))
+                except AnsibleValueOmittedError:
+                    # If this evaluated to the omit value, set the value back to inherited by context
+                    # or default specified in the FieldAttribute and move on
+                    value = self.set_to_context(name)
+
+                    if value is Sentinel:
+                        return value
+
+            # and make sure the attribute is of the type it should be
+            if value is not None:
+                value = self.get_validated_value(name, attribute, value, templar)
+
+            # returning the value results in assigning the massaged value back to the attribute field
+            return value
+        except Exception as ex:
+            if name == 'args':
+                raise  # no useful information to contribute, raise the original exception
+
+            raise AnsibleFieldAttributeError(f'Error processing keyword {name!r}.', obj=original_value) from ex
+
+    def _post_validate_name(self, _attr, value, _templar) -> str:
+        """Skip templating of name, it will be done later."""
+        return value
+
+    def _load_vars(self, attr, ds):
+        """
+        Vars in a play must be specified as a dictionary.
+        """
 
         try:
             if isinstance(ds, dict):
-                _validate_variable_keys(ds)
+                for key in ds:
+                    validate_variable_name(key)
                 return combine_vars(self.vars, ds)
             elif ds is None:
                 return {}
             else:
                 raise ValueError
-        except ValueError as e:
-            raise AnsibleParserError("Vars in a %s must be specified as a dictionary" % self.__class__.__name__,
-                                     obj=ds, orig_exc=e)
-        except TypeError as e:
-            raise AnsibleParserError("Invalid variable name in vars specified for %s: %s" % (self.__class__.__name__, e), obj=ds, orig_exc=e)
+        except ValueError as ex:
+            raise AnsibleParserError(f"Vars in a {self.__class__.__name__} must be specified as a dictionary.", obj=ds) from ex
+        except TypeError as ex:
+            raise AnsibleParserError(f"Invalid variable name in vars specified for {self.__class__.__name__}.", obj=ds) from ex
 
     def _extend_value(self, value, new_value, prepend=False):
-        '''
+        """
         Will extend the value given with new_value (and will turn both
         into lists if they are not so already). The values are run through
         a set to remove duplicate values.
-        '''
+        """
 
         if not isinstance(value, list):
             value = [value]
@@ -629,9 +635,9 @@ class FieldAttributeBase:
         return [i for i, dummy in itertools.groupby(combined) if i is not None]
 
     def dump_attrs(self):
-        '''
+        """
         Dumps all attributes to a dictionary
-        '''
+        """
         attrs = {}
         for (name, attribute) in self.fattributes.items():
             attr = getattr(self, name)
@@ -642,9 +648,9 @@ class FieldAttributeBase:
         return attrs
 
     def from_attrs(self, attrs):
-        '''
+        """
         Loads attributes from a dictionary
-        '''
+        """
         for (attr, value) in attrs.items():
             if attr in self.fattributes:
                 attribute = self.fattributes[attr]
@@ -654,6 +660,8 @@ class FieldAttributeBase:
                     setattr(self, attr, obj)
                 else:
                     setattr(self, attr, value)
+            else:
+                setattr(self, attr, value)  # overridden dump_attrs in derived types may dump attributes which are not field attributes
 
         # from_attrs is only used to create a finalized task
         # from attrs from the Worker/TaskExecutor
@@ -663,13 +671,13 @@ class FieldAttributeBase:
         self._squashed = True
 
     def serialize(self):
-        '''
+        """
         Serializes the object derived from the base object into
         a dictionary of values. This only serializes the field
         attributes for the object, so this may need to be overridden
         for any classes which wish to add additional items not stored
         as field attributes.
-        '''
+        """
 
         repr = self.dump_attrs()
 
@@ -681,12 +689,12 @@ class FieldAttributeBase:
         return repr
 
     def deserialize(self, data):
-        '''
+        """
         Given a dictionary of values, load up the field attributes for
         this object. As with serialize(), if there are any non-field
         attribute data members, this method will need to be overridden
         and extended.
-        '''
+        """
 
         if not isinstance(data, dict):
             raise AnsibleAssertionError('data (%s) should be a dict but is a %s' % (data, type(data)))
@@ -713,7 +721,7 @@ class Base(FieldAttributeBase):
     remote_user = FieldAttribute(isa='string', default=context.cliargs_deferred_get('remote_user'))
 
     # variables
-    vars = NonInheritableFieldAttribute(isa='dict', priority=100, static=True)
+    vars = NonInheritableFieldAttribute(isa='dict', priority=100, static=True, default=dict)
 
     # module default params
     module_defaults = FieldAttribute(isa='list', extend=True, prepend=True)
@@ -743,17 +751,45 @@ class Base(FieldAttributeBase):
     # used to hold sudo/su stuff
     DEPRECATED_ATTRIBUTES = []  # type: list[str]
 
-    def get_path(self):
-        ''' return the absolute path of the playbook object and its line number '''
+    def update_result_no_log(self, templar: Templar, result: dict[str, t.Any]) -> None:
+        """Set the post-validated no_log value for the result, falling back to a default on validation/templating failure with a warning."""
 
-        path = ""
+        if self.finalized:
+            no_log = self.no_log
+        else:
+            try:
+                no_log = self.post_validate_attribute(templar, 'no_log', self.fattributes['no_log'])
+            except Exception as ex:
+                display.error_as_warning('Invalid no_log value for task, output will be masked.', exception=ex)
+                no_log = True
+
+        result_no_log = result.get('_ansible_no_log', False)
+
+        if not isinstance(result_no_log, bool):
+            display.warning(f'Invalid _ansible_no_log value of type {type(result_no_log).__name__!r} in task result, output will be masked.')
+            no_log = True
+
+        no_log = no_log or result_no_log
+
+        result.update(_ansible_no_log=no_log)
+
+    def get_path(self) -> str:
+        """ return the absolute path of the playbook object and its line number """
+        # DTFIX-MERGE: this is an abuse of source position; we can kill this off in core (and deprecate) in favor of sampling this info on ds load or ?
+        tag: AnsibleSourcePosition | None = None
         try:
-            path = "%s:%s" % (self._ds._data_source, self._ds._line_number)
+            tag = AnsibleSourcePosition.get_tag(self._ds)
         except AttributeError:
             try:
-                path = "%s:%s" % (self._parent._play._ds._data_source, self._parent._play._ds._line_number)
+                tag = AnsibleSourcePosition.get_tag(self._parent._play._ds)
             except AttributeError:
                 pass
+
+        if tag:
+            path = "%s:%s" % (tag.src, tag.line)
+        else:
+            path = ""
+
         return path
 
     def get_dep_chain(self):
@@ -764,10 +800,10 @@ class Base(FieldAttributeBase):
             return None
 
     def get_search_path(self):
-        '''
+        """
         Return the list of paths you should search for files, in order.
         This follows role/playbook dependency chain.
-        '''
+        """
         path_stack = []
 
         dep_chain = self.get_dep_chain()

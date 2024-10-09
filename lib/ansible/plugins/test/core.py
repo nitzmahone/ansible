@@ -17,16 +17,21 @@
 
 from __future__ import annotations
 
+import functools
 import re
 import operator as py_operator
 
 from collections.abc import MutableMapping, MutableSequence
 
+from jinja2.tests import test_defined, test_undefined
+
 from ansible.module_utils.compat.version import LooseVersion, StrictVersion
 
 from ansible import errors
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
+from ansible.utils.datatag.tags import VaultedValue
 from ansible.module_utils.parsing.convert_bool import boolean
+from ansible.plugins import accept_deferred_marker
 from ansible.parsing.vault import is_encrypted_file
 from ansible.utils.display import Display
 from ansible.utils.version import SemanticVersion
@@ -48,31 +53,31 @@ def timedout(result):
 
 
 def failed(result):
-    ''' Test if task result yields failed '''
+    """ Test if task result yields failed """
     if not isinstance(result, MutableMapping):
         raise errors.AnsibleFilterError("The 'failed' test expects a dictionary")
     return result.get('failed', False)
 
 
 def success(result):
-    ''' Test if task result yields success '''
+    """ Test if task result yields success """
     return not failed(result)
 
 
 def unreachable(result):
-    ''' Test if task result yields unreachable '''
+    """ Test if task result yields unreachable """
     if not isinstance(result, MutableMapping):
         raise errors.AnsibleFilterError("The 'unreachable' test expects a dictionary")
     return result.get('unreachable', False)
 
 
 def reachable(result):
-    ''' Test if task result yields reachable '''
+    """ Test if task result yields reachable """
     return not unreachable(result)
 
 
 def changed(result):
-    ''' Test if task result yields changed '''
+    """ Test if task result yields changed """
     if not isinstance(result, MutableMapping):
         raise errors.AnsibleFilterError("The 'changed' test expects a dictionary")
     if 'changed' not in result:
@@ -92,14 +97,14 @@ def changed(result):
 
 
 def skipped(result):
-    ''' Test if task result yields skipped '''
+    """ Test if task result yields skipped """
     if not isinstance(result, MutableMapping):
         raise errors.AnsibleFilterError("The 'skipped' test expects a dictionary")
     return result.get('skipped', False)
 
 
 def started(result):
-    ''' Test if async task has started '''
+    """ Test if async task has started """
     if not isinstance(result, MutableMapping):
         raise errors.AnsibleFilterError("The 'started' test expects a dictionary")
     if 'started' in result:
@@ -113,7 +118,7 @@ def started(result):
 
 
 def finished(result):
-    ''' Test if async task has finished '''
+    """ Test if async task has finished """
     if not isinstance(result, MutableMapping):
         raise errors.AnsibleFilterError("The 'finished' test expects a dictionary")
     if 'finished' in result:
@@ -127,12 +132,10 @@ def finished(result):
 
 
 def regex(value='', pattern='', ignorecase=False, multiline=False, match_type='search'):
-    ''' Expose `re` as a boolean filter using the `search` method by default.
+    """ Expose `re` as a boolean filter using the `search` method by default.
         This is likely only useful for `search` and `match` which already
         have their own filters.
-    '''
-    # In addition to ensuring the correct type, to_text here will ensure
-    # _fail_with_undefined_error happens if the value is Undefined
+    """
     value = to_text(value, errors='surrogate_or_strict')
     flags = 0
     if ignorecase:
@@ -148,7 +151,7 @@ def vault_encrypted(value):
 
     .. versionadded:: 2.10
     """
-    return getattr(value, '__ENCRYPTED__', False) and value.is_encrypted()
+    return VaultedValue.is_tagged_on(value)
 
 
 def vaulted_file(value):
@@ -164,17 +167,17 @@ def vaulted_file(value):
 
 
 def match(value, pattern='', ignorecase=False, multiline=False):
-    ''' Perform a `re.match` returning a boolean '''
+    """ Perform a `re.match` returning a boolean """
     return regex(value, pattern, ignorecase, multiline, 'match')
 
 
 def search(value, pattern='', ignorecase=False, multiline=False):
-    ''' Perform a `re.search` returning a boolean '''
+    """ Perform a `re.search` returning a boolean """
     return regex(value, pattern, ignorecase, multiline, 'search')
 
 
 def version_compare(value, version, operator='eq', strict=None, version_type=None):
-    ''' Perform a version comparison on a value '''
+    """ Perform a version comparison on a value """
     op_map = {
         '==': 'eq', '=': 'eq', 'eq': 'eq',
         '<': 'lt', 'lt': 'lt',
@@ -257,8 +260,22 @@ def falsy(value, convert_bool=False):
     return not truthy(value, convert_bool=convert_bool)
 
 
+@accept_deferred_marker
+@functools.wraps(test_defined)
+def wrapped_test_defined(*args, **kwargs):
+    """Wrapper around Jinja's `defined` test to avoid mutating the externally-owned function with our marker attribute."""
+    return test_defined(*args, **kwargs)
+
+
+@accept_deferred_marker
+@functools.wraps(test_undefined)
+def wrapped_test_undefined(*args, **kwargs):
+    """Wrapper around Jinja's `undefined` test to avoid mutating the externally-owned function with our marker attribute."""
+    return test_undefined(*args, **kwargs)
+
+
 class TestModule(object):
-    ''' Ansible core jinja2 tests '''
+    """ Ansible core jinja2 tests """
 
     def tests(self):
         return {
@@ -304,4 +321,8 @@ class TestModule(object):
             # vault
             'vault_encrypted': vault_encrypted,
             'vaulted_file': vaulted_file,
+
+            # overrides that require special arg handling
+            'defined': wrapped_test_defined,
+            'undefined': wrapped_test_undefined,
         }

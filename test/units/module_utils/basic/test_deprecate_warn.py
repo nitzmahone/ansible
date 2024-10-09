@@ -9,7 +9,10 @@ import json
 
 import pytest
 
-from ansible.module_utils.common import warnings
+from ansible.module_utils.common.json import AnsibleJSONDecoder
+from ansible.module_utils.common.messages import DeprecationMessageDetail, WarningMessageDetail
+
+pytestmark = pytest.mark.usefixtures("module_env_mocker")
 
 
 @pytest.mark.parametrize('stdin', [{}], indirect=['stdin'])
@@ -20,13 +23,11 @@ def test_warn(am, capfd):
     with pytest.raises(SystemExit):
         am.exit_json(warnings=['warning2'])
     out, err = capfd.readouterr()
-    assert json.loads(out)['warnings'] == ['warning1', 'warning2']
+    assert json.loads(out, cls=AnsibleJSONDecoder)['warnings'] == [WarningMessageDetail(msg=msg) for msg in ['warning1', 'warning2']]
 
 
 @pytest.mark.parametrize('stdin', [{}], indirect=['stdin'])
-def test_deprecate(am, capfd, monkeypatch):
-    monkeypatch.setattr(warnings, '_global_deprecations', [])
-
+def test_deprecate(am, capfd):
     am.deprecate('deprecation1')  # pylint: disable=ansible-deprecated-no-version
     am.deprecate('deprecation2', '2.3')  # pylint: disable=ansible-deprecated-version
     am.deprecate('deprecation3', version='2.4')  # pylint: disable=ansible-deprecated-version
@@ -40,9 +41,9 @@ def test_deprecate(am, capfd, monkeypatch):
         am.exit_json(deprecations=['deprecation9', ('deprecation10', '2.4')])
 
     out, err = capfd.readouterr()
-    output = json.loads(out)
+    output = json.loads(out, cls=AnsibleJSONDecoder)
     assert ('warnings' not in output or output['warnings'] == [])
-    assert output['deprecations'] == [
+    assert output['deprecations'] == [DeprecationMessageDetail(**item) for item in [
         {u'msg': u'deprecation1', u'version': None, u'collection_name': None},
         {u'msg': u'deprecation2', u'version': '2.3', u'collection_name': None},
         {u'msg': u'deprecation3', u'version': '2.4', u'collection_name': None},
@@ -53,7 +54,7 @@ def test_deprecate(am, capfd, monkeypatch):
         {u'msg': u'deprecation8', u'date': '2020-03-10', u'collection_name': 'ansible.builtin'},
         {u'msg': u'deprecation9', u'version': None, u'collection_name': None},
         {u'msg': u'deprecation10', u'version': '2.4', u'collection_name': None},
-    ]
+    ]]
 
 
 @pytest.mark.parametrize('stdin', [{}], indirect=['stdin'])
@@ -62,11 +63,11 @@ def test_deprecate_without_list(am, capfd):
         am.exit_json(deprecations='Simple deprecation warning')
 
     out, err = capfd.readouterr()
-    output = json.loads(out)
+    output = json.loads(out, cls=AnsibleJSONDecoder)
     assert ('warnings' not in output or output['warnings'] == [])
-    assert output['deprecations'] == [
+    assert output['deprecations'] == [DeprecationMessageDetail(**item) for item in [
         {u'msg': u'Simple deprecation warning', u'version': None, u'collection_name': None},
-    ]
+    ]]
 
 
 @pytest.mark.parametrize('stdin', [{}], indirect=['stdin'])

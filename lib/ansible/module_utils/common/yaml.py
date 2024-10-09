@@ -6,9 +6,14 @@ This file provides ease of use shortcuts for loading and dumping YAML,
 preferring the YAML compiled C extensions to reduce duplicated code.
 """
 
-from __future__ import annotations
+from __future__ import annotations as _annotations
+
+import collections.abc as _c
+import typing as _t
 
 from functools import partial as _partial
+
+from .. import datatag as _datatag
 
 HAS_LIBYAML = False
 
@@ -18,6 +23,7 @@ except ImportError:
     HAS_YAML = False
 else:
     HAS_YAML = True
+
 
 if HAS_YAML:
     try:
@@ -31,11 +37,24 @@ if HAS_YAML:
         from yaml import SafeDumper  # type: ignore[assignment]
         from yaml.parser import Parser  # type: ignore[assignment]  # pylint: disable=unused-import
 
+    class _AnsibleDumper(SafeDumper):
+        pass
+
+    def _represent_ansible_tagged_object(self, data: _datatag.AnsibleTaggedObject) -> _t.Any:
+        return self.represent_data(_datatag.AnsibleTagHelper.as_untagged_type(data))
+
+    def _represent_tripwire(self, data: _datatag.Tripwire) -> _t.NoReturn:
+        data.trip()
+
+    _AnsibleDumper.add_multi_representer(_c.Mapping, _AnsibleDumper.represent_dict)
+    _AnsibleDumper.add_multi_representer(_datatag.Tripwire, _represent_tripwire)
+    _AnsibleDumper.add_multi_representer(_datatag.AnsibleTaggedObject, _represent_ansible_tagged_object)
+
     yaml_load = _partial(_yaml.load, Loader=SafeLoader)
     yaml_load_all = _partial(_yaml.load_all, Loader=SafeLoader)
 
-    yaml_dump = _partial(_yaml.dump, Dumper=SafeDumper)
-    yaml_dump_all = _partial(_yaml.dump_all, Dumper=SafeDumper)
+    yaml_dump = _partial(_yaml.dump, Dumper=_AnsibleDumper)
+    yaml_dump_all = _partial(_yaml.dump_all, Dumper=_AnsibleDumper)
 else:
     SafeLoader = object  # type: ignore[assignment,misc]
     SafeDumper = object  # type: ignore[assignment,misc]

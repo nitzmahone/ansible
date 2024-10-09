@@ -11,19 +11,19 @@ import os.path
 import sys
 import stat
 import tempfile
+import typing as t
 
 from collections import namedtuple
 from collections.abc import Mapping, Sequence
 from jinja2.nativetypes import NativeEnvironment
 
-from ansible.errors import AnsibleOptionsError, AnsibleError, AnsibleRequiredOptionError
+from ansible.errors import AnsibleOptionsError, AnsibleError, AnsibleUndefinedConfigEntry, AnsibleRequiredOptionError
 from ansible.module_utils.common.sentinel import Sentinel
 from ansible.module_utils.common.text.converters import to_text, to_bytes, to_native
 from ansible.module_utils.common.yaml import yaml_load
 from ansible.module_utils.six import string_types
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.parsing.quoting import unquote
-from ansible.parsing.yaml.objects import AnsibleVaultEncryptedUnicode
 from ansible.utils.path import cleanup_tmp_file, makedirs_safe, unfrackpath
 
 
@@ -53,7 +53,7 @@ GALAXY_SERVER_ADDITIONAL = {
 
 
 def _get_entry(plugin_type, plugin_name, config):
-    ''' construct entry for requested config '''
+    """ construct entry for requested config """
     entry = ''
     if plugin_type:
         entry += 'plugin_type: %s ' % plugin_type
@@ -65,7 +65,7 @@ def _get_entry(plugin_type, plugin_name, config):
 
 # FIXME: see if we can unify in module_utils with similar function used by argspec
 def ensure_type(value, value_type, origin=None, origin_ftype=None):
-    ''' return a configuration variable with casting
+    """ return a configuration variable with casting
     :arg value: The value to ensure correct typing of
     :kwarg value_type: The type of the value.  This can be any of the following strings:
         :boolean: sets the value to a True or False value
@@ -88,7 +88,7 @@ def ensure_type(value, value_type, origin=None, origin_ftype=None):
             tildes's in the value.
         :str: Sets the value to string types.
         :string: Same as 'str'
-    '''
+    """
 
     errmsg = ''
     basedir = None
@@ -169,7 +169,7 @@ def ensure_type(value, value_type, origin=None, origin_ftype=None):
                 errmsg = 'dictionary'
 
         elif value_type in ('str', 'string'):
-            if isinstance(value, (string_types, AnsibleVaultEncryptedUnicode, bool, int, float, complex)):
+            if isinstance(value, (string_types, bool, int, float, complex)):
                 value = to_text(value, errors='surrogate_or_strict')
                 if origin_ftype and origin_ftype == 'ini':
                     value = unquote(value)
@@ -177,7 +177,7 @@ def ensure_type(value, value_type, origin=None, origin_ftype=None):
                 errmsg = 'string'
 
         # defaults to string type
-        elif isinstance(value, (string_types, AnsibleVaultEncryptedUnicode)):
+        elif isinstance(value, (string_types)):
             value = to_text(value, errors='surrogate_or_strict')
             if origin_ftype and origin_ftype == 'ini':
                 value = unquote(value)
@@ -190,7 +190,7 @@ def ensure_type(value, value_type, origin=None, origin_ftype=None):
 
 # FIXME: see if this can live in utils/path
 def resolve_path(path, basedir=None):
-    ''' resolve relative or 'variable' paths '''
+    """ resolve relative or 'variable' paths """
     if '{{CWD}}' in path:  # allow users to force CWD using 'magic' {{CWD}}
         path = path.replace('{{CWD}}', os.getcwd())
 
@@ -215,7 +215,7 @@ def get_config_type(cfile):
 
 # FIXME: can move to module_utils for use for ini plugins also?
 def get_ini_config_value(p, entry):
-    ''' returns the value of last ini entry found '''
+    """ returns the value of last ini entry found """
     value = None
     if p is not None:
         try:
@@ -226,7 +226,7 @@ def get_ini_config_value(p, entry):
 
 
 def find_ini_config_file(warnings=None):
-    ''' Load INI Config File order(first found is used): ENV, CWD, HOME, /etc/ansible '''
+    """ Load INI Config File order(first found is used): ENV, CWD, HOME, /etc/ansible """
     # FIXME: eventually deprecate ini configs
 
     if warnings is None:
@@ -289,7 +289,7 @@ def find_ini_config_file(warnings=None):
 
 
 def _add_base_defs_deprecations(base_defs):
-    '''Add deprecation source 'ansible.builtin' to deprecations in base.yml'''
+    """Add deprecation source 'ansible.builtin' to deprecations in base.yml"""
     def process(entry):
         if 'deprecated' in entry:
             entry['deprecated']['collection_name'] = 'ansible.builtin'
@@ -371,6 +371,7 @@ class ConfigManager(object):
             # template default values if possible
             # NOTE: cannot use is_template due to circular dep
             try:
+                # FIXME: This really should be using an immutable sandboxed native environment, not just native environment
                 t = NativeEnvironment().from_string(value)
                 value = t.render(variables)
             except Exception:
@@ -388,7 +389,7 @@ class ConfigManager(object):
             "Missing base YAML definition file (bad install?): %s" % to_native(yml_file))
 
     def _parse_config_file(self, cfile=None):
-        ''' return flat configuration settings from file(s) '''
+        """ return flat configuration settings from file(s) """
         # TODO: take list of files with merge/nomerge
 
         if cfile is None:
@@ -415,7 +416,7 @@ class ConfigManager(object):
                 raise AnsibleOptionsError("Unsupported configuration file type: %s" % to_native(ftype))
 
     def _find_yaml_config_files(self):
-        ''' Load YAML Config Files in order, check merge flags, keep origin of settings'''
+        """ Load YAML Config Files in order, check merge flags, keep origin of settings"""
         pass
 
     def get_plugin_options(self, plugin_type, name, keys=None, variables=None, direct=None):
@@ -467,7 +468,7 @@ class ConfigManager(object):
         return has
 
     def get_configuration_definitions(self, plugin_type=None, name=None, ignore_private=False):
-        ''' just list the possible settings, either base or for specific plugins or plugin '''
+        """ just list the possible settings, either base or for specific plugins or plugin """
 
         ret = {}
         if plugin_type is None:
@@ -484,7 +485,7 @@ class ConfigManager(object):
         return ret
 
     def _loop_entries(self, container, entry_list):
-        ''' repeat code for value entry assignment '''
+        """ repeat code for value entry assignment """
 
         value = None
         origin = None
@@ -496,10 +497,6 @@ class ConfigManager(object):
                 self.WARNINGS.add(u'value for config entry {0} contains invalid characters, ignoring...'.format(to_text(name)))
                 continue
             if temp_value is not None:  # only set if entry is defined in container
-                # inline vault variables should be converted to a text string
-                if isinstance(temp_value, AnsibleVaultEncryptedUnicode):
-                    temp_value = to_text(temp_value, errors='surrogate_or_strict')
-
                 value = temp_value
                 origin = name
 
@@ -510,19 +507,23 @@ class ConfigManager(object):
         return value, origin
 
     def get_config_value(self, config, cfile=None, plugin_type=None, plugin_name=None, keys=None, variables=None, direct=None):
-        ''' wrapper '''
+        """ wrapper """
 
         try:
             value, _drop = self.get_config_value_and_origin(config, cfile=cfile, plugin_type=plugin_type, plugin_name=plugin_name,
                                                             keys=keys, variables=variables, direct=direct)
         except AnsibleError:
             raise
-        except Exception as e:
-            raise AnsibleError("Unhandled exception when retrieving %s:\n%s" % (config, to_native(e)), orig_exc=e)
+        except Exception as ex:
+            raise AnsibleError(f"Unhandled exception when retrieving {config!r}.") from ex
         return value
 
+    def get_config_default(self, config: str, plugin_type: str | None = None, plugin_name: str | None = None) -> t.Any:
+        """Return the default value for the specified configuration."""
+        return self.get_configuration_definitions(plugin_type, plugin_name)[config]['default']
+
     def get_config_value_and_origin(self, config, cfile=None, plugin_type=None, plugin_name=None, keys=None, variables=None, direct=None):
-        ''' Given a config key figure out the actual value and report on the origin of the settings '''
+        """ Given a config key figure out the actual value and report on the origin of the settings """
         if cfile is None:
             # use default config
             cfile = self._config_file
@@ -630,6 +631,7 @@ class ConfigManager(object):
                 else:
                     origin = 'default'
                     value = self.template_default(defs[config].get('default'), variables)
+
             try:
                 # ensure correct type, can raise exceptions on mismatched types
                 value = ensure_type(value, defs[config].get('type'), origin=origin, origin_ftype=origin_ftype)
@@ -639,8 +641,8 @@ class ConfigManager(object):
                     origin = 'default'
                     value = ensure_type(defs[config].get('default'), defs[config].get('type'), origin=origin, origin_ftype=origin_ftype)
                 else:
-                    raise AnsibleOptionsError('Invalid type for configuration option %s (from %s): %s' %
-                                              (to_native(_get_entry(plugin_type, plugin_name, config)).strip(), origin, to_native(e)))
+                    raise AnsibleOptionsError('Invalid type for configuration option %s (from %s)' %
+                                              (to_native(_get_entry(plugin_type, plugin_name, config)).strip(), origin)) from e
 
             # deal with restricted values
             if value is not None and 'choices' in defs[config] and defs[config]['choices'] is not None:
@@ -670,7 +672,7 @@ class ConfigManager(object):
             if 'deprecated' in defs[config] and origin != 'default':
                 self.DEPRECATED.append((config, defs[config].get('deprecated')))
         else:
-            raise AnsibleError('Requested entry (%s) was not defined in configuration.' % to_native(_get_entry(plugin_type, plugin_name, config)))
+            raise AnsibleUndefinedConfigEntry(f'Requested entry ({_get_entry(plugin_type, plugin_name, config)}) is not defined in configuration.')
 
         return value, origin
 
