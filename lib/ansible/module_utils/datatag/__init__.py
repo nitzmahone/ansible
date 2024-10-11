@@ -14,9 +14,10 @@ from itertools import chain
 # deprecated: description='typing.Self exists in Python 3.11+' python_version='3.10'
 from ..compat import typing as t
 
-from .._internal import _dataclass_validation, _sys_intern_patch
+from .._internal import _dataclass_validation
+from .._internal._patches import _sys_intern_patch
 
-_sys_intern_patch.patch_sys_intern()
+assert _sys_intern_patch
 
 if sys.version_info >= (3, 10):
     # Using slots for reduced memory usage and improved performance.
@@ -101,10 +102,19 @@ class AnsibleTagHelper:
         return the_type
 
     @staticmethod
-    def as_untagged_type(value: _T) -> _T:
+    def as_untagged_type(value: _T, recursive: bool = False) -> _T:
         """Returns an untagged native data type matching the input value, or the original input if the value was not a tagged type."""
         if isinstance(value, AnsibleTaggedObject):
-            return value._native_copy()
+            value = value._native_copy()
+        elif not recursive:
+            return value
+
+        if (sequence_type := type(value)) in (tuple, list):
+            value = sequence_type(AnsibleTagHelper.as_untagged_type(v, recursive=True) for v in value)
+        elif type(value) is dict:
+            value = dict(
+                ((AnsibleTagHelper.as_untagged_type(k, recursive=True), AnsibleTagHelper.as_untagged_type(v, recursive=True)) for (k, v) in value.items())
+            )
 
         return value
 

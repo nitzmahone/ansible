@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from ansible.module_utils._internal import _sys_intern_patch
+from ansible.module_utils._internal._patches import _sys_intern_patch
 
 
 @pytest.fixture(autouse=True)

@@ -242,6 +242,7 @@ class AnsibleConnectionFailure(AnsibleRuntimeError):
 
 
 class AnsibleAuthenticationFailure(AnsibleConnectionFailure):
+    default_prefix = "Failed to authenticate."
     """Invalid username/password/key."""
 
 
