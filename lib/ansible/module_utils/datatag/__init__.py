@@ -17,7 +17,7 @@ from ..compat import typing as t
 from .._internal import _dataclass_validation
 from .._internal._patches import _sys_intern_patch
 
-assert _sys_intern_patch
+_sys_intern_patch.SysInternPatch.patch()
 
 if sys.version_info >= (3, 10):
     # Using slots for reduced memory usage and improved performance.

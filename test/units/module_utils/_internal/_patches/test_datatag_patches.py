@@ -1,4 +1,8 @@
-"""Test functions that are likely to (or do) require patching to accept tagged arguments."""
+"""
+Testing for functions that need to be patched to accept tagged types.
+Includes tests for related functions that might have required patching, as a means to verify patches for them are not required.
+"""
+
 from __future__ import annotations
 
 import contextlib
@@ -11,11 +15,9 @@ import typing as t
 
 import pytest
 
-from ansible.module_utils.datatag.tags import Deprecated
 from ansible.module_utils._internal import _patches
-from ansible.module_utils._internal._patches import _socket_patch  # activate patches
+from ansible.module_utils.datatag.tags import Deprecated
 
-assert _socket_patch
 
 T = t.TypeVar('T')
 
@@ -24,6 +26,18 @@ T = t.TypeVar('T')
 class Closable(t.Protocol):
     """Protocol for objects with a close method."""
     def close(self): ...
+
+
+@contextlib.contextmanager
+def disable_patches() -> t.Iterable[None]:
+    """
+    Disable all patches.
+    Used for tests which need to operate on unpatched functions, but don't necessarily know which patches apply.
+    """
+    with contextlib.ExitStack() as stack:
+        _p = [stack.enter_context(patch.disable_patch()) for patch in _patches.CallablePatch._concrete_patch_types]
+
+        yield
 
 
 class HighPort:
@@ -159,7 +173,7 @@ def socket_create_connection(*args, **kwargs):
             raise
 
 
-scenarios = (
+scenarios: tuple[tuple[t.Callable, dict[str, t.Any]], ...] = (
     (socket_create_connection, dict(address=('localhost', FailsWhenTagged(0)), timeout=1, source_address=('localhost', HighPort()))),
     (socket.create_server, dict(address=('localhost', HighPort()))),
     (socket.getaddrinfo, dict(host='localhost', port=FailsWhenTagged(22))),
@@ -182,7 +196,7 @@ def test_accepts_tagged_args_before_patching(func: t.Callable, kwargs: dict[str,
     Verify whether various standard library functions accept tagged values or not.
     Those that do not should be patched to avoid errors when passing tagged args.
     """
-    with _patches.CallablePatch.disable_patches():
+    with disable_patches():
         with pytest.raises(Exception) if expect_failure else contextlib.nullcontext():
             result = func(*kwargs.pop('_args', ()), **kwargs)
 

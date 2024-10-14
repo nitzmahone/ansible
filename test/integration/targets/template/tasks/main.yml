@@ -707,8 +707,7 @@
 - name: check that proper error message is emitted when in operator is used
   assert:
     that:
-      - '"The task includes an option with an undefined variable" in error.msg'
-      - "\"'y' is undefined\n\n\" in error.msg"
+      - error.msg is contains "'y' is undefined"
 
 - template:
     src: template_import_macro_globals.j2

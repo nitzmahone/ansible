@@ -2,31 +2,60 @@ from __future__ import annotations
 
 import abc
 import contextlib
+import enum
 import inspect
+import functools
 
 import typing as t
 
 
 @t.runtime_checkable
 class PatchedTarget(t.Protocol):
-    """Protocol for objects with a close method."""
-    patch_enabled: bool
+    """Protocol for patch functions to allow access to the owning Patch class implementation."""
+    patch_enabled: CallablePatch
+
+
+class PatchType(enum.Enum):
+    Function = enum.auto()
+    InstanceMethod = enum.auto()
+    ClassMethod = enum.auto()
+    GetterProperty = enum.auto()
+    StaticMethod = enum.auto()
 
 
 class CallablePatch(abc.ABC):
     patch_enabled: t.ClassVar[bool] = False
-    _unpatched: t.ClassVar[t.Callable | None] = None
-    _patch_types: set[type[CallablePatch]] = set()
 
+    _unpatched: t.ClassVar[t.Callable | None] = None
+    _concrete_patch_types: t.ClassVar[set[type[CallablePatch]]] = set()
     _container: t.ClassVar[t.Any]
     _attr: t.ClassVar[str]
+    _patch_type: t.ClassVar[PatchType]
 
-    def __new__(cls, *args, **kwargs) -> t.Any:
-        # HACK: this should really be classmethod __call__
-        if cls.patch_enabled:
-            return cls._patched_impl(*args, **kwargs)
+    def __get__(self, instance, owner=None):
+        if owner is None:
+            owner = type(owner)
+        if self._patch_type == PatchType.ClassMethod:
+            return functools.partial(self, owner)
+        if self._patch_type == PatchType.InstanceMethod:
+            return functools.partial(self, instance)
+        if self._patch_type == PatchType.GetterProperty:
+            return self(instance)
+        if self._patch_type == PatchType.StaticMethod:
+            return self
 
-        return cls._unpatched(*args, **kwargs)
+        raise NotImplementedError()
+
+    def __call__(self, *args, **kwargs) -> t.Any:
+        if self.patch_enabled:
+            return self._patched_impl(*args, **kwargs)
+
+        # FIXME: if we ever end up using this, need to account for popping cls from args when directly calling the unpatched method
+        return self._unpatched(*args, **kwargs)
+
+    @classmethod
+    def is_patched(cls) -> bool:
+        return isinstance(cls._container.__dict__[cls._attr], PatchedTarget)  # using a protocol lets us be more resilient to module unload weirdness
 
     @classmethod
     @abc.abstractmethod
@@ -41,6 +70,10 @@ class CallablePatch(abc.ABC):
         return getattr(cls._container, cls._attr)
 
     @classmethod
+    def _prepare_patch(cls) -> t.Any:
+        return cls()
+
+    @classmethod
     def _set_patch(cls, patch: t.Callable) -> None:
         setattr(cls._container, cls._attr, patch)
 
@@ -50,15 +83,19 @@ class CallablePatch(abc.ABC):
 
     @classmethod
     def patch(cls) -> None:
-        maybe_unpatched = cls._get_current_value()
+        current = cls._get_current_value()
 
-        if isinstance(maybe_unpatched, PatchedTarget):  # using a protocol lets us be more resilient to module unload weirdness
+        if cls.is_patched():
             return
 
-        cls._unpatched = maybe_unpatched
+        cls._unpatched = current
 
         if cls._needs_patch():
-            cls._set_patch(patch=cls)
+            cls._set_patch(patch=cls._prepare_patch())
+
+            if not cls.is_patched():
+                raise RuntimeError('oops')
+
             cls.patch_enabled = True
 
             if cls._needs_patch():
@@ -67,22 +104,18 @@ class CallablePatch(abc.ABC):
 
     @classmethod
     def __init_subclass__(cls, **kwargs):
-        CallablePatch._patch_types.add(cls)
-
         if not inspect.isabstract(cls):
-            cls.patch()
+            cls._concrete_patch_types.add(cls)
 
     @classmethod
     @contextlib.contextmanager
-    def disable_patches(cls) -> t.Iterable[None]:
-        for patch_type in cls._patch_types:
-            patch_type.patch_enabled = False
+    def disable_patch(cls) -> t.Iterator[None]:
+        cls.patch_enabled = False
 
         try:
             yield
         finally:
-            for patch_type in cls._patch_types:
-                patch_type.patch_enabled = True
+            cls.patch_enabled = True
 
 
 class UntagArgsPatch(CallablePatch, abc.ABC):
@@ -94,3 +127,15 @@ class UntagArgsPatch(CallablePatch, abc.ABC):
             *AnsibleTagHelper.as_untagged_type(args, recursive=True),
             **AnsibleTagHelper.as_untagged_type(kwargs, recursive=True)
         )
+
+    @classmethod
+    def _get_patch(cls):
+        def func(*args, **kwargs) -> str:
+            from ...datatag import AnsibleTagHelper
+
+            return cls._unpatched(
+                *AnsibleTagHelper.as_untagged_type(args, recursive=True),
+                **AnsibleTagHelper.as_untagged_type(kwargs, recursive=True)
+            )
+
+        return func

@@ -6,12 +6,14 @@ import contextlib
 import socket
 
 from ...datatag import _AnsibleTaggedInt
-from . import UntagArgsPatch
+from . import UntagArgsPatch, PatchType
 
 
 class GetAddrInfoPatch(UntagArgsPatch):
+    # DTFIX-U: install a lazy `socket` stub in sys.modules (at least on targets) so this patch can be auto-applied on import of `socket`
     _container = socket
     _attr = 'getaddrinfo'
+    _patch_type = PatchType.Function
 
     @classmethod
     def _needs_patch(cls) -> bool:
