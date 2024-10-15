@@ -1,4 +1,4 @@
-"""Handling of `DeferredMarker` values."""
+"""Handling of `Marker` values."""
 
 from __future__ import annotations
 
@@ -9,24 +9,24 @@ import itertools
 import typing as t
 
 from ..utils.display import Display
-from .jinja_common import DeferredMarker
+from .jinja_common import Marker
 
 
 class MarkerBehavior(metaclass=abc.ABCMeta):
-    """Base class to support custom handling of `DeferredMarker` values encountered during concatenation or finalization."""
+    """Base class to support custom handling of `Marker` values encountered during concatenation or finalization."""
 
     @abc.abstractmethod
-    def handle_marker(self, value: DeferredMarker) -> t.Any:
-        """Handle the given `DeferredMarker` value."""
+    def handle_marker(self, value: Marker) -> t.Any:
+        """Handle the given `Marker` value."""
 
 
 class FailingMarkerBehavior(MarkerBehavior):
     """
-    The default behavior when encountering a `DeferredMarker` value during concatention or finalization.
-    This always raises the template-internal `DeferredMarkerError` exception.
+    The default behavior when encountering a `Marker` value during concatention or finalization.
+    This always raises the template-internal `MarkerError` exception.
     """
 
-    def handle_marker(self, value: DeferredMarker) -> t.Any:
+    def handle_marker(self, value: Marker) -> t.Any:
         value.trip()
 
 
@@ -36,24 +36,24 @@ FAIL_ON_UNDEFINED: t.Final = FailingMarkerBehavior()  # no sense in making many 
 
 
 @dataclasses.dataclass(kw_only=True, slots=True, frozen=True)
-class _DeferredMarkerTracker:
-    """A numbered occurrence of a `DeferredMarker` value for later conversion to a warning."""
+class _MarkerTracker:
+    """A numbered occurrence of a `Marker` value for later conversion to a warning."""
 
     number: int
-    value: DeferredMarker
+    value: Marker
 
 
 class ReplacingMarkerBehavior(MarkerBehavior):
-    """All `DeferredMarker` values are replaced with a numbered string placeholder and the message from the value."""
+    """All `Marker` values are replaced with a numbered string placeholder and the message from the value."""
 
     def __init__(self) -> None:
-        self._trackers: list[_DeferredMarkerTracker] = []
+        self._trackers: list[_MarkerTracker] = []
 
-    def record_marker(self, value: DeferredMarker) -> t.Any:
+    def record_marker(self, value: Marker) -> t.Any:
         """Assign a sequence number to the given value and record it for later generation of warnings."""
         number = len(self._trackers) + 1
 
-        self._trackers.append(_DeferredMarkerTracker(number=number, value=value))
+        self._trackers.append(_MarkerTracker(number=number, value=value))
 
         return number
 
@@ -76,7 +76,7 @@ class ReplacingMarkerBehavior(MarkerBehavior):
     @classmethod
     @contextlib.contextmanager
     def warning_context(cls) -> t.Generator[t.Self, None, None]:
-        """Collect warnings for `DeferredMarker` values and emit warnings when the context exits."""
+        """Collect warnings for `Marker` values and emit warnings when the context exits."""
         instance = cls()
 
         try:
@@ -84,19 +84,19 @@ class ReplacingMarkerBehavior(MarkerBehavior):
         finally:
             instance.emit_warnings()
 
-    def handle_marker(self, value: DeferredMarker) -> t.Any:
+    def handle_marker(self, value: Marker) -> t.Any:
         number = self.record_marker(value)
 
         return f"<< error {number} - {value._as_message()} >>"
 
 
 class RoutingMarkerBehavior(MarkerBehavior):
-    """Routes instances of DeferredMarker (by type reference) to another MarkerBehavior, defaulting to FailingMarkerBehavior."""
+    """Routes instances of Marker (by type reference) to another MarkerBehavior, defaulting to FailingMarkerBehavior."""
 
-    def __init__(self, dispatch_table: dict[type[DeferredMarker], MarkerBehavior]) -> None:
+    def __init__(self, dispatch_table: dict[type[Marker], MarkerBehavior]) -> None:
         self._dispatch_table = dispatch_table
 
-    def handle_marker(self, value: DeferredMarker) -> t.Any:
+    def handle_marker(self, value: Marker) -> t.Any:
         behavior = self._dispatch_table.get(type(value), FAIL_ON_UNDEFINED)
 
         return behavior.handle_marker(value)

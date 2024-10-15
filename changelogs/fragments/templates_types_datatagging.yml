@@ -25,7 +25,7 @@ minor_changes:
   - plugins - Lookup plugins can declare support for ``ansible_lookup_context`` to receive an additional keyword argument with extra information.  # DTFIX-RELEASE: examples
   - templating - Variables of type ``set`` and ``tuple`` are now converted to ``list`` when encountered.
     This simplifies plugin implementations which are usually not written with these additional types in mind.
-  - templating - Access to an undefined variable from inside a lookup, filter, or test (which raises DeferredMarkerError) no longer ends processing of the current template.
+  - templating - Access to an undefined variable from inside a lookup, filter, or test (which raises MarkerError) no longer ends processing of the current template.
     The triggering undefined value is returned as the result of the offending plugin invocation, and the template continues to execute. # DTFIX-RELEASE: porting guide entry, samples needed
   - plugin error handling - When raising exceptions in an exception handler, be sure to use ``raise ... from`` as appropriate.
     This supersedes the use of the ``AnsibleError`` arg ``orig_exc`` to represent the cause.
@@ -77,8 +77,8 @@ breaking_changes:
   - templating - The result of the ``range()`` global function cannot be returned from a template- it should always be passed to a filter (e.g., ``random``).
     Previously, range objects returned from an intermediate template were always converted to a list, which is inconsistent with inline consumption of range objects.
   - plugins - Custom Jinja plugins that accept undefined top-level arguments must opt in to receiving them.  # DTFIX-RELEASE: porting guide entry + backcompat behavior description
-  - plugins - Custom Jinja plugins that use ``environment.getitem`` to retrieve undefined values will now trigger a ``DeferredMarkerError`` exception.
-    This exception must be handled to allow the plugin to return a ``DeferredMarker``, or the plugin must opt-in to accepting ``DeferredMarker`` values.  # DTFIX-RELEASE: mention the decorator
+  - plugins - Custom Jinja plugins that use ``environment.getitem`` to retrieve undefined values will now trigger a ``MarkerError`` exception.
+    This exception must be handled to allow the plugin to return a ``Marker``, or the plugin must opt-in to accepting ``Marker`` values.  # DTFIX-RELEASE: mention the decorator
   - templating - Many Jinja plugins (filters, lookups, tests) and methods previously silently ignored undefined inputs, which often masked subtle errors.
     Passing an undefined argument to a Jinja plugin or method that does not declare undefined support now results in an undefined value.  # DTFIX-RELEASE: common examples, porting guide, `is defined`, `is undefined`, etc; porting guide should also mention that overly-broad exception handling may mask Undefined errors; also that lazy handling of Undefined can invoke a plugin and bomb out in the middle where it was previously never invoked (plugins with side effects, just don't)
   - lookup plugins - Lookup plugins called as `with_(lookup)` will no longer have the `_subdir` attribute set. # DTFIX-RELEASE: porting guide re: `ansible_lookup_context`

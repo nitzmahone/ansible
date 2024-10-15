@@ -149,7 +149,7 @@ class AnsibleJinja2Plugin(AnsiblePlugin, metaclass=abc.ABCMeta):
 
         # DTFIX-MERGE: should this come from sidecar config or another more user/doc-friendly mechanism?
         # Declare support for markers. Plugins with `False` here will never be invoked with markers for top-level arguments.
-        self.accept_deferred_marker = getattr(self._function, 'accept_deferred_marker', False)
+        self.accept_marker = getattr(self._function, 'accept_marker', False)
 
     @property
     @abc.abstractmethod
@@ -169,16 +169,16 @@ class AnsibleJinja2Plugin(AnsiblePlugin, metaclass=abc.ABCMeta):
 _TCallable = t.TypeVar('_TCallable', bound=t.Callable)
 
 
-def accept_deferred_marker(plugin: _TCallable) -> _TCallable:
+def accept_marker(plugin: _TCallable) -> _TCallable:
     """
-    A decorator to mark a Jinja plugin as capable of handling `DeferredMarker` values.
+    A decorator to mark a Jinja plugin as capable of handling `Marker` values.
 
     When the decorator is not applied to a plugin:
-      * The plugin invocation is skipped if any top-level argument to it is a `DeferredMarker`, with the first such value substituted for its return value.
-      * Lazy containers will raise `DeferredMarkerError` when a plugin attempts to retrieve a `DeferredMarker`.
+      * The plugin invocation is skipped if any top-level argument to it is a `Marker`, with the first such value substituted for its return value.
+      * Lazy containers will raise `MarkerError` when a plugin attempts to retrieve a `Marker`.
 
-    This ensures that a plugin will never see a `DeferredMarker` instance unless it has declared support for the feature.
+    This ensures that a plugin will never see a `Marker` instance unless it has declared support for the feature.
     """
-    plugin.accept_deferred_marker = True
+    plugin.accept_marker = True
 
     return plugin

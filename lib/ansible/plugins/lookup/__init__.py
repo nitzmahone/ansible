@@ -29,7 +29,7 @@ __all__ = ['LookupBase']
 
 
 class LookupBase(AnsiblePlugin):
-    accept_deferred_marker = False
+    accept_marker = False
     """Declare support for markers. Plugins with `False` here will never be invoked with markers for top-level arguments."""
 
     def __init__(self, loader=None, templar=None, **kwargs):

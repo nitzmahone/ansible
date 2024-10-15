@@ -35,7 +35,7 @@ from ansible.parsing.dataloader import DataLoader
 from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
 from .jinja_bits import AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, AnsibleEnvironment, defer_template_error, create_template_error, \
     is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result, FinalizeMode
-from .jinja_common import DeferredMarker, _TemplateConfig, DeferredMarkerError, DeferredExceptionMarker
+from .jinja_common import Marker, _TemplateConfig, MarkerError, ExceptionMarker
 from .vault import UndecryptableAccessMutator
 from .jinja_plugins import JinjaCallContext
 from .utils import Omit, TemplateContext
@@ -357,7 +357,7 @@ class Templar:
 
             if template_ctx.is_top_level:
                 # If we're the outermost template operation, we need to recursively finalize the template result.
-                # This will render any embedded templates and trigger `DeferredMarker` and omit behaviors.
+                # This will render any embedded templates and trigger `Marker` and omit behaviors.
                 template_result = self._finalize_top_level_template_result(variable, options, mode, template_result)
 
         self._emit_deprecation_warnings(deprecated)
@@ -394,13 +394,13 @@ class Templar:
         except Exception as ex:
             raise_from: BaseException
 
-            if isinstance(ex, DeferredMarkerError):
+            if isinstance(ex, MarkerError):
                 exception_to_raise = ex.source._as_exception()
 
-                # DeferredMarkerError is never suitable for use as the cause of another exception, it is merely a raiseable container for the source marker
-                # used for flow control (so its stack trace is rarely useful). However, if the source derives from a DeferredExceptionMarker, its contained
+                # MarkerError is never suitable for use as the cause of another exception, it is merely a raiseable container for the source marker
+                # used for flow control (so its stack trace is rarely useful). However, if the source derives from a ExceptionMarker, its contained
                 # exception (previously raised) should be used as the cause. Other sources do not contain exceptions, so cannot provide a cause.
-                raise_from = exception_to_raise if isinstance(ex.source, DeferredExceptionMarker) else None
+                raise_from = exception_to_raise if isinstance(ex.source, ExceptionMarker) else None
             else:
                 exception_to_raise = ex
                 raise_from = ex
@@ -646,7 +646,7 @@ class Templar:
         # DTFIX-MERGE: always blindly access item here?
         res = self.template(AnsibleAccessContext.current().access(item), options=options)
 
-        if isinstance(res, DeferredMarker) and ((jc := JinjaCallContext.current(optional=True)) and jc.eager_trip_deferred_marker):
+        if isinstance(res, Marker) and ((jc := JinjaCallContext.current(optional=True)) and jc.eager_trip_marker):
             res.trip()
 
         return res
@@ -655,7 +655,7 @@ class Templar:
         # DTFIX-MERGE: always blindly access item here?
         res = AnsibleAccessContext.current().access(item)
 
-        if isinstance(res, DeferredMarker) and ((jc := JinjaCallContext.current(optional=True)) and jc.eager_trip_deferred_marker):
+        if isinstance(res, Marker) and ((jc := JinjaCallContext.current(optional=True)) and jc.eager_trip_marker):
             res.trip()
 
         return res

@@ -13,7 +13,7 @@ def runtime_error(*args, **kwargs) -> t.NoReturn:
 
 class Bomb:
     @property
-    def accept_deferred_marker(self) -> t.NoReturn:
+    def accept_marker(self) -> t.NoReturn:
         raise NotImplementedError()
 
 

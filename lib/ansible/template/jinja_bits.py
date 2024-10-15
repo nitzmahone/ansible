@@ -36,12 +36,12 @@ from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotAT
 
 from .datatag import _JinjaConstTemplate
 from .jinja_common import (
-    DeferredMarkerError,
-    DeferredMarker,
-    DeferredCapturedExceptionMarker,
-    DeferredUndefinedMarker,
+    MarkerError,
+    Marker,
+    CapturedExceptionMarker,
+    UndefinedMarker,
     _TemplateConfig,
-    DeferredTruncationMarker,
+    TruncationMarker,
     validate_arg_type,
 )
 from .utils import Omit, TemplateContext
@@ -255,7 +255,7 @@ class ArgSmuggler:
 
 class AnsibleTemplateExpression:
     """
-    Wrapper around Jinja's TemplateExpression for converting DeferredMarkerError back into DeferredMarker.
+    Wrapper around Jinja's TemplateExpression for converting MarkerError back into Marker.
     This is needed to make expression error handling consistent with templates, since Jinja does not support a custom type for Environment.compile_expression.
     """
     def __init__(self, template_expression: TemplateExpression) -> None:
@@ -264,7 +264,7 @@ class AnsibleTemplateExpression:
     def __call__(self, jinja_vars: c.Mapping[str, t.Any]) -> t.Any:
         try:
             return self._template_expression(ArgSmuggler.package_jinja_vars(jinja_vars))
-        except DeferredMarkerError as ex:
+        except MarkerError as ex:
             return ex.source
 
 
@@ -423,22 +423,22 @@ class AnsibleLexer(Lexer):
             yield token
 
 
-def defer_template_error(ex: Exception, variable: t.Any, is_expression: bool) -> DeferredMarker:
+def defer_template_error(ex: Exception, variable: t.Any, is_expression: bool) -> Marker:
     if not ex.__traceback__:
         raise AssertionError('ex must be a previously raised exception')
 
-    if isinstance(ex, DeferredMarkerError):
+    if isinstance(ex, MarkerError):
         return ex.source
 
     exception_to_raise = create_template_error(ex, variable, is_expression)
 
     if exception_to_raise is ex:
-        return DeferredCapturedExceptionMarker(ex)  # capture the previously raised exception
+        return CapturedExceptionMarker(ex)  # capture the previously raised exception
 
     try:
         raise exception_to_raise from ex  # raise the newly synthesized exception before capturing it
     except Exception as captured_ex:
-        return DeferredCapturedExceptionMarker(captured_ex)
+        return CapturedExceptionMarker(captured_ex)
 
 
 def create_template_error(ex: Exception, variable: t.Any, is_expression: bool) -> AnsibleTemplateError:
@@ -494,7 +494,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.trim_blocks = True
 
-        self.undefined = DeferredUndefinedMarker
+        self.undefined = UndefinedMarker
         self.finalize = _ansible_finalize
 
         self.globals.update(
@@ -582,11 +582,11 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             return node_list[0]
 
         # In order to ensure that all markers are tripped, do a recursive finalize before we repr (otherwise we can end up
-        # repr'ing a DeferredMarker). This requires two passes, but avoids the need for a parallel reimplementation of all repr methods.
+        # repr'ing a Marker). This requires two passes, but avoids the need for a parallel reimplementation of all repr methods.
         try:
             node_list = _finalize_template_result(node_list, FinalizeMode.CONCAT)
-        except DeferredMarkerError as ex:
-            return ex.source  # return the first DeferredMarker encountered
+        except MarkerError as ex:
+            return ex.source  # return the first Marker encountered
 
         return ''.join([to_text(v) for v in node_list])
 
@@ -631,8 +631,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     def getattr(self, obj: t.Any, attribute: str) -> t.Any:
         """
         Get `attribute` from the attributes of `obj`, falling back to items in `obj`.
-        If no item was found, return a sandbox-specific `DeferredUndefinedMarker` if `attribute` is protected by the sandbox,
-        otherwise return a normal `DeferredUndefinedMarker` instance.
+        If no item was found, return a sandbox-specific `UndefinedMarker` if `attribute` is protected by the sandbox,
+        otherwise return a normal `UndefinedMarker` instance.
         This differs from the built-in Jinja behavior which will not fall back to items if `attribute` is protected by the sandbox.
         """
         # example template that uses this: "{{ some.thing }}" -- obj is the "some" dict, attribute is "thing"
@@ -663,7 +663,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         **kwargs: t.Any,
     ) -> t.Any:
         if _DirectCall.is_marked(__obj):
-            # Both `_lookup` and `_query` handle arg proxying and `DeferredMarker` args internally.
+            # Both `_lookup` and `_query` handle arg proxying and `Marker` args internally.
             # Performing either before calling them will interfere with that processing.
             return super().call(__context, __obj, *args, **kwargs)
 
@@ -671,7 +671,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             return first_marker
 
         try:
-            with JinjaCallContext(eager_trip_deferred_marker=True):
+            with JinjaCallContext(eager_trip_marker=True):
                 call_res = super().call(__context, __obj, *proxy_args(args), **proxy_kwargs(kwargs))
 
                 if __obj is range:
@@ -682,31 +682,31 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
                 return _wrap_plugin_output(call_res)
 
-        except DeferredMarkerError as ex:
+        except MarkerError as ex:
             return ex.source
 
 
-_DEFAULT_UNDEF = DeferredUndefinedMarker("Mandatory variable has not been overridden", _no_template_source=True)
+_DEFAULT_UNDEF = UndefinedMarker("Mandatory variable has not been overridden", _no_template_source=True)
 
 _sentinel: t.Final[object] = object()
 
 
 @_DirectCall.mark
 def _undef(hint=None):
-    """Jinja2 global function (undef) for creating getting a `DeferredUndefinedMarker` instance, optionally with a custom hint."""
+    """Jinja2 global function (undef) for creating getting a `UndefinedMarker` instance, optionally with a custom hint."""
     validate_arg_type('hint', hint, (str, type(None)))
 
     if not hint:
         return _DEFAULT_UNDEF
 
-    return DeferredUndefinedMarker(hint)
+    return UndefinedMarker(hint)
 
 
 def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
     """
     Yield nodes from a potentially recursive iterable of nodes.
     The recursion is required to expand template imports (TemplateModule).
-    Any exception raised while consuming a template node will be yielded as a DeferredMarker for that node.
+    Any exception raised while consuming a template node will be yielded as a Marker for that node.
     """
     iterator = iter(nodes)
 
@@ -718,7 +718,7 @@ def _flatten_nodes(nodes: t.Iterable[t.Any]) -> t.Iterable[t.Any]:
         except Exception as ex:
             yield defer_template_error(ex, TemplateContext.current().template_value, is_expression=False)
             # DTFIX-FUTURE: We should be able to determine if truncation occurred by having the code generator smuggle out the number of expected nodes.
-            yield DeferredTruncationMarker()
+            yield TruncationMarker()
         else:
             if type(node) is TemplateModule:  # pylint: disable=unidiomatic-typecheck
                 yield from _flatten_nodes(node._body_stream)
@@ -833,7 +833,7 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
         # silently convert known sequence types to list
         value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
         value_type = list
-    elif isinstance(o, DeferredMarker):
+    elif isinstance(o, Marker):
         # this early return assumes handle_marker follows our variable type rules
         return TemplateContext.current().templar.marker_behavior.handle_marker(o)
     elif o is Omit:

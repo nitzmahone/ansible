@@ -9,7 +9,7 @@ import pytest_mock
 
 from ansible.errors import AnsibleTemplatePluginRuntimeError, AnsibleUndefinedVariable, AnsibleTemplateError
 from ansible.module_utils.datatag import AnsibleTaggedObject
-from ansible.template.jinja_common import DeferredCapturedExceptionMarker, DeferredMarkerError, DeferredMarker
+from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError, Marker
 from ansible.template.utils import TemplateContext
 from ansible.utils.datatag.tags import TrustedAsTemplate
 from ansible.template.jinja_bits import AnsibleEnvironment, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, defer_template_error
@@ -239,37 +239,37 @@ def test_jinja_getattr(expr: str, expected: object) -> None:
         assert result == expected
 
 
-def test_defer_template_error_from_deferred_marker(deferred_marker: DeferredMarker) -> None:
-    """Verify that deferring a DeferredMarker returns its source."""
-    with pytest.raises(DeferredMarkerError) as error:
-        raise DeferredMarkerError('', deferred_marker)
+def test_defer_template_error_from_marker(marker: Marker) -> None:
+    """Verify that deferring a Marker returns its source."""
+    with pytest.raises(MarkerError) as error:
+        raise MarkerError('', marker)
 
     result = defer_template_error(error.value, None, False)
 
-    assert result is deferred_marker
+    assert result is marker
 
 
 def test_defer_template_error_from_exception(template_context: TemplateContext) -> None:
-    """Verify that deferring an Exception not derived from AnsibleTemplateError returns a DeferredErrorMarker wrapping an AnsibleTemplateError."""
+    """Verify that deferring an Exception not derived from AnsibleTemplateError returns a CapturedExceptionMarker wrapping an AnsibleTemplateError."""
     with pytest.raises(Exception) as error:
         raise Exception()
 
     result = defer_template_error(error.value, None, False)
 
-    assert isinstance(result, DeferredCapturedExceptionMarker)
-    assert isinstance(result._marker_deferred_exception, AnsibleTemplateError)
-    assert result._marker_deferred_exception.__cause__ is error.value
+    assert isinstance(result, CapturedExceptionMarker)
+    assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
+    assert result._marker_captured_exception.__cause__ is error.value
 
 
 def test_defer_template_error_from_ansible_template_error(template_context: TemplateContext) -> None:
-    """Verify that deferring an AnsibleTemplateError returns a DeferredErrorMarker wrapping that exception."""
+    """Verify that deferring an AnsibleTemplateError returns a CapturedExceptionMarker wrapping that exception."""
     with pytest.raises(AnsibleTemplateError) as error:
         raise AnsibleTemplateError()
 
     result = defer_template_error(error.value, None, False)
 
-    assert isinstance(result, DeferredCapturedExceptionMarker)
-    assert result._marker_deferred_exception is error.value
+    assert isinstance(result, CapturedExceptionMarker)
+    assert result._marker_captured_exception is error.value
 
 
 def test_defer_template_requires_traceback(template_context: TemplateContext):

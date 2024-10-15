@@ -58,7 +58,7 @@ from ansible.template.jinja_bits import _undef, _DEFAULT_UNDEF
 
 
 class LookupModule(LookupBase):
-    accept_deferred_marker = True  # the `default` arg can accept undefined values
+    accept_marker = True  # the `default` arg can accept undefined values
 
     def run(self, terms, variables, **kwargs):
 

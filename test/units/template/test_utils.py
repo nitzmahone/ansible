@@ -2,27 +2,27 @@ from __future__ import annotations
 
 import pytest
 
-from ansible.template.jinja_common import DeferredMarker, DeferredMarkerError
+from ansible.template.jinja_common import Marker, MarkerError
 
 
-def test_marker_repr(deferred_marker: DeferredMarker) -> None:
-    with pytest.raises(DeferredMarkerError):
-        repr(deferred_marker)
+def test_marker_repr(marker: Marker) -> None:
+    with pytest.raises(MarkerError):
+        repr(marker)
 
 
-def test_marker_str(deferred_marker: DeferredMarker) -> None:
-    with pytest.raises(DeferredMarkerError):
-        str(deferred_marker)
+def test_marker_str(marker: Marker) -> None:
+    with pytest.raises(MarkerError):
+        str(marker)
 
 
-def test_marker_getattr(deferred_marker: DeferredMarker) -> None:
-    assert deferred_marker.foo is deferred_marker
+def test_marker_getattr(marker: Marker) -> None:
+    assert marker.foo is marker
 
 
-def test_marker_getattr_dunder(deferred_marker: DeferredMarker) -> None:
+def test_marker_getattr_dunder(marker: Marker) -> None:
     with pytest.raises(AttributeError):
-        _unused = deferred_marker.__dunder_that_is_not_defined__
+        _unused = marker.__dunder_that_is_not_defined__
 
 
-def test_marker_getitem(deferred_marker: DeferredMarker) -> None:
-    assert deferred_marker['foo'] is deferred_marker
+def test_marker_getitem(marker: Marker) -> None:
+    assert marker['foo'] is marker

@@ -522,8 +522,8 @@ def test_stripped_conditionals(value: bool, mocker: pytest_mock.MockerFixture) -
 ))
 def test_jinja_sourced_undefined(template: str, variables: dict[str, t.Any], error: str) -> None:
     """
-    Ensure when Jinja encounters a `DeferredMarker` and raises `DeferredMarkerError`,
-    that we turn it back into the original `DeferredMarker` so marker_behavior can handle it during finalization.
+    Ensure when Jinja encounters a `Marker` and raises `MarkerError`,
+    that we turn it back into the original `Marker` so marker_behavior can handle it during finalization.
     """
     assert error in Templar(variables=variables, marker_behavior=ReplacingMarkerBehavior()).template(TRUST.tag(template))
 
@@ -578,7 +578,7 @@ def test_finalize_generator(value: t.Any, expected: t.Any) -> None:
     "{{ some_var is my_test }}",
 ))
 def test_eager_trip_undefined(template: str, mocker: pytest_mock.MockerFixture) -> None:
-    """Verify that eager tripping of DeferredMarker works for template plugins which only perform isinstance checks on undefined values."""
+    """Verify that eager tripping of Marker works for template plugins which only perform isinstance checks on undefined values."""
     from ansible.plugins.lookup import LookupBase
 
     class MyLookup(LookupBase):

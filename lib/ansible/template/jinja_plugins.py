@@ -23,7 +23,7 @@ from ..plugins.loader import lookup_loader, Jinja2Loader
 from ..plugins.lookup import LookupBase
 from ..utils.display import Display
 from .datatag import _JinjaConstTemplate
-from .jinja_common import DeferredMarkerError, _TemplateConfig, get_first_marker_arg, JinjaCallContext, DeferredMarker
+from .jinja_common import MarkerError, _TemplateConfig, get_first_marker_arg, JinjaCallContext, Marker
 from .lazy_containers import _ITERATOR_TYPES, proxy_kwargs, proxy_args, proxy_jinja_constant_container
 from .utils import TemplateContext
 
@@ -48,11 +48,11 @@ class JinjaPluginIntercept(c.MutableMapping):
         self._jinja_builtins = jinja_builtins
         self._wrapped_funcs: dict[str, t.Callable] = {}
 
-    def _wrap_and_set_func(self, name: str, plugin_func: t.Callable, accept_deferred_marker: bool) -> t.Callable:
+    def _wrap_and_set_func(self, name: str, plugin_func: t.Callable, accept_marker: bool) -> t.Callable:
         if self._plugin_loader.type == 'filter':
-            plugin_func = self._wrap_filter(plugin_func, name, accept_deferred_marker=accept_deferred_marker)
+            plugin_func = self._wrap_filter(plugin_func, name, accept_marker=accept_marker)
         else:
-            plugin_func = self._wrap_test(plugin_func, name, accept_deferred_marker=accept_deferred_marker)
+            plugin_func = self._wrap_test(plugin_func, name, accept_marker=accept_marker)
 
         self._wrapped_funcs[name] = plugin_func
 
@@ -65,7 +65,7 @@ class JinjaPluginIntercept(c.MutableMapping):
             return plugin_func
 
         plugin_load_ex: Exception | None = None
-        accept_deferred_marker = False
+        accept_marker = False
 
         try:
             plugin: AnsibleJinja2Plugin | None = self._plugin_loader.get(key)
@@ -82,7 +82,7 @@ class JinjaPluginIntercept(c.MutableMapping):
             if plugin:
                 # A missing filter/test can result in `plugin` being `None` instead of a `KeyError` being raised.
                 plugin_func = plugin.j2_function
-                accept_deferred_marker = plugin.accept_deferred_marker
+                accept_marker = plugin.accept_marker
 
         if not plugin_func:
             try:
@@ -93,12 +93,12 @@ class JinjaPluginIntercept(c.MutableMapping):
 
                 raise AnsibleTemplatePluginNotFoundError(self._plugin_loader.type, key) from None
 
-        plugin_func = self._wrap_and_set_func(key, plugin_func, accept_deferred_marker)
+        plugin_func = self._wrap_and_set_func(key, plugin_func, accept_marker)
 
         return plugin_func
 
     def __setitem__(self, key: str, value: t.Callable) -> None:
-        self._wrap_and_set_func(key, value, accept_deferred_marker=False)
+        self._wrap_and_set_func(key, value, accept_marker=False)
 
     def __delitem__(self, key):
         raise NotImplementedError()
@@ -120,20 +120,20 @@ class JinjaPluginIntercept(c.MutableMapping):
         raise NotImplementedError()  # dynamic container
 
     @staticmethod
-    def _wrap_test(func: t.Callable, plugin_name: str, accept_deferred_marker: bool) -> t.Callable:
+    def _wrap_test(func: t.Callable, plugin_name: str, accept_marker: bool) -> t.Callable:
         """Intercept point for all test plugins to ensure that args are properly templated/lazified."""
 
         @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> bool | DeferredMarker:
+        def wrapper(*args, **kwargs) -> bool | Marker:
             # DTFIX-MERGE: FDI050 consider replacing this and the nested behavior with split decorators?
-            if not accept_deferred_marker:
+            if not accept_marker:
                 if (first_marker := get_first_marker_arg(args, kwargs)) is not None:
                     return first_marker
 
             try:
-                with JinjaCallContext(eager_trip_deferred_marker=not accept_deferred_marker):
+                with JinjaCallContext(eager_trip_marker=not accept_marker):
                     test_res = func(*proxy_args(args), **proxy_kwargs(kwargs))
-            except DeferredMarkerError as ex:
+            except MarkerError as ex:
                 return ex.source
             except Exception as ex:
                 raise AnsibleTemplatePluginRuntimeError('test', plugin_name) from ex
@@ -155,20 +155,20 @@ class JinjaPluginIntercept(c.MutableMapping):
         return wrapper
 
     @staticmethod
-    def _wrap_filter(func: t.Callable, plugin_name: str, accept_deferred_marker: bool) -> t.Callable:
+    def _wrap_filter(func: t.Callable, plugin_name: str, accept_marker: bool) -> t.Callable:
         """Intercept point for all filter plugins to ensure that args are properly templated/lazified."""
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs) -> t.Any:
             # DTFIX-MERGE: FDI050 consider replacing this and the nested behavior with split decorators?
-            if not accept_deferred_marker:
+            if not accept_marker:
                 if (first_marker := get_first_marker_arg(args, kwargs)) is not None:
                     return first_marker
 
             try:
-                with JinjaCallContext(eager_trip_deferred_marker=not accept_deferred_marker):
+                with JinjaCallContext(eager_trip_marker=not accept_marker):
                     return _wrap_plugin_output(func(*proxy_args(args), **proxy_kwargs(kwargs)))
-            except DeferredMarkerError as ex:
+            except MarkerError as ex:
                 return ex.source
             except Exception as ex:
                 raise AnsibleTemplatePluginRuntimeError('filter', plugin_name) from ex
@@ -180,7 +180,7 @@ _TCallable = t.TypeVar("_TCallable", bound=t.Callable)
 
 
 class _DirectCall:
-    """Functions/methods marked `_DirectCall` bypass Jinja Environment checks for `DeferredMarker`."""
+    """Functions/methods marked `_DirectCall` bypass Jinja Environment checks for `Marker`."""
     # DTFIX-MERGE: refine this API and make it public?
     _marker_attr: str = "_directcall"
 
@@ -219,8 +219,8 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
     if instance is None:
         raise AnsibleTemplatePluginNotFoundError('lookup', plugin_name)
 
-    # if the lookup doesn't understand `DeferredMarker` and there's at least one in the top level, short-circuit by returning the first one we found
-    if not instance.accept_deferred_marker and (first_marker := get_first_marker_arg(lookup_terms, lookup_kwargs)) is not None:
+    # if the lookup doesn't understand `Marker` and there's at least one in the top level, short-circuit by returning the first one we found
+    if not instance.accept_marker and (first_marker := get_first_marker_arg(lookup_terms, lookup_kwargs)) is not None:
         return first_marker
 
     # don't pass these through to the lookup
@@ -228,7 +228,7 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
     errors = lookup_kwargs.pop('errors', 'strict')
 
     with JinjaCallContext(
-        eager_trip_deferred_marker=not instance.accept_deferred_marker,
+        eager_trip_marker=not instance.accept_marker,
         _te_invoking_action_name=te_invoking_action_name,
     ):
         # safely catch run failures per #5059
@@ -261,7 +261,7 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
                 #   letting non-list values through will trigger variable type checking warnings/errors
                 raise TypeError(f'returned {type(lookup_res)} instead of {list}')
 
-        except DeferredMarkerError as ex:
+        except MarkerError as ex:
             return ex.source
         except Exception as ex:
             if isinstance(ex, AnsibleTemplatePluginError):

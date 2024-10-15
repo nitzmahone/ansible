@@ -9,7 +9,7 @@ import typing as t
 import pytest
 
 from ansible.errors import AnsibleTemplateError, AnsibleUndefinedVariable
-from ansible.template.jinja_common import DeferredCapturedExceptionMarker, DeferredMarkerError
+from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
 from ansible.template.jinja_plugins import JinjaCallContext
 from ansible.template.utils import TemplateContext
@@ -152,7 +152,7 @@ def test_dict_get_with_default(template_context) -> None:
     my_dict = _AnsibleLazyTemplateMixin._try_create({})
     value = TrustedAsTemplate().tag("{{ 1 }}")
 
-    with JinjaCallContext(eager_trip_deferred_marker=False):
+    with JinjaCallContext(eager_trip_marker=False):
         # A mutation from another context is required to enter the code path where templating and/or storage can occur.
         my_dict['x'] = TrustedAsTemplate().tag("{{ 2 }}")
 
@@ -167,19 +167,19 @@ def test_dict_setdefault(template_context) -> None:
     my_dict = _AnsibleLazyTemplateMixin._try_create(dict(invalid_template=TRUST.tag("{{ 1/0 }}"), valid_template=TRUST.tag("{{ 1 }}")))
     value_for_default = TrustedAsTemplate().tag("{{ 'default' }}")
 
-    with JinjaCallContext(eager_trip_deferred_marker=False):
+    with JinjaCallContext(eager_trip_marker=False):
         assert my_dict.setdefault('valid_template') == 1
         assert my_dict.setdefault('valid_template', value_for_default) == 1
         assert my_dict.setdefault('nonexistent_key', value_for_default) is value_for_default
 
         result = my_dict.setdefault('invalid_template', value_for_default)
-        assert isinstance(result, DeferredCapturedExceptionMarker)
-        assert isinstance(result._marker_deferred_exception, AnsibleTemplateError)
+        assert isinstance(result, CapturedExceptionMarker)
+        assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
 
         # repeat to ensure we didn't record any change
         result = my_dict.setdefault('invalid_template', value_for_default)
-        assert isinstance(result, DeferredCapturedExceptionMarker)
-        assert isinstance(result._marker_deferred_exception, AnsibleTemplateError)
+        assert isinstance(result, CapturedExceptionMarker)
+        assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
 
 
 def test_dict_pop(template_context) -> None:
@@ -187,7 +187,7 @@ def test_dict_pop(template_context) -> None:
     my_dict = _AnsibleLazyTemplateMixin._try_create({})
     value_for_default = TRUST.tag("{{ 1 }}")
 
-    with JinjaCallContext(eager_trip_deferred_marker=False):
+    with JinjaCallContext(eager_trip_marker=False):
         # A mutation from another context is required to enter the code path where templating and/or storage can occur.
         my_dict['busted_template'] = TRUST.tag("{{ 1 / 0 }}")
 
@@ -196,16 +196,16 @@ def test_dict_pop(template_context) -> None:
     assert result is value_for_default
     assert "boguskey" not in my_dict
 
-    with JinjaCallContext(eager_trip_deferred_marker=True):
-        with pytest.raises(DeferredMarkerError):
+    with JinjaCallContext(eager_trip_marker=True):
+        with pytest.raises(MarkerError):
             my_dict.pop('busted_template')
 
     assert 'busted_template' in my_dict
 
     result = my_dict.pop('busted_template')
 
-    assert isinstance(result, DeferredCapturedExceptionMarker)
-    assert isinstance(result._marker_deferred_exception, AnsibleTemplateError)
+    assert isinstance(result, CapturedExceptionMarker)
+    assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
 
     assert 'busted_template' not in my_dict
 
@@ -220,8 +220,8 @@ def test_dict_popitem(template_context):
 
     assert my_dict.popitem() == ('valid_template', 1)
 
-    with JinjaCallContext(eager_trip_deferred_marker=True):
-        with pytest.raises(DeferredMarkerError):
+    with JinjaCallContext(eager_trip_marker=True):
+        with pytest.raises(MarkerError):
             my_dict.popitem()
 
     assert 'busted_template' in my_dict
@@ -233,8 +233,8 @@ def test_dict_popitem(template_context):
     key, result = raw_result
 
     assert key == 'busted_template'
-    assert isinstance(result, DeferredCapturedExceptionMarker)
-    assert isinstance(result._marker_deferred_exception, AnsibleTemplateError)
+    assert isinstance(result, CapturedExceptionMarker)
+    assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
 
     assert my_dict.popitem() == ('also_valid_template', 0)
 

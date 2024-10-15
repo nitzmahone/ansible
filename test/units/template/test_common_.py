@@ -7,7 +7,7 @@ import pytest
 import jinja2
 import jinja2.utils
 
-from ansible.template.jinja_common import DeferredMarkerError, DeferredMarker
+from ansible.template.jinja_common import MarkerError, Marker
 
 
 # NB: this module is named with a trailing underscore to work around a PyCharm/pydevd bug:
@@ -16,8 +16,8 @@ from ansible.template.jinja_common import DeferredMarkerError, DeferredMarker
 
 def get_dunder_methods_to_intercept() -> list[str]:
     """
-    Return a list of dunder methods on Jinja's StrictUndefined that should be overridden by Ansible's DeferredMarker.
-    When new methods are added in future Python/Jinja versions, they need to be added to DeferredMarker or the ignore_names list below.
+    Return a list of dunder methods on Jinja's StrictUndefined that should be overridden by Ansible's Marker.
+    When new methods are added in future Python/Jinja versions, they need to be added to Marker or the ignore_names list below.
     """
     dunder_names = set(name for name in dir(jinja2.StrictUndefined) if name.startswith('__') and name.endswith('__'))
 
@@ -49,7 +49,7 @@ def get_dunder_methods_to_intercept() -> list[str]:
         '__subclasshook__',
     }
 
-    # Some methods not intercepted by Jinja's StrictUndefined should be intercepted by DeferredMarker.
+    # Some methods not intercepted by Jinja's StrictUndefined should be intercepted by Marker.
     additional_method_names = {
         '__aiter__',
         '__delattr__',
@@ -66,10 +66,10 @@ def get_dunder_methods_to_intercept() -> list[str]:
 
 def test_jinja_undefined_shape():
     """
-    Assert that the internal shape of Jinja's StrictUndefined matches DeferredMarker's expectations.
+    Assert that the internal shape of Jinja's StrictUndefined matches Marker's expectations.
     If this test fails, it likely means Jinja has changed something about the internals of Undefined in a way we'll need to address.
     """
-    assert jinja2.StrictUndefined in DeferredMarker.__bases__  # ensure we're directly inheriting the base we're validating
+    assert jinja2.StrictUndefined in Marker.__bases__  # ensure we're directly inheriting the base we're validating
 
     required_attrs = (
         '_undefined_message',
@@ -83,109 +83,109 @@ def test_jinja_undefined_shape():
 
 
 @pytest.mark.parametrize("name", get_dunder_methods_to_intercept())
-def test_marker_methods(deferred_marker: DeferredMarker, name: str) -> None:
-    """Verify all expected dunder methods on DeferredMarker raise a DeferredMarkerError."""
-    method = getattr(deferred_marker, name)
+def test_marker_methods(marker: Marker, name: str) -> None:
+    """Verify all expected dunder methods on Marker raise a MarkerError."""
+    method = getattr(marker, name)
 
-    with pytest.raises(DeferredMarkerError) as err:
+    with pytest.raises(MarkerError) as err:
         method()
 
-    assert err.value.source is deferred_marker
+    assert err.value.source is marker
 
 
-def test_getattr_attribute_error(deferred_marker: DeferredMarker) -> None:
-    """Verify unknown dunder attributes on DeferredMarker raise an AttributeError."""
+def test_getattr_attribute_error(marker: Marker) -> None:
+    """Verify unknown dunder attributes on Marker raise an AttributeError."""
     with pytest.raises(AttributeError) as err:
-        getattr(deferred_marker, '__does_not_exist__')
+        getattr(marker, '__does_not_exist__')
 
-    assert err.value.obj is deferred_marker
+    assert err.value.obj is marker
     assert err.value.name == '__does_not_exist__'
 
 
-def test_getattr_propagation(deferred_marker: DeferredMarker) -> None:
-    """Verify unknown non-dunder attributes on DeferredMarker return self."""
-    assert deferred_marker.does_not_exist is deferred_marker
+def test_getattr_propagation(marker: Marker) -> None:
+    """Verify unknown non-dunder attributes on Marker return self."""
+    assert marker.does_not_exist is marker
 
 
-def test_getitem_propagation(deferred_marker: DeferredMarker) -> None:
+def test_getitem_propagation(marker: Marker) -> None:
     """Verify items return self."""
-    assert deferred_marker['does_not_exist'] is deferred_marker
+    assert marker['does_not_exist'] is marker
 
 
-def test_setattr(deferred_marker: DeferredMarker) -> None:
-    """Verify setattr raises DeferredMarkerError."""
-    with pytest.raises(DeferredMarkerError) as err:
-        deferred_marker.something = True
+def test_setattr(marker: Marker) -> None:
+    """Verify setattr raises MarkerError."""
+    with pytest.raises(MarkerError) as err:
+        marker.something = True
 
-    assert err.value.source is deferred_marker
-
-
-def test_setitem(deferred_marker: DeferredMarker) -> None:
-    """Verify setitem raises DeferredMarkerError."""
-    with pytest.raises(DeferredMarkerError) as err:
-        deferred_marker['something'] = True
-
-    assert err.value.source is deferred_marker
+    assert err.value.source is marker
 
 
-def test_slots(deferred_marker: DeferredMarker) -> None:
-    """Verify all DeferredMarker instances are slotted."""
-    assert isinstance(deferred_marker.__slots__, tuple)
-    assert not hasattr(deferred_marker, '__dict__')
+def test_setitem(marker: Marker) -> None:
+    """Verify setitem raises MarkerError."""
+    with pytest.raises(MarkerError) as err:
+        marker['something'] = True
+
+    assert err.value.source is marker
 
 
-def marker_attrs(marker: DeferredMarker) -> list[str]:
+def test_slots(marker: Marker) -> None:
+    """Verify all Marker instances are slotted."""
+    assert isinstance(marker.__slots__, tuple)
+    assert not hasattr(marker, '__dict__')
+
+
+def marker_attrs(marker: Marker) -> list[str]:
     """Returns a list of internal attributes for a Marker type (using known prefixes)."""
     return [name for name in dir(marker) if name.startswith('_undefined_') or name.startswith('_marker_')]
 
 
-def test_copy(deferred_marker: DeferredMarker) -> None:
-    """Verify copying an DeferredMarker works."""
-    copied = copy.copy(deferred_marker)
+def test_copy(marker: Marker) -> None:
+    """Verify copying an Marker works."""
+    copied = copy.copy(marker)
 
-    assert copied is not deferred_marker
+    assert copied is not marker
 
-    for attribute_name in marker_attrs(deferred_marker):
-        assert getattr(copied, attribute_name) is getattr(deferred_marker, attribute_name), attribute_name
+    for attribute_name in marker_attrs(marker):
+        assert getattr(copied, attribute_name) is getattr(marker, attribute_name), attribute_name
 
 
-def test_deepcopy(deferred_marker: DeferredMarker) -> None:
-    """Verify deep copying an DeferredMarker works."""
-    copied = copy.deepcopy(deferred_marker)
+def test_deepcopy(marker: Marker) -> None:
+    """Verify deep copying an Marker works."""
+    copied = copy.deepcopy(marker)
 
-    assert copied is not deferred_marker
+    assert copied is not marker
 
-    for attribute_name in marker_attrs(deferred_marker):
+    for attribute_name in marker_attrs(marker):
         copied_value = getattr(copied, attribute_name)
-        deferred_marker_value = getattr(deferred_marker, attribute_name)
+        marker_value = getattr(marker, attribute_name)
 
         if attribute_name == '_undefined_exception':
             # The `_undefined_exception` attribute is a type, so the identity remains unchanged.
-            assert copied_value is deferred_marker_value, attribute_name
-        elif attribute_name == '_undefined_obj' and deferred_marker_value is jinja2.utils.missing:
+            assert copied_value is marker_value, attribute_name
+        elif attribute_name == '_undefined_obj' and marker_value is jinja2.utils.missing:
             # The `_undefined_obj` attribute defaults to the `jinja2.utils.missing`, a singleton of `jinja2.utils.MissingType`.
-            assert copied_value is deferred_marker_value, attribute_name
-        elif type(deferred_marker_value) in (str, type(None)):
+            assert copied_value is marker_value, attribute_name
+        elif type(marker_value) in (str, type(None)):
             # Values of type `str` or `None` should be equal.
-            assert copied_value == deferred_marker_value, attribute_name
+            assert copied_value == marker_value, attribute_name
         else:
             # All other types should be actual copies.
-            assert copied_value is not deferred_marker_value, attribute_name
+            assert copied_value is not marker_value, attribute_name
 
 
-def test_pickle(deferred_marker: DeferredMarker) -> None:
-    """Verify pickling a DeferredMarker works."""
-    pickled = pickle.loads(pickle.dumps(deferred_marker))
+def test_pickle(marker: Marker) -> None:
+    """Verify pickling a Marker works."""
+    pickled = pickle.loads(pickle.dumps(marker))
 
-    assert pickled is not deferred_marker
+    assert pickled is not marker
 
-    for attribute_name in marker_attrs(deferred_marker):
+    for attribute_name in marker_attrs(marker):
         pickled_value = getattr(pickled, attribute_name)
-        deferred_marker_value = getattr(deferred_marker, attribute_name)
+        marker_value = getattr(marker, attribute_name)
 
-        if attribute_name == '_marker_deferred_exception':
-            # The `_marker_deferred_exception` attribute is an `Exception` instance, which doesn't support equality comparisons, compare as a `str` instead.
+        if attribute_name == '_marker_captured_exception':
+            # The `_marker_captured_exception` attribute is an `Exception` instance, which doesn't support equality comparisons, compare as a `str` instead.
             pickled_value = str(pickled_value)
-            deferred_marker_value = str(deferred_marker_value)
+            marker_value = str(marker_value)
 
-        assert pickled_value == deferred_marker_value, attribute_name
+        assert pickled_value == marker_value, attribute_name

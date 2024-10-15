@@ -29,7 +29,7 @@ from ansible.parsing.yaml import dumper
 from ansible.parsing.yaml.loader import AnsibleLoader
 from ansible.plugins.filter.core import to_yaml, to_nice_yaml
 from ansible.template.jinja_bits import _DEFAULT_UNDEF
-from ansible.template.jinja_common import DeferredMarkerError
+from ansible.template.jinja_common import MarkerError
 
 from units.mock.yaml_helper import YamlTestUtils
 from units.mock.vault_helper import TextVaultSecret
@@ -80,7 +80,7 @@ class TestAnsibleDumper(unittest.TestCase, YamlTestUtils):
         self.assertEqual(u_text, data_from_yaml)
 
     def test_undefined(self):
-        with pytest.raises(DeferredMarkerError):
+        with pytest.raises(MarkerError):
             self._dump_string(_DEFAULT_UNDEF, dumper=self.dumper)
 
 

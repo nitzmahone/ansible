@@ -147,7 +147,7 @@ import typing as t
 from ansible.errors import AnsibleError
 from ansible.module_utils.datatag import AnsibleTagHelper
 from ansible.plugins.lookup import LookupBase
-from ansible.template.jinja_common import DeferredUndefinedMarker
+from ansible.template.jinja_common import UndefinedMarker
 from ansible.template.jinja_plugins import JinjaCallContext
 from ansible.utils.path import unfrackpath
 
@@ -169,7 +169,7 @@ def _split_on(terms, spliters=','):
 
 
 class LookupModule(LookupBase):
-    accept_deferred_marker = True
+    accept_marker = True
 
     def _process_terms(self, terms: c.Iterable, variables: dict[str, t.Any], kwargs) -> list[str]:
 
@@ -254,11 +254,11 @@ class LookupModule(LookupBase):
 
 
 def _omit_undefined_markers(o: t.Any) -> t.Any:
-    """Recursively omit any DeferredUndefinedMarker instances from list/dict values."""
+    """Recursively omit any UndefinedMarker instances from list/dict values."""
     match o:
         case dict():
-            return {k: _omit_undefined_markers(v) for k, v in o.items() if not isinstance(v, DeferredUndefinedMarker)}
+            return {k: _omit_undefined_markers(v) for k, v in o.items() if not isinstance(v, UndefinedMarker)}
         case list() | set() | tuple():
-            return type(o)(_omit_undefined_markers(v) for v in o if not isinstance(v, DeferredUndefinedMarker))
+            return type(o)(_omit_undefined_markers(v) for v in o if not isinstance(v, UndefinedMarker))
         case _:
             return o

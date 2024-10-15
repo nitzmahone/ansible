@@ -21,7 +21,7 @@ from ansible.module_utils.datatag import (
     _try_get_internal_tags_mapping,
     AnsibleTagHelper,
 )
-from .jinja_common import JinjaCallContext, DeferredMarker
+from .jinja_common import JinjaCallContext, Marker
 
 from .utils import Omit, TemplateContext
 
@@ -59,7 +59,7 @@ class _AnsibleLazyTemplateMixin:
         type(''.startswith),  # DTFIX-MERGE: builtin_function_or_method
         type(Omit),
         # DTFIX-FUTURE: if we optimize to use type reference equality later, update this list to include relevant derived types
-        DeferredMarker,
+        Marker,
         # Jinja passes these into filters/tests via @pass_environment et al.; silently ignore them
         Environment,
         Context,

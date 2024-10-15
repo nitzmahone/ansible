@@ -28,27 +28,27 @@ class _TemplateConfig:
     raise_on_trust_check_fail = False  # DTFIX-MERGE: make this configurable with multiple options (warn, error, ignore)
 
 
-class DeferredMarkerError(UndefinedError):
+class MarkerError(UndefinedError):
     """
-    An Ansible specific subclass of Jinja's UndefinedError, used to preserve and later restore the original DeferredMarker instance that raised the error.
-    This error is only raised by DeferredMarker and should never escape the templating system.
+    An Ansible specific subclass of Jinja's UndefinedError, used to preserve and later restore the original Marker instance that raised the error.
+    This error is only raised by Marker and should never escape the templating system.
     """
 
-    def __init__(self, message: str, source: DeferredMarker) -> None:
+    def __init__(self, message: str, source: Marker) -> None:
         super().__init__(message)
 
         self.source = source
 
 
-AnsibleUndefinedError = DeferredMarkerError
-"""Backwards compatibility alias for DeferredMarkerError."""
+AnsibleUndefinedError = MarkerError
+"""Backwards compatibility alias for MarkerError."""
 
 
-class DeferredMarker(StrictUndefined, Tripwire):
+class Marker(StrictUndefined, Tripwire):
     """
     Extends Jinja's `StrictUndefined`, allowing any kind of error occurring during recursive templating operations to be captured and deferred.
-    Direct or managed access to most `DeferredMarker` attributes will raise a `DeferredMarkerError`, which usually ends the current innermost templating
-    operation and converts the `DeferredMarkerError` back to the origin DeferredMarker instance (subject to the `MarkerBehavior` in effect at the time).
+    Direct or managed access to most `Marker` attributes will raise a `MarkerError`, which usually ends the current innermost templating
+    operation and converts the `MarkerError` back to the origin Marker instance (subject to the `MarkerBehavior` in effect at the time).
     """
     # DTFIX-MERGE: ideally this would be abstract, since it's not supposed to be instantiated, but it has no abstract members currently
 
@@ -95,11 +95,11 @@ class DeferredMarker(StrictUndefined, Tripwire):
 
     def trip(self) -> t.NoReturn:
         """Raise an internal exception which can be converted back to this instance."""
-        raise DeferredMarkerError(self._undefined_message, self)
+        raise MarkerError(self._undefined_message, self)
 
     def __setattr__(self, name: str, value: t.Any) -> None:
         """
-        Any attempt to set an unknown attribute on a `DeferredMarker` should invoke the trip method to propagate the original context.
+        Any attempt to set an unknown attribute on a `Marker` should invoke the trip method to propagate the original context.
         This does not protect against mutation of known attributes, but the implementation is fairly simple.
         """
         try:
@@ -182,14 +182,14 @@ class DeferredMarker(StrictUndefined, Tripwire):
             setattr(cls, name, cls._fail_with_undefined_error)
 
 
-DeferredMarker._init_class()
+Marker._init_class()
 
 
-class DeferredTruncationMarker(DeferredMarker):
+class TruncationMarker(Marker):
     """
-    An `DeferredMarker` value was previously encountered and reported.
-    A subsequent `DeferredMarker` value (this instance) indicates the template may have been truncated as a result.
-    It will only be visible if the previous `DeferredMarker` was ignored/replaced instead of being tripped, which would raise an exception.
+    An `Marker` value was previously encountered and reported.
+    A subsequent `Marker` value (this instance) indicates the template may have been truncated as a result.
+    It will only be visible if the previous `Marker` was ignored/replaced instead of being tripped, which would raise an exception.
     """
     # DTFIX-MERGE: make this a singleton?
 
@@ -199,18 +199,18 @@ class DeferredTruncationMarker(DeferredMarker):
         super().__init__(hint='template potentially truncated')
 
 
-class DeferredUndefinedMarker(DeferredMarker):
-    """A `DeferredMarker` value that represents an undfined value encountered during templating."""
+class UndefinedMarker(Marker):
+    """A `Marker` value that represents an undfined value encountered during templating."""
 
     __slots__ = ()
 
 
-AnsibleUndefined = DeferredUndefinedMarker
-"""Backwards compatibility alias for DeferredUndefinedMarker."""
+AnsibleUndefined = UndefinedMarker
+"""Backwards compatibility alias for UndefinedMarker."""
 
 
-class DeferredExceptionMarker(DeferredMarker, metaclass=abc.ABCMeta):
-    """Base `DeferredMarker` class that wraps deferred exceptions raised during templating for later processing."""
+class ExceptionMarker(Marker, metaclass=abc.ABCMeta):
+    """Base `Marker` class that represents exceptions encountered and deferred during templating."""
 
     __slots__ = ()
 
@@ -223,28 +223,28 @@ class DeferredExceptionMarker(DeferredMarker, metaclass=abc.ABCMeta):
 
     def trip(self) -> t.NoReturn:
         """Raise an internal exception which can be converted back to this instance while maintaining the cause for callers that follow them."""
-        raise DeferredMarkerError(self._undefined_message, self) from self._as_exception()
+        raise MarkerError(self._undefined_message, self) from self._as_exception()
 
 
-class DeferredCapturedExceptionMarker(DeferredExceptionMarker):
-    """A `DeferredMarker` value that represents an exception raised during templating."""
+class CapturedExceptionMarker(ExceptionMarker):
+    """A `Marker` value that represents an exception raised during templating."""
 
-    __slots__ = ('_marker_deferred_exception',)
+    __slots__ = ('_marker_captured_exception',)
 
     def __init__(self, exception: Exception) -> None:
-        super().__init__(hint=f'A deferred captured exception marker was tripped: {exception}')
+        super().__init__(hint=f'A captured exception marker was tripped: {exception}')
 
-        self._marker_deferred_exception = exception
+        self._marker_captured_exception = exception
 
     def _as_exception(self) -> Exception:
-        return self._marker_deferred_exception
+        return self._marker_captured_exception
 
 
-def get_first_marker_arg(args: c.Sequence, kwargs: dict[str, t.Any]) -> DeferredMarker | None:
-    """Utility method to inspect plugin args and return the first `DeferredError` encountered, otherwise `None`."""
+def get_first_marker_arg(args: c.Sequence, kwargs: dict[str, t.Any]) -> Marker | None:
+    """Utility method to inspect plugin args and return the first `Marker` encountered, otherwise `None`."""
     # DTFIX-MERGE: this may or may not need to be public API, move back to utils or once usage is wrapped in a decorator?
     for arg in itertools.chain(args, kwargs.values()):
-        if isinstance(arg, DeferredMarker):
+        if isinstance(arg, Marker):
             return arg
 
     return None
@@ -254,15 +254,15 @@ def get_first_marker_arg(args: c.Sequence, kwargs: dict[str, t.Any]) -> Deferred
 class JinjaCallContext(_ambient_context.AmbientContextBase):
     """
     A context that wraps all Jinja plugin and method invocations to propagate per-call behaviors to consumers underneath.
-    When `eager_trip_deferred_marker=True`, `DeferredMarker` values are automatically "tripped" on retrieval or access when running Jinja
-    plugins/functions/methods that have not declared understanding of embedded `DeferredMarker` objects with `accept_deferred_marker`.
+    When `eager_trip_marker=True`, `Marker` values are automatically "tripped" on retrieval or access when running Jinja
+    plugins/functions/methods that have not declared understanding of embedded `Marker` objects with `accept_marker`.
     """
-    eager_trip_deferred_marker: bool
+    eager_trip_marker: bool
     _te_invoking_action_name: str | None = None
 
 
 def validate_arg_type(name: str, value: t.Any, allowed_type_or_types: type | tuple[type, ...], /) -> None:
-    """Validate the type of the given argument while preserving context for DeferredMarker values."""
+    """Validate the type of the given argument while preserving context for Marker values."""
     # DTFIX-MERGE: find a home for this as a general-purpose utliity method and expose it after some API review
     if isinstance(value, allowed_type_or_types):
         return
@@ -272,7 +272,7 @@ def validate_arg_type(name: str, value: t.Any, allowed_type_or_types: type | tup
     else:
         arg_type_description = ' or '.join(AnsibleTagHelper.base_type_name(item) for item in allowed_type_or_types)
 
-    if isinstance(value, DeferredMarker):
+    if isinstance(value, Marker):
         try:
             value.trip()
         except Exception as ex:

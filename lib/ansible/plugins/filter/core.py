@@ -32,9 +32,9 @@ from ansible.module_utils.common.text.converters import to_bytes, to_native, to_
 from ansible.module_utils.common.collections import is_sequence
 from ansible.module_utils.common.yaml import yaml_load, yaml_load_all
 from ansible.parsing.yaml.dumper import AnsibleDumper
-from ansible.plugins import accept_deferred_marker
+from ansible.plugins import accept_marker
 from ansible.template.jinja_bits import AnsibleEnvironment
-from ansible.template.jinja_common import DeferredMarkerError, get_first_marker_arg, DeferredUndefinedMarker, validate_arg_type
+from ansible.template.jinja_common import MarkerError, get_first_marker_arg, UndefinedMarker, validate_arg_type
 from ansible.utils.display import Display
 from ansible.utils.encrypt import do_encrypt, PASSLIB_AVAILABLE
 from ansible.utils.hashing import md5s, checksum_s
@@ -331,12 +331,12 @@ def to_uuid(string, namespace=UUID_NAMESPACE_ANSIBLE):
     return to_text(uuid.uuid5(uuid_namespace, to_native(string, errors='surrogate_or_strict')))
 
 
-@accept_deferred_marker
+@accept_marker
 def mandatory(a, msg=None):
     """Make a variable mandatory."""
     # DTFIX-MERGE: deprecate this filter; there are much better ways via undef, etc...
     #              also remember to remove unit test checking for _undefined_name
-    if isinstance(a, DeferredUndefinedMarker):
+    if isinstance(a, UndefinedMarker):
         if msg is not None:
             raise AnsibleFilterError(to_text(msg))
 
@@ -477,7 +477,7 @@ def extract(environment: AnsibleEnvironment, item, container, morekeys=None):
     for key in keys:
         try:
             value = environment.getitem(value, key)
-        except DeferredMarkerError as ex:
+        except MarkerError as ex:
             value = ex.source
 
     return value
@@ -627,7 +627,7 @@ def _cleansed_groupby(*args, **kwargs):
 # DTFIX-MERGE: make these dumb wrappers more dynamic
 
 
-@accept_deferred_marker
+@accept_marker
 def ansible_default(
     value: t.Any,
     default_value: t.Any = '',
@@ -636,7 +636,7 @@ def ansible_default(
     """Updated `default` filter that only coalesces classic undefined objects; other Undefined-derived types (eg, ErrorMarker) pass through."""
     validate_arg_type('boolean', boolean, bool)
 
-    if isinstance(value, DeferredUndefinedMarker):
+    if isinstance(value, UndefinedMarker):
         return default_value
 
     if boolean and not value:
@@ -645,7 +645,7 @@ def ansible_default(
     return value
 
 
-@accept_deferred_marker
+@accept_marker
 @functools.wraps(do_map)
 def wrapped_map(*args, **kwargs) -> t.Any:
     # DTFIX-MERGE: FDI050 consider replacing this with split decorators?
@@ -655,7 +655,7 @@ def wrapped_map(*args, **kwargs) -> t.Any:
     return do_map(*args, **kwargs)
 
 
-@accept_deferred_marker
+@accept_marker
 @functools.wraps(do_select)
 def wrapped_select(*args, **kwargs) -> t.Any:
     # DTFIX-MERGE: FDI050 consider replacing this with split decorators?
@@ -665,7 +665,7 @@ def wrapped_select(*args, **kwargs) -> t.Any:
     return do_select(*args, **kwargs)
 
 
-@accept_deferred_marker
+@accept_marker
 @functools.wraps(do_selectattr)
 def wrapped_selectattr(*args, **kwargs) -> t.Any:
     # DTFIX-MERGE: FDI050 consider replacing this with split decorators?
@@ -675,7 +675,7 @@ def wrapped_selectattr(*args, **kwargs) -> t.Any:
     return do_selectattr(*args, **kwargs)
 
 
-@accept_deferred_marker
+@accept_marker
 @functools.wraps(do_reject)
 def wrapped_reject(*args, **kwargs) -> t.Any:
     # DTFIX-MERGE: FDI050 consider replacing this with split decorators?
@@ -685,7 +685,7 @@ def wrapped_reject(*args, **kwargs) -> t.Any:
     return do_reject(*args, **kwargs)
 
 
-@accept_deferred_marker
+@accept_marker
 @functools.wraps(do_rejectattr)
 def wrapped_rejectattr(*args, **kwargs) -> t.Any:
     # DTFIX-MERGE: FDI050 consider replacing this with split decorators?
@@ -695,7 +695,7 @@ def wrapped_rejectattr(*args, **kwargs) -> t.Any:
     return do_rejectattr(*args, **kwargs)
 
 
-@accept_deferred_marker
+@accept_marker
 def type_debug(obj: t.Any, true_sight: bool = False) -> str:
     # DTFIX-MERGE: bikeshed the unmask/true_sight arg name
     if true_sight:

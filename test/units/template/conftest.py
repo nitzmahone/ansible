@@ -6,10 +6,10 @@ import pytest
 
 from ansible.errors import AnsibleError
 from ansible.module_utils.common._utils import get_all_subclasses
-from ansible.template.jinja_common import DeferredMarker, DeferredTruncationMarker, DeferredCapturedExceptionMarker
+from ansible.template.jinja_common import Marker, TruncationMarker, CapturedExceptionMarker
 from ansible.template.templar import Templar, TemplateOptions
 from ansible.template.utils import TemplateContext
-from ansible.template.vault import DeferredVaultExceptionMarker
+from ansible.template.vault import VaultExceptionMarker
 from ansible.utils.datatag.tags import UndecryptableVaultedValue
 
 
@@ -20,24 +20,24 @@ def template_context() -> t.Iterator[TemplateContext]:
         yield ctx
 
 
-def get_concrete_marker_types() -> list[type[DeferredMarker]]:
-    """Return a sorted list of DeferredMarker and its derived types."""
-    return sorted(get_all_subclasses(DeferredMarker, include_abstract=False, consider_self=True), key=lambda au: au.__name__)
+def get_concrete_marker_types() -> list[type[Marker]]:
+    """Return a sorted list of Marker and its derived types."""
+    return sorted(get_all_subclasses(Marker, include_abstract=False, consider_self=True), key=lambda au: au.__name__)
 
 
 @pytest.fixture(params=get_concrete_marker_types())
-def deferred_marker(request, template_context: TemplateContext) -> t.Iterator[DeferredMarker]:
+def marker(request, template_context: TemplateContext) -> t.Iterator[Marker]:
     """
-    A multiplying parameterized fixture that will yield an instance of each DeferredMarker-derived type.
+    A multiplying parameterized fixture that will yield an instance of each Marker-derived type.
     Depends on the template_context fixture, since these types can only be created under templating.
     """
     request_type = request.param
 
-    if issubclass(request_type, DeferredTruncationMarker):
+    if issubclass(request_type, TruncationMarker):
         yield request_type()
-    elif issubclass(request_type, DeferredVaultExceptionMarker):
+    elif issubclass(request_type, VaultExceptionMarker):
         yield request_type(UndecryptableVaultedValue(reason='i am an undecryptable reason').tag('i am undecryptable'))
-    elif issubclass(request_type, DeferredCapturedExceptionMarker):
+    elif issubclass(request_type, CapturedExceptionMarker):
         try:
             try:
                 raise Exception('bang')

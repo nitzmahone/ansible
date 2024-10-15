@@ -4,6 +4,6 @@
     - assert:
         that:
           - hostvars.something is defined
-          - hostvars.something.roundtrip_undecryptable | type_debug == "DeferredVaultExceptionMarker"
+          - hostvars.something.roundtrip_undecryptable | type_debug == "VaultExceptionMarker"
           - hostvars.something.groups is contains 'somegroup'
           - hostvars.something.groups is contains 'all'

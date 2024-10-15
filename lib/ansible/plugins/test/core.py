@@ -31,7 +31,7 @@ from ansible import errors
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
 from ansible.utils.datatag.tags import VaultedValue
 from ansible.module_utils.parsing.convert_bool import boolean
-from ansible.plugins import accept_deferred_marker
+from ansible.plugins import accept_marker
 from ansible.parsing.vault import is_encrypted_file
 from ansible.utils.display import Display
 from ansible.utils.version import SemanticVersion
@@ -260,14 +260,14 @@ def falsy(value, convert_bool=False):
     return not truthy(value, convert_bool=convert_bool)
 
 
-@accept_deferred_marker
+@accept_marker
 @functools.wraps(test_defined)
 def wrapped_test_defined(*args, **kwargs):
     """Wrapper around Jinja's `defined` test to avoid mutating the externally-owned function with our marker attribute."""
     return test_defined(*args, **kwargs)
 
 
-@accept_deferred_marker
+@accept_marker
 @functools.wraps(test_undefined)
 def wrapped_test_undefined(*args, **kwargs):
     """Wrapper around Jinja's `undefined` test to avoid mutating the externally-owned function with our marker attribute."""

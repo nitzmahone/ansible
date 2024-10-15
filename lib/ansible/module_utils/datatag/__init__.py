@@ -488,7 +488,7 @@ def _try_get_internal_tags_mapping(value: t.Any) -> _AnsibleTagsMapping:
         # handling Exception accounts for types that may raise something other than AttributeError
         return _EMPTY_INTERNAL_TAGS_MAPPING
 
-    # handle cases where the instance always returns something, such as DeferredMarker or MagicMock
+    # handle cases where the instance always returns something, such as Marker or MagicMock
     if type(tags) is not _AnsibleTagsMapping:  # pylint: disable=unidiomatic-typecheck
         return _EMPTY_INTERNAL_TAGS_MAPPING
 

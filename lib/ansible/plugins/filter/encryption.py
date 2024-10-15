@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from ansible.errors import AnsibleError
 from ansible.module_utils.common.text.converters import to_native, to_bytes
-from ansible.plugins import accept_deferred_marker
+from ansible.plugins import accept_marker
 from ansible.template.jinja_common import get_first_marker_arg
-from ansible.template.vault import DeferredVaultExceptionMarker
+from ansible.template.vault import VaultExceptionMarker
 from ansible.utils.datatag.tags import VaultedValue
 from ansible.parsing.vault import is_encrypted, VaultSecret, VaultLib
 from ansible.utils.display import Display
@@ -44,9 +44,9 @@ def do_vault(data, secret, salt=None, vault_id='filter_default', wrap_object=Fal
     return vault
 
 
-@accept_deferred_marker
+@accept_marker
 def do_unvault(vault, secret, vault_id='filter_default', vaultid=None):
-    if isinstance(vault, DeferredVaultExceptionMarker):
+    if isinstance(vault, VaultExceptionMarker):
         vault = vault._disarm()
 
     if (first_marker := get_first_marker_arg((vault, secret, vault_id, vaultid), {})) is not None:

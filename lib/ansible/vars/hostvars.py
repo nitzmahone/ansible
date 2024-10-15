@@ -24,7 +24,7 @@ from collections.abc import Mapping
 from ansible.inventory.manager import InventoryManager
 from ansible.module_utils import datatag
 from ansible.parsing.dataloader import DataLoader
-from ansible.template.jinja_common import DeferredMarker
+from ansible.template.jinja_common import Marker
 
 if t.TYPE_CHECKING:
     from ansible.vars.manager import VariableManager
@@ -43,7 +43,7 @@ class HostVars(Mapping):
 
         variable_manager._hostvars = self
 
-    def __getitem__(self, key: str) -> HostVarsVars | DeferredMarker:
+    def __getitem__(self, key: str) -> HostVarsVars | Marker:
         # does not use inventory.hosts, so it can create localhost on demand
         host = self._inventory.get_host(key)
 

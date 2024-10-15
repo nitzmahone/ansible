@@ -20,7 +20,7 @@ from __future__ import annotations
 from ansible.errors import AnsibleValueOmittedError, AnsibleError
 from ansible.module_utils.common.validation import check_type_str_no_conversion
 from ansible.plugins.action import ActionBase
-from ansible.template.jinja_common import DeferredUndefinedMarker
+from ansible.template.jinja_common import UndefinedMarker
 from ansible.template.templar import TemplateTrustCheckFailedError
 from ansible.template.utils import Omit
 from ansible.template.marker_behaviors import ReplacingMarkerBehavior, RoutingMarkerBehavior
@@ -60,7 +60,7 @@ class ActionModule(ActionBase):
         replacing_behavior = ReplacingMarkerBehavior()
 
         var_behavior = RoutingMarkerBehavior({
-            DeferredUndefinedMarker: replacing_behavior,
+            UndefinedMarker: replacing_behavior,
         })
 
         if verbosity <= self._display.verbosity:

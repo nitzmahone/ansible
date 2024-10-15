@@ -3,7 +3,7 @@ from __future__ import annotations
 
 class Broken:
     @property
-    def accept_deferred_marker(self):
+    def accept_marker(self):
         raise Exception('boom')
 
 

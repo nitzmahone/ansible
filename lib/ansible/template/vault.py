@@ -4,7 +4,7 @@ import typing as t
 
 from ansible._internal import _errors
 from ansible.module_utils.common.messages import ErrorDetail, ErrorMessage
-from ansible.template.jinja_common import DeferredExceptionMarker
+from ansible.template.jinja_common import ExceptionMarker
 from ansible.utils.datatag.tags import UndecryptableVaultedValue
 
 # noinspection PyProtectedMember
@@ -12,7 +12,7 @@ from ansible.module_utils.datatag.access import POORLY_NAMED_SENTINEL, _Mutating
 
 
 class UndecryptableVaultError(_errors.AnsibleCapturedError):
-    """Template-external error raised by DeferredVaultExceptionMarker when an undecryptable variable is accessed."""
+    """Template-external error raised by VaultExceptionMarker when an undecryptable variable is accessed."""
 
     context = 'vault'
     default_prefix = "Attempt to use undecryptable variable."
@@ -27,20 +27,20 @@ class UndecryptableAccessMutator(_MutatingAccessContextBase):
         # DTFIX-FUTURE: FDI037 - is_tagged_on may not be necessary, depending on layered mutation support
         if UndecryptableVaultedValue.is_tagged_on(o):
             self._tripped = True
-            return DeferredVaultExceptionMarker(o)
+            return VaultExceptionMarker(o)
 
         return POORLY_NAMED_SENTINEL
 
 
-class DeferredVaultExceptionMarker(DeferredExceptionMarker):
-    """A `DeferredMarker` value that represents an error accessing a vaulted value during templating."""
+class VaultExceptionMarker(ExceptionMarker):
+    """A `Marker` value that represents an error accessing a vaulted value during templating."""
 
     __slots__ = ('_marker_undecryptable_vaulted_value',)
 
     def __init__(self, value: str) -> None:
         # DTFIX-MERGE: when does this show up, should it contain more details?
-        #          see also DeferredCapturedExceptionMarker for a similar issue
-        super().__init__(hint='A deferred vault exception marker was tripped.')
+        #          see also CapturedExceptionMarker for a similar issue
+        super().__init__(hint='A vault exception marker was tripped.')
 
         self._marker_undecryptable_vaulted_value = value
 
