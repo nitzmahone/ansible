@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import typing as t
 
 # deprecated: description='typing.Self exists in Python 3.11+' python_version='3.10'
-from ..compat import typing as t
+from ..compat.typing import Self  # importing this as `t` breaks mypy `t.ClassVar` handling
 
 
 class AmbientContextBase:
@@ -28,14 +29,14 @@ class AmbientContextBase:
         cls._contextvar = contextvars.ContextVar(cls.__name__)
 
     @classmethod
-    def maybe(cls, *, create: bool) -> t.Self | contextlib.nullcontext:
+    def maybe(cls, *, create: bool) -> Self | contextlib.nullcontext:
         """
         Return an instance of the context if `create` is `True`, otherwise return a `nullcontext` instance.
         """
         return cls() if create else contextlib.nullcontext()
 
     @classmethod
-    def current(cls, optional: bool = False) -> t.Self | None:
+    def current(cls, optional: bool = False) -> Self | None:
         """
         Return the currently active context value for the current thread or coroutine.
         Raises ReferenceError if a context is not active, unless `optional` is `True`.
@@ -48,7 +49,7 @@ class AmbientContextBase:
 
             raise ReferenceError(f"A required {cls.__name__} context is not active.")
 
-    def __enter__(self) -> t.Self:
+    def __enter__(self) -> Self:
         # DTFIX-RELEASE: actively block multiple entry
         self._contextvar_token = self.__class__._contextvar.set(self)
         return self
