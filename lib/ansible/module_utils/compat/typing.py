@@ -20,6 +20,6 @@ except Exception:  # pylint: disable=broad-except
 
 
 # this import and patch occur after typing_extensions/typing imports since the presence of those modules affects dataclasses behavior
-from .._internal import _dataclass_annotation_patch
+from .._internal._patches import _dataclass_annotation_patch
 
-_dataclass_annotation_patch.patch_dataclasses_is_type()
+_dataclass_annotation_patch.DataclassesIsTypePatch.patch()

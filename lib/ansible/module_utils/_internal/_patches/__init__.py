@@ -1,96 +1,66 @@
+"""Infrastructure for patching callables with alternative implementations as needed based on patch-specific test criteria."""
+
 from __future__ import annotations
 
 import abc
-import contextlib
-import inspect
-
 import typing as t
 
 
 @t.runtime_checkable
 class PatchedTarget(t.Protocol):
-    """Protocol for objects with a close method."""
-    patch_enabled: bool
+    """Runtime-checkable protocol that allows identification of a patched function via `isinstance`."""
+
+    unpatched_implementation: t.Callable
 
 
 class CallablePatch(abc.ABC):
-    patch_enabled: t.ClassVar[bool] = False
-    _unpatched: t.ClassVar[t.Callable | None] = None
-    _patch_types: set[type[CallablePatch]] = set()
+    """Base class for patches that provides abstractions for validation of broken behavior, installation of patches, and validation of fixed behavior."""
 
-    _container: t.ClassVar[t.Any]
-    _attr: t.ClassVar[str]
+    target_container: t.ClassVar
+    """The module object containing the function to be patched."""
 
-    def __new__(cls, *args, **kwargs) -> t.Any:
-        # HACK: this should really be classmethod __call__
-        if cls.patch_enabled:
-            return cls._patched_impl(*args, **kwargs)
+    target_attribute: t.ClassVar[str]
+    """The attribute name on the target module to patch."""
 
-        return cls._unpatched(*args, **kwargs)
+    unpatched_implementation: t.ClassVar[t.Callable]
+    """The unpatched implementation. Available only after the patch has been applied."""
 
     @classmethod
     @abc.abstractmethod
-    def _needs_patch(cls) -> bool: ...
+    def is_patch_needed(cls) -> bool:
+        """Returns True if the patch is currently needed. Returns False if the original target does not need the patch or the patch has already been applied."""
 
-    @classmethod
     @abc.abstractmethod
-    def _patched_impl(cls, *args, **kwargs) -> t.Any: ...
+    def __call__(self, *args, **kwargs) -> t.Any:
+        """Invoke the patched or original implementation, depending on whether the patch has been applied or not."""
 
     @classmethod
-    def _get_current_value(cls) -> t.Any:
-        return getattr(cls._container, cls._attr)
+    def is_patched(cls) -> bool:
+        """Returns True if the patch has been applied, otherwise returns False."""
+        return isinstance(cls.get_current_implementation(), PatchedTarget)  # using a protocol lets us be more resilient to module unload weirdness
 
     @classmethod
-    def _set_patch(cls, patch: t.Callable) -> None:
-        setattr(cls._container, cls._attr, patch)
-
-    @classmethod
-    def _unpatch(cls) -> None:
-        cls._set_patch(cls._unpatched)
+    def get_current_implementation(cls) -> t.Any:
+        """Get the current (possibly patched) implementation from the patch target container."""
+        return getattr(cls.target_container, cls.target_attribute)
 
     @classmethod
     def patch(cls) -> None:
-        maybe_unpatched = cls._get_current_value()
-
-        if isinstance(maybe_unpatched, PatchedTarget):  # using a protocol lets us be more resilient to module unload weirdness
+        """Idempotently apply this patch (if needed)."""
+        if cls.is_patched():
             return
 
-        cls._unpatched = maybe_unpatched
+        cls.unpatched_implementation = cls.get_current_implementation()
 
-        if cls._needs_patch():
-            cls._set_patch(patch=cls)
-            cls.patch_enabled = True
+        if not cls.is_patch_needed():
+            return
 
-            if cls._needs_patch():
-                cls._unpatch()
-                raise RuntimeError(f"patching {cls._container.__name__}.{cls._attr} had no effect")
+        # __call__ requires an instance (otherwise it'll be __new__)
+        setattr(cls.target_container, cls.target_attribute, cls())
 
-    @classmethod
-    def __init_subclass__(cls, **kwargs):
-        CallablePatch._patch_types.add(cls)
+        if not cls.is_patch_needed():
+            return
 
-        if not inspect.isabstract(cls):
-            cls.patch()
+        setattr(cls.target_container, cls.target_attribute, cls.unpatched_implementation)
 
-    @classmethod
-    @contextlib.contextmanager
-    def disable_patches(cls) -> t.Iterable[None]:
-        for patch_type in cls._patch_types:
-            patch_type.patch_enabled = False
-
-        try:
-            yield
-        finally:
-            for patch_type in cls._patch_types:
-                patch_type.patch_enabled = True
-
-
-class UntagArgsPatch(CallablePatch, abc.ABC):
-    @classmethod
-    def _patched_impl(cls, *args, **kwargs):
-        from ...datatag import AnsibleTagHelper
-
-        return cls._unpatched(
-            *AnsibleTagHelper.as_untagged_type(args, recursive=True),
-            **AnsibleTagHelper.as_untagged_type(kwargs, recursive=True)
-        )
+        raise RuntimeError(f"Validation of '{cls.target_container.__name__}.{cls.target_attribute}' failed after patching.")
