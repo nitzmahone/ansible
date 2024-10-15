@@ -38,7 +38,7 @@ class DeferredVaultExceptionMarker(DeferredExceptionMarker):
     __slots__ = ('_marker_undecryptable_vaulted_value',)
 
     def __init__(self, value: str) -> None:
-        # DTFIX-U: when does this show up, should it contain more details?
+        # DTFIX-MERGE: when does this show up, should it contain more details?
         #          see also DeferredCapturedExceptionMarker for a similar issue
         super().__init__(hint='A deferred vault exception marker was tripped.')
 

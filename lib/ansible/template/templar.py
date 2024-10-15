@@ -518,7 +518,7 @@ class Templar:
         Evaluate a string Jinja expression in the current template context and return its result.
         Inline Jinja template delimiters (e.g., {{ }}, {% %}) are not supported within a string expression, and will fail with a syntax error.
         """
-        # DTFIX-U: this is an entry point into templating, it (might?) misbehave if already within a template context (see `except AnsibleUndefinedVariable`)
+        # DTFIX-MERGE: this is an entry point into templating, it could misbehave if already within a template context (see `except AnsibleUndefinedVariable`)
 
         return self.template(
             expression,
@@ -535,7 +535,7 @@ class Templar:
         If the expression result is not a boolean, an error will be raised.
         The ALLOW_BROKEN_CONDITIONALS configuration option can temporarily relax this requirement, allowing truthy conditionals to succeed.
         """
-        # DTFIX-U: this is an entry point into templating, it can return non-bool if already within a template context (see `except AnsibleUndefinedVariable`)
+        # DTFIX-MERGE: this is an entry point into templating, can return non-bool if already within a template context (see `except AnsibleUndefinedVariable`)
 
         if type(conditional) is bool:  # pylint: disable=unidiomatic-typecheck
             return conditional

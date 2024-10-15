@@ -50,7 +50,7 @@ class DeferredMarker(StrictUndefined, Tripwire):
     Direct or managed access to most `DeferredMarker` attributes will raise a `DeferredMarkerError`, which usually ends the current innermost templating
     operation and converts the `DeferredMarkerError` back to the origin DeferredMarker instance (subject to the `MarkerBehavior` in effect at the time).
     """
-    # DTFIX-U: ideally this would be abstract, since it's not supposed to be instantiated, but it has no abstract members currently
+    # DTFIX-MERGE: ideally this would be abstract, since it's not supposed to be instantiated, but it has no abstract members currently
 
     __slots__ = ('_marker_template_source',)
 
@@ -191,7 +191,7 @@ class DeferredTruncationMarker(DeferredMarker):
     A subsequent `DeferredMarker` value (this instance) indicates the template may have been truncated as a result.
     It will only be visible if the previous `DeferredMarker` was ignored/replaced instead of being tripped, which would raise an exception.
     """
-    # DTFIX-U: make this a singleton?
+    # DTFIX-MERGE: make this a singleton?
 
     __slots__ = ()
 
