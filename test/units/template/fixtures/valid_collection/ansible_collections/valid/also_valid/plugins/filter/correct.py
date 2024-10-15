@@ -18,7 +18,7 @@ class Bomb:
 
 
 class FilterModule:
-    def filters(self) -> dict[str, t.Callable]:
+    def filters(self) -> dict[str, t.Any]:
         return dict(
             also_also_valid=also_also_valid,
             runtime_error=runtime_error,

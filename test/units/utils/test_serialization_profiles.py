@@ -115,6 +115,8 @@ class _TestParameters:
             if self.lazy:
                 value = _AnsibleLazyTemplateMixin._try_create(value)
 
+            payload: str | Exception
+
             try:
                 payload = json.dumps(value, cls=encoder)
             except Exception as ex:

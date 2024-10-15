@@ -63,6 +63,7 @@ def get_dunder_methods_to_intercept() -> list[str]:
 
     return sorted(dunder_names - ignore_names | additional_method_names)
 
+
 def test_jinja_undefined_shape():
     """
     Assert that the internal shape of Jinja's StrictUndefined matches DeferredMarker's expectations.

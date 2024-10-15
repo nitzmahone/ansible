@@ -254,13 +254,13 @@ class Templar:
     def resolve_variable_expression(self, expression: str) -> t.Any:
         """Resolve a variable name or simple dotted variable expression."""
         components = expression.split('.')
-        
+
         try:
             for component in components:
                 validate_variable_name(component)
         except Exception as ex:
             raise AnsibleError(f'Invalid variable expression: {expression}', obj=expression) from ex
-        
+
         return self.evaluate_expression(TrustedAsTemplate().tag(expression))
 
     def template_literal_expression(self, expression: t.LiteralString, var_overrides: dict[str, t.Any] | None = None) -> t.Any:

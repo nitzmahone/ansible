@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import re
+import typing as t
 
 from unittest.mock import Mock
 
@@ -25,7 +26,7 @@ mock_ubuntu_platform_res = to_text(
 
 
 @pytest.fixture
-def mock_display(mocker: pytest_mock.MockerFixture) -> Mock:
+def mock_display(mocker: pytest_mock.MockerFixture) -> t.Iterator[Mock]:
     yield mocker.patch('ansible.executor.interpreter_discovery.display', Mock())
 
 

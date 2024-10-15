@@ -12,7 +12,7 @@ from ansible.module_utils.testing import patch_module_args
 
 from ..mock.module import module_env_mocker  # expose shared fixture in this part of the unit test tree
 
-assert module_env_mocker  # avoid unused imports
+assert module_env_mocker is not None  # avoid unused imports
 
 
 @pytest.fixture

@@ -46,7 +46,7 @@ display = Display()
 
 
 def timedout(result):
-    ''' Test if task result yields a time out'''
+    """ Test if task result yields a time out"""
     if not isinstance(result, MutableMapping):
         raise errors.AnsibleFilterError("The 'timedout' test expects a dictionary")
     return result.get('timedout', False) and result['timedout'].get('period', False)

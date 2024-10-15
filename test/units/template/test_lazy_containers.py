@@ -426,20 +426,26 @@ def test_lazy_container_operators(expression: str, expected_value: t.Any, expect
 
         assert type(result) is expected_type  # pylint: disable=unidiomatic-typecheck
 
+        expected_result: t.Any  # avoid type narrowing
+
         if issubclass(expected_type, list):
-            expected_types = [type(value) for value in expected_value]
+            assert isinstance(result, list)  # redundant, but assists mypy in understanding the type
+
+            expected_list_types = [type(value) for value in expected_value]
             expected_result = [value.value if isinstance(value, _LazyValue) else value for value in expected_value]
 
-            actual_types = [type(value) for value in list.__iter__(result)]
+            actual_list_types: list[type] = [type(value) for value in list.__iter__(result)]
 
-            assert actual_types == expected_types
+            assert actual_list_types == expected_list_types
         elif issubclass(expected_type, dict):
-            expected_types = {key: type(value) for key, value in expected_value.items()}
+            assert isinstance(result, dict)  # redundant, but assists mypy in understanding the type
+
+            expected_dict_types = {key: type(value) for key, value in expected_value.items()}
             expected_result = {key: value.value if isinstance(value, _LazyValue) else value for key, value in expected_value.items()}
 
-            actual_types = {key: type(value) for key, value in dict.items(result)}
+            actual_dict_types: dict[str, type] = {key: type(value) for key, value in dict.items(result)}
 
-            assert actual_types == expected_types
+            assert actual_dict_types == expected_dict_types
         elif issubclass(expected_type, Exception):
             result = str(result)  # unfortunately exceptions can't be compared for equality, so use the string representation instead
             expected_result = expected_value

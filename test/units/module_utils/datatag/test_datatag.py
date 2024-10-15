@@ -9,7 +9,7 @@ import datetime
 import inspect
 import json
 
-import mock
+import unittest.mock
 import pickle
 import sys
 
@@ -45,9 +45,12 @@ from ansible.module_utils.datatag import (
 from ansible.module_utils.datatag.tags import Deprecated
 
 try:
-    from ansible._internal._errors import CapturedErrorDetail
+    if sys.version_info >= (3, 11):  # avoid confusing mypy, as it will try to import this and trigger syntax errors on target-only Python versions
+        from ansible._internal._errors import CapturedErrorDetail
+    else:
+        raise ImportError()
 except ImportError:
-    class CapturedErrorDetail:
+    class CapturedErrorDetail:  # type: ignore[no-redef]
         pass
 
 
@@ -182,7 +185,7 @@ def test_ensure_empty_mapping_singleton() -> None:
 
 
 def test_get_tags_mapping_from_magicmock() -> None:
-    assert _try_get_internal_tags_mapping(mock.MagicMock()) is _EMPTY_INTERNAL_TAGS_MAPPING
+    assert _try_get_internal_tags_mapping(unittest.mock.MagicMock()) is _EMPTY_INTERNAL_TAGS_MAPPING
 
 
 def test_unexpected_reduce_type() -> None:
@@ -303,7 +306,7 @@ class ParamDesc:
     id_func: t.Callable[[t.Any], str] = _default_id_func
 
     @classmethod
-    def get_paramdesc_from_hint(cls, annot) -> t.Self:
+    def get_paramdesc_from_hint(cls, annot) -> ParamDesc:
         if annot:
             for meta in getattr(annot, '__metadata__', []):
                 if isinstance(meta, ParamDesc):
@@ -382,9 +385,9 @@ class AutoParamSupport:
 
 
 class TestDatatagTarget(AutoParamSupport):
-    later: t.Self = Later(locals())
+    later = t.cast(t.Self, Later(locals()))
 
-    tag_instances_with_reprs: t.Annotated[t.Tuple[AnsibleDatatagBase, str], ParamDesc(["value", "expected_repr"])] = [
+    tag_instances_with_reprs: t.Annotated[t.List[t.Tuple[AnsibleDatatagBase, str]], ParamDesc(["value", "expected_repr"])] = [
         (Deprecated(msg="hi mom, I am deprecated", removal_date=datetime.date(2023, 1, 2), removal_version="42.42"),
          "Deprecated(msg='hi mom, I am deprecated', removal_date='2023-01-02', removal_version='42.42')"),
         (Deprecated(msg="minimal"), "Deprecated(msg='minimal')")
@@ -407,10 +410,11 @@ class TestDatatagTarget(AutoParamSupport):
         datetime.time(21, 5, 30, 1900),
     ]
 
-    tagged_object_instances: t.List[AnsibleTaggedObject] = [ExampleTagWithContent(content_str=__file__).tag(item) for item in taggable_instances]
+    tagged_object_instances: t.List[AnsibleTaggedObject] = [
+        t.cast(AnsibleTaggedObject, ExampleTagWithContent(content_str=__file__).tag(item)) for item in taggable_instances]
 
     datatag_instances: t.List[AnsibleDatatagBase]
-    serializable_instances: t.List[AnsibleSerializable]
+    serializable_instances: t.List[object]
     serializable_instances_with_instance_copy: t.List[CopyProtocol]
     serializable_types: t.List[t.Type[AnsibleSerializable]]
 
@@ -472,7 +476,7 @@ class TestDatatagTarget(AutoParamSupport):
         tag = ExampleSingletonTag()
         src = tag.tag("tagged")
 
-        result = AnsibleTagHelper.tag_copy(src, value, value_type=value_type)
+        result: t.Collection = AnsibleTagHelper.tag_copy(src, value, value_type=value_type)
 
         assert isinstance(result, type_under_test)
         assert tag in AnsibleTagHelper.tags(result)
@@ -693,7 +697,7 @@ class TestDatatagTarget(AutoParamSupport):
 
         tag = ExampleSingletonTag()
 
-        result = AnsibleTagHelper.tag(value, tags=tag, value_type=value_type)
+        result: t.Collection = AnsibleTagHelper.tag(value, tags=tag, value_type=value_type)  # type: ignore[arg-type]
 
         assert isinstance(result, type_under_test)
         assert tag in AnsibleTagHelper.tags(result)
@@ -731,7 +735,7 @@ def create_container_test_cases(types: t.Iterable[t.Type[t.Collection]]) -> t.Li
     Return a list of test cases for the given types.
     Each type will result in two test cases, one that uses a generator and one that does not.
     """
-    sources = []
+    sources: list[ContainerTestCase] = []
 
     for type_under_test in sorted(types, key=lambda item: item.__name__):
         sources.extend((

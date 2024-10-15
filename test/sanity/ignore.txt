@@ -59,7 +59,6 @@ lib/ansible/plugins/cache/base.py ansible-doc!skip  # not a plugin, but a stub f
 lib/ansible/plugins/callback/__init__.py pylint:arguments-renamed
 lib/ansible/plugins/inventory/advanced_host_list.py pylint:arguments-renamed
 lib/ansible/plugins/inventory/host_list.py pylint:arguments-renamed
-lib/ansible/utils/collection_loader/_collection_finder.py pylint:deprecated-class
 lib/ansible/utils/_wrapt.py mypy-3.11!skip # vendored code
 lib/ansible/utils/_wrapt.py mypy-3.12!skip # vendored code
 lib/ansible/utils/_wrapt.py mypy-3.13!skip # vendored code
@@ -135,8 +134,6 @@ test/support/windows-integration/plugins/modules/win_user_right.ps1 pslint!skip
 test/support/windows-integration/plugins/modules/win_user.ps1 pslint!skip
 test/support/windows-integration/plugins/modules/win_wait_for.ps1 pslint!skip
 test/support/windows-integration/plugins/modules/win_whoami.ps1 pslint!skip
-test/units/module_utils/basic/test_deprecate_warn.py pylint:ansible-deprecated-no-version
-test/units/module_utils/basic/test_deprecate_warn.py pylint:ansible-deprecated-version
 test/units/module_utils/urls/fixtures/multipart.txt line-endings  # Fixture for HTTP tests that use CRLF
 test/units/utils/collection_loader/fixtures/collections/ansible_collections/testns/testcoll/plugins/action/my_action.py pylint:relative-beyond-top-level
 test/units/utils/collection_loader/fixtures/collections/ansible_collections/testns/testcoll/plugins/modules/__init__.py empty-init  # testing that collections don't need inits

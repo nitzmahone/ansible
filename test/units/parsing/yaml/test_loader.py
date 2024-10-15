@@ -477,7 +477,7 @@ def test_string_trust_propagation(trust_input_str: bool, override_trust_value: b
     if trust_input_str:
         data = TrustedAsTemplate().tag(data)
 
-    loader = functools.partial(AnsibleLoader, trusted_as_template=override_trust_value) if override_trust_value is not None else AnsibleLoader
+    loader: t.Any = functools.partial(AnsibleLoader, trusted_as_template=override_trust_value) if override_trust_value is not None else AnsibleLoader
 
     res = yaml.load(data, Loader=loader)
 

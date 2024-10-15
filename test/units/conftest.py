@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 import sys
-
+import typing as t
 
 try:
     from ansible.template.jinja_common import _TemplateConfig
@@ -21,7 +21,7 @@ def pytest_configure(config: pytest.Config):
 
 
 @pytest.fixture
-def collection_loader() -> None:
+def collection_loader() -> t.Iterator[None]:
     """
     Provide a collection loader with no collections.
     Useful for tests that fail without a collection loader, but that don't actually depend on collections.

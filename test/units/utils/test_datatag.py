@@ -31,7 +31,9 @@ class TestDatatagController(_TestDatatagTarget):
     ]
 
     # DTFIX-MERGE: ensure we're calculating the correct set of values for this context
-    container_test_cases = []
+    @classmethod
+    def container_test_cases(cls) -> list:
+        return []
 
     # HACK: avoid `SKIPPED` notifications for inherited tests with no data
     def test_tag_copy(self) -> None:

@@ -22,18 +22,19 @@ from ..module_utils.datatag.test_datatag import (
 
 
 class TestDatatagTemplar(_TestDatatagTarget):
-    later: t.Self = Later(locals(), _TestDatatagTarget)
+    later = t.cast(t.Self, Later(locals(), _TestDatatagTarget))
 
     lazy_serializable_types: t.Annotated[
         list[type[c.Collection]], ParamDesc(["lazy_type"])
     ] = list(
-        t.cast(c.Collection, known_type) for known_type in AnsibleSerializable._known_type_map.values() if issubclass(known_type, _AnsibleLazyTemplateMixin)
+        t.cast(type[c.Collection], known_type) for known_type in AnsibleSerializable._known_type_map.values()
+        if issubclass(known_type, _AnsibleLazyTemplateMixin)
     )
 
     serializable_instances: t.Annotated[list[object], ParamDesc(["non_lazy_value"])]
 
     taggable_container_instances: t.Annotated[list[c.Collection], ParamDesc(["non_lazy_value"])] = _TestDatatagTarget.taggable_container_instances
-    taggable_instances: t.Annotated[list[c.Collection], ParamDesc(["non_lazy_value"])] = taggable_container_instances
+    taggable_instances: t.Annotated[list[object], ParamDesc(["non_lazy_value"])] = t.cast(list[object], taggable_container_instances)
 
     @classmethod
     def post_init(cls, **kwargs):
@@ -57,7 +58,7 @@ class TestDatatagTemplar(_TestDatatagTarget):
         return create_container_test_parameters(test_case, value)
 
     @classmethod
-    def container_test_cases(cls) -> t.Annotated[list[tuple[t.Any, type]], ParamDesc(["non_lazy_value", "type_under_test"])]:
+    def container_test_cases(cls) -> t.Annotated[list[tuple[t.Any, type]], ParamDesc(["non_lazy_value", "type_under_test"])]:  # type: ignore[override]
         # for each lazy_serializable type, find exactly one matching taggable container instance
         # create the lazy type from the instance
         out_values = []

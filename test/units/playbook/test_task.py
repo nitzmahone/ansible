@@ -4,13 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from unittest.mock import patch
-
-from ansible import errors
-from ansible.parsing.yaml import objects
-
 from ansible.playbook.task import Task
-from ansible.plugins.loader import init_plugin_loader
 
 
 basic_command_task = dict(

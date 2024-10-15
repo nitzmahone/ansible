@@ -256,11 +256,6 @@ class ParameterError(AnsibleModuleError):
     pass
 
 
-class Sentinel(object):
-    def __new__(cls, *args, **kwargs):
-        return cls
-
-
 def additional_parameter_handling(params):
     """Additional parameter validation and reformatting"""
     # When path is a directory, rewrite the pathname to be the file inside of the directory

@@ -51,7 +51,9 @@ class ExampleTagWithContentAccessMutator(LoggingTagAccessNotifier, _MutatingAcce
 
     def _notify(self, o: t.Any) -> t.Any:
         super()._log(o)  # get parent logging behavior
-        return ExampleTagWithContent.get_tag(o).content_str
+        tag = ExampleTagWithContent.get_tag(o)
+        assert tag
+        return tag.content_str
 
 
 def test_ansibleaccesscontext_untagged():

@@ -103,19 +103,13 @@ class AnsibleTagHelper:
         return the_type
 
     @staticmethod
-    def as_untagged_type(value: _T, recursive: bool = False) -> _T:
-        """Returns an untagged native data type matching the input value, or the original input if the value was not a tagged type."""
+    def as_untagged_type(value: _T) -> _T:
+        """
+        Returns an untagged native data type matching the input value, or the original input if the value was not a tagged type.
+        Containers are not recursively processed.
+        """
         if isinstance(value, AnsibleTaggedObject):
             value = value._native_copy()
-        elif not recursive:
-            return value
-
-        if (sequence_type := type(value)) in (tuple, list):
-            value = sequence_type(AnsibleTagHelper.as_untagged_type(v, recursive=True) for v in value)
-        elif type(value) is dict:
-            value = dict(
-                ((AnsibleTagHelper.as_untagged_type(k, recursive=True), AnsibleTagHelper.as_untagged_type(v, recursive=True)) for (k, v) in value.items())
-            )
 
         return value
 

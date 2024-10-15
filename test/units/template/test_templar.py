@@ -21,7 +21,7 @@ import itertools
 import pathlib
 import sys
 
-import mock
+import unittest.mock
 import typing as t
 
 import pytest_mock
@@ -102,8 +102,8 @@ class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
         """Validate that trust checks are non-fatal when Templar's _raise_on_trust_check_fail is False"""
         untrusted_template = "{{ i_am_not_trusted }}"
 
-        with (mock.patch.object(_TemplateConfig, 'raise_on_trust_check_fail', False),
-              mock.patch.object(Display, 'warning', return_value=None) as mock_warning):
+        with (unittest.mock.patch.object(_TemplateConfig, 'raise_on_trust_check_fail', False),
+              unittest.mock.patch.object(Display, 'warning', return_value=None) as mock_warning):
             assert self.templar.template(untrusted_template) is untrusted_template
 
         assert mock_warning.call_count > 0
