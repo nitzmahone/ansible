@@ -77,9 +77,9 @@ INVALID_SPECS: tuple[tuple[dict[str, t.Any], dict[str, t.Any], str], ...] = (
     # Type is list elements is int; unable to convert this string
     ({'arg': {'type': 'list', 'elements': 'int'}}, {'arg': [1, "bad"]}, "is of type str and we were unable to convert to int"),
     # Type is int; unable to convert float
-    ({'arg': {'type': 'int'}}, {'arg': 42.1}, "'float'> and we were unable to convert to int:"),
+    ({'arg': {'type': 'int'}}, {'arg': 42.1}, "is of type float and we were unable to convert to int:"),
     # Type is list, elements is int; unable to convert float
-    ({'arg': {'type': 'list', 'elements': 'int'}}, {'arg': [42.1, 32, 2]}, "'float'> and we were unable to convert to int:"),
+    ({'arg': {'type': 'list', 'elements': 'int'}}, {'arg': [42.1, 32, 2]}, "is of type float and we were unable to convert to int:"),
     # type is a callable that fails to convert
     ({'arg': {'type': MOCK_VALIDATOR_FAIL}}, {'arg': "bad"}, "bad conversion"),
     # type is a list, elements is callable that fails to convert

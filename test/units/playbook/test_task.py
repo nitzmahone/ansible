@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from ansible.errors import AnsibleError
 from ansible.playbook.task import Task
 
 
@@ -38,6 +39,7 @@ class TestTask(unittest.TestCase):
         self.assertEqual(t.get_name(), 'command')
 
     def test_delay(self):
+        task_base = {'name': 'test', 'action': 'debug'}
         good_params = [
             (0, 0),
             (0.1, 0.1),
@@ -52,19 +54,19 @@ class TestTask(unittest.TestCase):
         for delay, expected in good_params:
             with self.subTest(f'type "{type(delay)}" was not cast to float', delay=delay, expected=expected):
                 p = dict(delay=delay)
-                p.update(self._task_base)
+                p.update(task_base)
                 t = Task().load_data(p)
                 self.assertEqual(t.get_validated_value('delay', t.fattributes.get('delay'), delay, None), expected)
 
         bad_params = [
-            ('E', ValueError),
-            ('1.E', ValueError),
-            ('E.1', ValueError),
+            ('E', AnsibleError),
+            ('1.E', AnsibleError),
+            ('E.1', AnsibleError),
         ]
         for delay, expected in bad_params:
             with self.subTest(f'type "{type(delay)} was cast to float w/o error', delay=delay, expected=expected):
                 p = dict(delay=delay)
-                p.update(self._task_base)
+                p.update(task_base)
                 t = Task().load_data(p)
                 with self.assertRaises(expected):
                     dummy = t.get_validated_value('delay', t.fattributes.get('delay'), delay, None)
