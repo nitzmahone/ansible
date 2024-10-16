@@ -9,7 +9,7 @@ from ..module_utils.datatag.test_datatag import TestDatatagTarget as _TestDatata
 
 class TestDatatagController(_TestDatatagTarget):
     tag_instances_with_reprs = [
-        (AnsibleSourcePosition(src='/himom.yml', line=42, col=42), "AnsibleSourcePosition(src='/himom.yml', line=42, col=42, redact=False)"),
+        (AnsibleSourcePosition(src='/himom.yml', line=42, col=42), "AnsibleSourcePosition(src='/himom.yml', line=42, col=42)"),
         (NotATemplate(), "NotATemplate()"),
         (TrustedAsTemplate(), "TrustedAsTemplate()"),
         (UndecryptableVaultedValue(reason="because i said so"), "UndecryptableVaultedValue(reason='because i said so')"),
