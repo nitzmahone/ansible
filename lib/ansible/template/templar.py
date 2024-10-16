@@ -470,8 +470,7 @@ class Templar:
 
         # If the input string template was source-tagged and the result is not, propagate the source tag to the new value.
         # This provides further contextual information when a template-derived value/var causes an error.
-        # DTFIX-PR: use an Origin tag with description that preserves the original data source and that it was the result of a template from XYZ
-        if (src_pos := AnsibleSourcePosition.get_tag(template)) and not AnsibleSourcePosition.is_tagged_on(result):
+        if not AnsibleSourcePosition.is_tagged_on(result) and (src_pos := AnsibleSourcePosition.get_tag(template)):
             try:
                 result = src_pos.tag(result)
             except NotTaggableError:

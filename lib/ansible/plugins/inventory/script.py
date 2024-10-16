@@ -293,7 +293,7 @@ class InventoryModule(BaseInventoryPlugin):
     @staticmethod
     def get_host_variables(path: str, host: str, origin: AnsibleSourcePosition) -> dict:
         """Runs <script> --host <hostname>, to determine additional host variables."""
-        origin = origin.replace(description=f'{origin.description} for host {host}')
+        origin = origin.replace(description=f'{origin.description} for host {host!r}')
 
         data, stderr, stderr_help_text = run_command(path, ['--host', host], origin)
 

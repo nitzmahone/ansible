@@ -202,12 +202,11 @@ class SourceContext:
         else:
             position = AnsibleSourcePosition.get_tag(value)
 
+        if RedactAnnotatedSourceContext.current(optional=True):
+            return cls.error('content redacted')
+
         if position and position.src:
             return cls.from_source_position(position)
-
-        # DTFIX-MERGE: can we consolidate RedactAnnotatedSourceContext with position.redact?
-        if RedactAnnotatedSourceContext.current(optional=True) or (position and position.redact):
-            return cls.error('content redacted')
 
         # DTFIX-RELEASE: redaction context may not be sufficient to avoid secret disclosure without SensitiveData and other enhancements
         if value is None:
@@ -219,7 +218,7 @@ class SourceContext:
             annotated_source_lines = [truncated_value]
 
         return SourceContext(
-            source_position=position or AnsibleSourcePosition(),
+            source_position=position or AnsibleSourcePosition.UNKNOWN,
             annotated_source_lines=annotated_source_lines,
             target_line=truncated_value,
         )

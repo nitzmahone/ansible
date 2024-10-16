@@ -17,6 +17,7 @@ class AmbientContextBase:
     """
     __slots__ = ('_contextvar_token',)
 
+    # DTFIX-MERGE: subclasses need to be able to opt-in to blocking nested contexts of the same type (basically optional per-callstack singleton behavior)
     # DTFIX-RELEASE: this class should enforce strict nesting of contexts; overlapping context lifetimes leads to incredibly difficult to
     #        debug situations with undefined behavior, so it should fail fast.
     # DTFIX-RELEASE: make frozen=True dataclass subclasses work (fix the mutability of the contextvar instance)

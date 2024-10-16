@@ -11,63 +11,65 @@ from ansible.module_utils.datatag import _tag_dataclass_kwargs, AnsibleDatatagBa
 @dataclasses.dataclass(**_tag_dataclass_kwargs)
 class AnsibleSourcePosition(AnsibleDatatagBase):
     """
-    A tag that stores origin information for the tagged value.
-    Since these are created very frequently, we do not ensure the validity of the inputs at creation-time.
+    A tag that stores origin metadata for a tagged value, intended for forensic/diagnostic use.
+    Source position metadata should not be used to make runtime decisions, as it is not guaranteed to be present or accurate.
+    Setting both `path` and `line_num` can result in diagnostic display of referenced file contents.
+    Either `path` or `description` must be present.
     """
-    # DTFIX-MERGE: is this public or not?
-    # DTFIX-MERGE: rename class to Origin, and rename src_pos/source_position/etc. args to origin
-    # DTFIX-MERGE: should we require one of path(src)/description?
-    src: str | None = None  # DTFIX-MERGE: rename src to path
-    """The path from which the tagged content originated. If not available, description should be provided."""
+    # DTFIX-MERGE: rename class to Origin, and rename src_pos/source_position/etc. locals/args to origin
+    src: str | None = None  # DTFIX-MERGE: rename src to path (don't forget the replace method)
+    """The path from which the tagged content originated."""
     description: str | None = None
-    """A description of the origin, for display to users. Primarily used when path is not set."""
-    # DTFIX-MERGE: should these end with no/num/_no/_num
-    line: t.Optional[int] = None
-    col: t.Optional[int] = None
-    redact: bool = False
-    """If set to True, content associated with this origin will not be displayed unless overriden by the user."""
+    """A description of the origin, for display to users."""
+    line: int | None = None  # DTFIX-MERGE: rename to line_num (don't forget the replace method)
+    """An optional line number, starting at 1."""
+    col: int | None = None  # DTFIX-MERGE: rename to col_num (don't forget the replace method)
+    """An optional column number, starting at 1."""
+
+    UNKNOWN: t.ClassVar[t.Self]
 
     @classmethod
     def get_or_create_tag(cls, value: t.Any, path: str | os.PathLike | None) -> AnsibleSourcePosition:
         """Return the tag from the given value, creating a tag from the provided path if no tag was found."""
-        tag = cls.get_tag(value)
-
-        if not tag:
-            if path is not None:
-                path = str(path)
-
-            tag = AnsibleSourcePosition(src=path)  # convert tagged strings and path-like values to a native str
+        if not (tag := cls.get_tag(value)):
+            if path:
+                tag = AnsibleSourcePosition(src=str(path))  # convert tagged strings and path-like values to a native str
+            else:
+                tag = AnsibleSourcePosition.UNKNOWN
 
         return tag
 
     def replace(
-            self,
-            src: str | types.EllipsisType = ...,
-            description: str | types.EllipsisType = ...,
-            line: t.Optional[int] | types.EllipsisType = ...,
-            col: t.Optional[int] | types.EllipsisType = ...,
+        self,
+        src: str | types.EllipsisType = ...,
+        description: str | types.EllipsisType = ...,
+        line: int | None | types.EllipsisType = ...,
+        col: int | None | types.EllipsisType = ...,
     ) -> t.Self:
-        return dataclasses.replace(self,
-                                   **{key: value for key, value in dict(
-                                       src=src,
-                                       description=description,
-                                       line=line,
-                                       col=col,
-                                   ).items() if value is not ...})  # type: ignore[arg-type]
+        """Return a new source position based on an existing one, with the given fields replaced."""
+        return dataclasses.replace(
+            self,
+            **{key: value for key, value in dict(
+                src=src,
+                description=description,
+                line=line,
+                col=col,
+            ).items() if value is not ...}  # type: ignore[arg-type]
+        )
 
     def _post_validate(self) -> None:
-        # DTFIX-MERGE: temporary hack to track down overlooked src='<...' cases, relative paths, and other things that aren't absolute paths
-        if self.src and not self.src.startswith('/'):
-            raise RuntimeError(f'OOPS, is {self.src!r} actually a path? -- it does not start with "/"')
+        if self.src:
+            if not self.src.startswith('/'):
+                raise RuntimeError('The `src` field must be an absolute path.')
+        elif not self.description:
+            raise RuntimeError('The `src` or `description` field must be specified.')
 
     def __str__(self) -> str:
         """Renders the source position in the form of file:line:col, omitting missing/invalid elements from the right."""
         if self.src:
             value = self.src
-        elif self.description:
-            value = self.description
         else:
-            value = '<unknown>'
+            value = self.description
 
         if self.line and self.line > 0:
             value += f':{self.line}'
@@ -79,6 +81,9 @@ class AnsibleSourcePosition(AnsibleDatatagBase):
             value += f' ({self.description})'
 
         return value
+
+
+AnsibleSourcePosition.UNKNOWN = AnsibleSourcePosition(description='<unknown>')
 
 
 @dataclasses.dataclass(**_tag_dataclass_kwargs)

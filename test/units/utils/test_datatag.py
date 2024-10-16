@@ -24,9 +24,9 @@ class TestDatatagController(_TestDatatagTarget):
     ]
 
     test_dataclass_tag_base_field_validation_pass_instances = [
-        (AnsibleSourcePosition, dict(src='')),
-        (AnsibleSourcePosition, dict(src='', line=1)),
-        (AnsibleSourcePosition, dict(src='', col=1)),
+        (AnsibleSourcePosition, dict(src='/something')),
+        (AnsibleSourcePosition, dict(src='/something', line=1)),
+        (AnsibleSourcePosition, dict(src='/something', col=1)),
         (VaultedValue, dict(ciphertext='')),
     ]
 

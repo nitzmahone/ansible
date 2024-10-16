@@ -549,7 +549,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     def _compile(self, source, filename):
         if csc := _CompileStateSmugglingCtx.current(optional=True):
-            origin = AnsibleSourcePosition.get_tag(csc.template_source) or AnsibleSourcePosition()
+            origin = AnsibleSourcePosition.get_tag(csc.template_source) or AnsibleSourcePosition.UNKNOWN
 
             source = '\n'.join((
                 "import sys; breakpoint() if type(sys.breakpointhook) is not type(breakpoint) else None",

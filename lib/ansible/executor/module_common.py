@@ -1054,7 +1054,7 @@ def recursive_finder(name, module_fqn, module_data, zf, date_time=None) -> Modul
 
 
 def _compile_module_ast(module_name: str, source_code: str) -> ast.Module:
-    origin = AnsibleSourcePosition.get_tag(source_code) or AnsibleSourcePosition()
+    origin = AnsibleSourcePosition.get_tag(source_code) or AnsibleSourcePosition.UNKNOWN
 
     # compile the source, process all relevant imported modules
     try:
