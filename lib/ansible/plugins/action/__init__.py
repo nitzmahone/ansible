@@ -1486,11 +1486,11 @@ class ActionBase(ABC):
         return result
 
 
-ChainTemplarCallback = t.Callable[[str, t.Any, Templar, t.Any], t.Any]
+TaskArgsFinalizerCallback = t.Callable[[str, t.Any, Templar, t.Any], t.Any]
 
 
 class TaskArgsChainTemplar(ChainTemplar):
-    def __init__(self, *sources: c.Mapping, templar: Templar, callback: ChainTemplarCallback, context: t.Any) -> None:
+    def __init__(self, *sources: c.Mapping, templar: Templar, callback: TaskArgsFinalizerCallback, context: t.Any) -> None:
         super().__init__(*sources, templar=templar)
 
         self.callback = callback
@@ -1505,7 +1505,7 @@ class TaskArgsFinalizer:
         self._args_layers = [arg for arg in args if arg is not None]
         self._templar = templar
 
-    def finalize(self, callback: ChainTemplarCallback, context: t.Any) -> dict[str, t.Any]:
+    def finalize(self, callback: TaskArgsFinalizerCallback, context: t.Any) -> dict[str, t.Any]:
         resolved_layers: list[c.Mapping[str, t.Any]] = []
 
         for layer in self._args_layers:

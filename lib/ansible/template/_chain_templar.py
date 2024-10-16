@@ -9,10 +9,7 @@ from ansible.template.templar import Templar
 
 
 class ChainTemplar:
-    # DTFIX-PR: most code involving chain maps doesn't (and can't currently) use ChainTemplar, so omit generally becomes obliterate instead
-    #          rather than making task args (the only usage of this class) support true omit, just have it obliterate as well
-    #          that at least gives us consistent results, and shouldn't vary much from what devel does, except for template before merge cases
-    #          those template before merge cases should largely disappear with our improved chain maps and increased lazification of templating
+    """A basic variable layering mechanism that supports templating and obliteration of `omit` values."""
     def __init__(self, *sources: c.Mapping, templar: Templar) -> None:
         self.sources = sources
         self.templar = templar
@@ -30,7 +27,7 @@ class ChainTemplar:
             try:
                 return self.template(key, value)
             except AnsibleValueOmittedError:
-                continue
+                break  # omit == obliterate - matches historical behavior where dict layers were squashed before templating was applied
             except Exception as ex:
                 raise AnsibleError(f'Error while resolving value for {key!r}.', obj=value) from ex
 
