@@ -4,7 +4,7 @@ import pathlib
 
 import pytest
 
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleError, AnsibleVariableTypeError
 from ansible.errors.utils import SourceContext
 from ansible.utils.datatag.tags import AnsibleSourcePosition
 from ansible.utils.display import _DeferredWarningContext
@@ -56,3 +56,11 @@ def test_suppress_extended_error_deprecation() -> None:
 
     assert len(ctx.get_deprecation_warnings()) == 1
     assert ctx.get_deprecation_warnings()[0].msg == 'The `suppress_extended_error` argument to `AnsibleError` is deprecated. Use `show_content=False` instead.'
+
+
+@pytest.mark.parametrize("obj, expected", (
+    (1, f'Variables of type {int.__name__!r} are not supported.'),
+    (int, f'Variables of type {type.__name__!r} are not supported.'),
+))
+def test_ansible_variable_type_error(obj: object, expected: str) -> None:
+    assert str(AnsibleVariableTypeError(obj=obj)) == expected

@@ -24,7 +24,7 @@ from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
 
 from ._transform import _type_transform_mapping
-from ..errors import AnsibleTemplateError
+from ..errors import AnsibleVariableTypeError
 from ..errors.handler import Skippable
 from ..vars.hostvars import HostVarsVars, HostVars
 
@@ -130,9 +130,9 @@ class _AnsibleLazyTemplateMixin:
                 # send the transformed result back through _try_create to ensure lazification (where applicable)
                 return _AnsibleLazyTemplateMixin._try_create(transform(item))
 
-        with Skippable, _TemplateConfig.unsupported_variable_type_handler.handle(AnsibleTemplateError, skip_on_ignore=True):
+        with Skippable, _TemplateConfig.unsupported_variable_type_handler.handle(AnsibleVariableTypeError, skip_on_ignore=True):
             if item_type not in _AnsibleLazyTemplateMixin._ignore_types and not isinstance(item, _AnsibleLazyTemplateMixin._ignore_types_tuple):
-                raise AnsibleTemplateError(f'Encountered unsupported {item_type.__name__!r} type.', obj=item)
+                raise AnsibleVariableTypeError(obj=item)
 
         return item
 

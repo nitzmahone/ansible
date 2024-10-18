@@ -839,13 +839,11 @@ _finalize_collection_map = {
 
 
 def _finalize_fallback_collection(o, mode, target_type) -> t.Collection[t.Any]:
-    # DTFIX-MERGE: what setting should we be using here?
-    #              we might want a separate one so that this can default to error (as the code previously did), while the internal-to-templating case is warning
     match _TemplateConfig.unsupported_variable_type_handler.action:
         case ErrorAction.WARN:
             display.warning(f'Converting unsupported type {AnsibleTagHelper.base_type_name(o)!r} to {target_type.__name__!r}.')
         case ErrorAction.FAIL:
-            raise AnsibleVariableTypeError(variable_type=type(o))
+            raise AnsibleVariableTypeError(obj=o)
 
     return _finalize_collection(o, mode, target_type)
 
@@ -881,7 +879,7 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
         return o
     
     if o_type in _DISALLOWED_TYPES:  # early abort for disallowed types that would otherwise be handled below
-        raise AnsibleVariableTypeError(variable_type=o_type)
+        raise AnsibleVariableTypeError(obj=o)
 
     if isinstance(o, c.Mapping):  # since isinstance checks are slower, this is separate from the exact type check above
         return _finalize_fallback_collection(o, mode, dict)
@@ -889,4 +887,4 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
     if isinstance(o, c.Sequence):  # since isinstance checks are slower, this is separate from the exact type check above
         return _finalize_fallback_collection(o, mode, list)
 
-    raise AnsibleVariableTypeError(variable_type=o_type)
+    raise AnsibleVariableTypeError(obj=o)

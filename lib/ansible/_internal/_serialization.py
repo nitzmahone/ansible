@@ -124,7 +124,7 @@ class AnsibleVariableVisitor:
                 result = AnsibleTagHelper.tag_copy(value, (self._visit(k, v) for k, v in enumerate(t.cast(t.Iterable, value))), value_type=value_type)
         else:
             if value_type not in _allowed_var_types:
-                raise AnsibleVariableTypeError(variable_type=value_type)
+                raise AnsibleVariableTypeError(obj=value)
 
             # supported scalar type that requires no special handling, just return as-is
             result = value
