@@ -11,7 +11,6 @@ from ansible.errors.handler import ErrorHandler, ErrorAction, Skippable, _SkipEx
 from ansible.utils.display import Display
 
 
-
 def test_skippable_ignore_skips_body() -> None:
     """Verify that `skip_on_ignore=True` skips the body within the context manager when `action=ErrorAction.IGNORE`."""
     body_ran = False
@@ -48,6 +47,7 @@ def test_skippable_non_skip_exception() -> None:
             raise ex_to_raise
 
     assert err.value is ex_to_raise
+
 
 @pytest.mark.parametrize("error_action", (ErrorAction.IGNORE, ErrorAction.WARN, ErrorAction.FAIL))
 def test_skip_on_ignore_missing_skippable(error_action: ErrorAction) -> None:
@@ -93,6 +93,7 @@ def test_warn_success(exception_type: type[Exception], mocker: pytest_mock.Mocke
         raise exception_type()
 
     assert isinstance(eaw.call_args.kwargs['exception'], exception_type)
+
 
 def test_warn_passes_other_exceptions(mocker: pytest_mock.MockerFixture) -> None:
     """Verify that `ErrorAction.WARN` does not suppress exception types not passed to `handle`, and that `error_as_warning` is not called for them."""

@@ -31,7 +31,7 @@ from ansible.module_utils.datatag import (
     _AnsibleTaggedTuple,
     AnsibleTagHelper,
 )
-from ..errors.handler import Skippable, ErrorAction
+from ..errors.handler import ErrorAction
 from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 
 from .datatag import _JinjaConstTemplate

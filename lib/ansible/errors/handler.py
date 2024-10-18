@@ -59,7 +59,7 @@ class ErrorHandler:
         self.action = action
 
     @contextlib.contextmanager
-    def handle(self, *args: type[BaseException], skip_on_ignore: bool = False) -> t.Iterable[None]:
+    def handle(self, *args: type[BaseException], skip_on_ignore: bool = False) -> t.Iterator[None]:
         """
         Handle the specified exception(s) using the defined error action.
         If `skip_on_ignore` is `True`, the body of the context manager will be skipped for `ErrorAction.IGNORE`.
