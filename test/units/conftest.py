@@ -8,11 +8,12 @@ import typing as t
 
 try:
     from ansible.template.jinja_common import _TemplateConfig
+    from ansible.errors.handler import ErrorHandler, ErrorAction
 except ImportError:
     # likely doing only module_utils testing; ignore here and rely on test_templar::test_trust_fail_raises_in_tests to ensure the right behavior
     pass
 else:
-    _TemplateConfig.raise_on_trust_check_fail = True
+    _TemplateConfig.untrusted_template_handler = ErrorHandler(ErrorAction.FAIL)
 
 
 def pytest_configure(config: pytest.Config):

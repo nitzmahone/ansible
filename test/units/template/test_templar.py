@@ -34,7 +34,7 @@ from ansible.errors import (
     AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplatePluginNotFoundError,
     AnsibleBrokenConditionalError, AnsibleTemplatePluginLoadError, AnsibleTemplatePluginRuntimeError, AnsibleTemplateError,
 )
-
+from ansible.errors.handler import ErrorAction, ErrorHandler
 from ansible.module_utils.datatag import AnsibleTagHelper, AnsibleDatatagBase
 from ansible.utils.collection_loader._collection_finder import _AnsibleCollectionFinder
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
@@ -93,23 +93,26 @@ class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
         """Ensure template trust check failures default to fatal for unit tests (set in units/conftest.py)"""
         from ansible.template.templar import TemplateTrustCheckFailedError
 
-        assert _TemplateConfig.raise_on_trust_check_fail is True
+        assert _TemplateConfig.untrusted_expression_handler.action is ErrorAction.FAIL
 
         with pytest.raises(TemplateTrustCheckFailedError):
             self.templar.template("{{ i_am_not_trusted }}")
 
     def test_trust_fail_warning_behavior(self):
-        """Validate that trust checks are non-fatal when Templar's _raise_on_trust_check_fail is False"""
+        """Validate that trust checks are non-fatal when TemplateConfig.untrusted_template_handler is set to `ErrorAction.WARN`."""
         untrusted_template = "{{ i_am_not_trusted }}"
 
-        with (unittest.mock.patch.object(_TemplateConfig, 'raise_on_trust_check_fail', False),
-              unittest.mock.patch.object(Display, 'warning', return_value=None) as mock_warning):
+        assert hasattr(_TemplateConfig, 'untrusted_template_handler')
+
+        with (unittest.mock.patch.object(_TemplateConfig, 'untrusted_template_handler', ErrorHandler(ErrorAction.WARN)),
+              unittest.mock.patch.object(Display, 'error_as_warning', return_value=None) as mock_warning):
             assert self.templar.template(untrusted_template) is untrusted_template
 
         assert mock_warning.call_count > 0
-        all_args = repr(mock_warning.call_args)
-        assert "Skipped untrusted template" in all_args
-        assert untrusted_template in all_args
+        warning_value = mock_warning.call_args.kwargs['exception']
+        assert isinstance(warning_value, TemplateTrustCheckFailedError)
+        assert "Skipped untrusted template" in warning_value.message
+        assert warning_value.obj == untrusted_template
 
     def test_is_possible_template(self):
         """This test ensures that a broken template still gets templated"""
@@ -737,7 +740,6 @@ def test_embedded_templates_disabled(template: str, expected: t.Any, mocker: pyt
     display = Display()
     warning_spy = mocker.spy(display, 'warning')
     mocker.patch.object(_TemplateConfig, 'allow_embedded_templates', False)
-    mocker.patch.object(_TemplateConfig, 'raise_on_trust_check_fail', False)  # test user-visible behavior
 
     assert Templar().evaluate_conditional(TRUST.tag(template)) == expected
     # At one point we were actually able to issue warnings here, but since the source could be a legit template-looking non-template,
@@ -956,7 +958,7 @@ def test_error_invalid_non_string_template():
     with pytest.raises(AnsibleTemplateError) as err:
         Templar().template(...)
 
-    assert f"of type {type(...)}" in err.value.message
+    assert f"of type {type(...).__name__!r}" in err.value.message
 
 
 def nuke_module_prefix(prefix):

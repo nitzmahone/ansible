@@ -855,6 +855,11 @@ def _finalize_collection(o, mode, target_type) -> t.Collection[t.Any]:
     return AnsibleTagHelper.tag(_finalize_collection_map[target_type](o, mode), AnsibleTagHelper.tags(o), value_type=target_type)
 
 
+_DISALLOWED_TYPES = {
+    range,
+}
+
+
 def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
     """Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions."""
     # DTFIX-MERGE: add tests to ensure this method doesn't drift from allowed types
@@ -874,6 +879,9 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
 
     if mode is not FinalizeMode.TOP_LEVEL:  # unsupported type (do not raise)
         return o
+    
+    if o_type in _DISALLOWED_TYPES:  # early abort for disallowed types that would otherwise be handled below
+        raise AnsibleVariableTypeError(variable_type=o_type)
 
     if isinstance(o, c.Mapping):  # since isinstance checks are slower, this is separate from the exact type check above
         return _finalize_fallback_collection(o, mode, dict)
