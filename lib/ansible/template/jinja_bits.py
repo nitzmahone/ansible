@@ -851,6 +851,7 @@ def _finalize_fallback_collection(o, mode, target_type) -> t.Collection[t.Any]:
 
 
 def _finalize_collection(o, mode, target_type) -> t.Collection[t.Any]:
+    # DTFIX-U: why does this function run faster than inlining the code? verify and explore
     return AnsibleTagHelper.tag(_finalize_collection_map[target_type](o, mode), AnsibleTagHelper.tags(o), value_type=target_type)
 
 
