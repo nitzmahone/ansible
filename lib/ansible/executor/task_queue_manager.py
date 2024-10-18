@@ -27,7 +27,8 @@ import multiprocessing.queues
 
 from ansible import constants as C
 from ansible import context
-from ansible.errors import AnsibleError, ExitCode
+from ansible.errors import AnsibleError, ExitCode, AnsibleCallbackError
+from ansible.errors.handler import ErrorHandler
 from ansible.executor.play_iterator import PlayIterator
 from ansible.executor.stats import AggregateStats
 from ansible.executor.task_result import TaskResult
@@ -131,6 +132,8 @@ class TaskQueueManager:
     RUN_UNREACHABLE_HOSTS = ExitCode.HOST_UNREACHABLE
     RUN_FAILED_BREAK_PLAY = 8  # never leaves PlaybookExecutor.run
     RUN_UNKNOWN_ERROR = 255  # never leaves PlaybookExecutor.run, intentionally includes the bit value for 8
+
+    _callback_dispatch_error_handler = ErrorHandler.from_config('_CALLBACK_DISPATCH_ERROR_BEHAVIOR')
 
     def __init__(
         self,
@@ -471,8 +474,8 @@ class TaskQueueManager:
                 continue
 
             for method in methods:
-                try:
-                    method(*new_args, **kwargs)
-                except Exception as ex:
-                    # TODO: add config toggle to make this fatal or not?
-                    display.error_as_warning(f"Failure using method {method_name!r} in callback plugin {callback_plugin!r}.", exception=ex)
+                with self._callback_dispatch_error_handler.handle(AnsibleCallbackError):
+                    try:
+                        method(*new_args, **kwargs)
+                    except Exception as ex:
+                        raise AnsibleCallbackError(f"Callback dispatch {method_name!r} failed for plugin {callback_plugin._load_name!r}.") from ex

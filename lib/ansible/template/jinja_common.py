@@ -3,6 +3,7 @@ from __future__ import annotations
 import abc
 import collections.abc as c
 import dataclasses
+import inspect
 import itertools
 import typing as t
 
@@ -14,6 +15,7 @@ from ansible.module_utils.datatag import Tripwire, AnsibleTagHelper, _untaggable
 
 from .utils import TemplateContext
 from ..errors import AnsibleUndefinedVariable, AnsibleTypeError
+from ..errors.handler import ErrorHandler, ErrorAction
 from ..module_utils._internal import _ambient_context
 
 from .jinja_patches import _patch_jinja
@@ -25,7 +27,10 @@ class _TemplateConfig:
     allow_embedded_templates = config.get_config_value("ALLOW_EMBEDDED_TEMPLATES")
     allow_broken_conditionals = config.get_config_value('ALLOW_BROKEN_CONDITIONALS')
     jinja_extensions = config.get_config_value('DEFAULT_JINJA2_EXTENSIONS')
-    raise_on_trust_check_fail = False  # DTFIX-MERGE: make this configurable with multiple options (warn, error, ignore)
+
+    unsupported_variable_type_handler = ErrorHandler.from_config('_TEMPLAR_UNSUPPORTED_VARIABLE_TYPE_BEHAVIOR')
+    untrusted_template_handler = ErrorHandler.from_config('_TEMPLAR_UNTRUSTED_TEMPLATE_BEHAVIOR')
+    untrusted_expression_handler = ErrorHandler(ErrorAction.FAIL)
 
 
 class MarkerError(UndefinedError):
@@ -53,6 +58,8 @@ class Marker(StrictUndefined, Tripwire):
     # DTFIX-MERGE: ideally this would be abstract, since it's not supposed to be instantiated, but it has no abstract members currently
 
     __slots__ = ('_marker_template_source',)
+
+    concrete_subclasses: t.ClassVar[set[type[Marker]]] = set()
 
     def __init__(
         self,
@@ -124,7 +131,9 @@ class Marker(StrictUndefined, Tripwire):
 
     @classmethod
     def __init_subclass__(cls, **kwargs) -> None:
-        _untaggable_types.add(cls)
+        if not inspect.isabstract(cls):
+            _untaggable_types.add(cls)
+            cls.concrete_subclasses.add(cls)
 
     @classmethod
     def _init_class(cls):

@@ -769,11 +769,13 @@ class Display(metaclass=Singleton):
         (out, err) = cmd.communicate()
         self.display(u"%s\n" % to_text(out), color=color)
 
-    def error_as_warning(self, msg: str, exception: BaseException) -> None:
+    def error_as_warning(self, msg: str | None, exception: BaseException) -> None:
         """Display an exception as a warning."""
 
         warning = _create_error_detail(exception, _traceback.TracebackEvent.WARNING)
-        warning.errors.insert(0, ErrorMessage(msg=msg))
+
+        if msg:
+            warning.errors.insert(0, ErrorMessage(msg=msg))
 
         self._warning(warning, wrap_text=False)
 

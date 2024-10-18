@@ -15,7 +15,7 @@ from jinja2.environment import Environment, Template, TemplateModule, TemplateEx
 from jinja2.compiler import Frame
 from jinja2.lexer import TOKEN_VARIABLE_BEGIN, TOKEN_VARIABLE_END, TOKEN_STRING, Lexer
 from jinja2.nativetypes import NativeCodeGenerator
-from jinja2.nodes import Const
+from jinja2.nodes import Const, EvalContext
 from jinja2.runtime import Context
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 from jinja2.utils import missing, LRUCache
@@ -26,12 +26,12 @@ from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.datatag import (
     AnsibleDatatagBase,
     _AnsibleTaggedDict,
-    _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES,
     _AnsibleTaggedList,
     _AnsibleTaggedSet,
     _AnsibleTaggedTuple,
     AnsibleTagHelper,
 )
+from ..errors.handler import Skippable, ErrorAction
 from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 
 from .datatag import _JinjaConstTemplate
@@ -44,7 +44,7 @@ from .jinja_common import (
     TruncationMarker,
     validate_arg_type,
 )
-from .utils import Omit, TemplateContext
+from .utils import Omit, TemplateContext, PASS_THROUGH_SCALAR_VAR_TYPES
 from .lazy_containers import (
     _AnsibleLazyTemplateMixin,
     _AnsibleLazyTemplateDict,
@@ -59,7 +59,6 @@ from ..module_utils._internal import _ambient_context, _dataclass_validation
 from ..module_utils.datatag.access import AnsibleAccessContext
 from ..plugins.loader import filter_loader, test_loader
 from ..vars.hostvars import HostVars, HostVarsVars
-
 
 JINJA2_OVERRIDE = '#jinja2:'
 
@@ -230,7 +229,7 @@ class AnsibleContext(Context):
 @dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
 class ArgSmuggler:
     """
-    Utility wrapper to wrap/unwrap args passed to Jinja Template.render and TemplateExpression.__call__.
+    Utility wrapper to wrap/unwrap args passed to Jinja `Template.render` and `TemplateExpression.__call__`.
     e.g., see https://github.com/pallets/jinja/blob/3.1.3/src/jinja2/environment.py#L1296 and
     https://github.com/pallets/jinja/blob/3.1.3/src/jinja2/environment.py#L1566.
     """
@@ -813,35 +812,72 @@ class FinalizeMode(enum.Enum):
 _FINALIZE_MAPPING_TYPES = frozenset((dict, _AnsibleTaggedDict, _AnsibleLazyTemplateDict, HostVars, HostVarsVars))
 _FINALIZE_SEQUENCE_TYPES = frozenset((list, _AnsibleTaggedList, _AnsibleLazyTemplateList, tuple, _AnsibleTaggedTuple, set, _AnsibleTaggedSet))
 
+# Jinja passes these into filters/tests via @pass_environment
+_AnsibleLazyTemplateMixin._register_ignore_types(
+    AnsibleContext,
+    AnsibleEnvironment,
+    EvalContext,
+)
+
+
+def _finalize_dict(o: t.Any, mode: FinalizeMode) -> t.Iterator[tuple[t.Any, t.Any]]:
+    for k, v in o.items():
+        if v is not Omit:
+            yield _finalize_template_result(k, mode), _finalize_template_result(v, mode)
+
+
+def _finalize_list(o: t.Any, mode: FinalizeMode) -> t.Iterator[t.Any]:
+    for v in o:
+        if v is not Omit:
+            yield _finalize_template_result(v, mode)
+
+
+_finalize_collection_map = {
+    list: _finalize_list,
+    dict: _finalize_dict,
+}
+
+
+def _finalize_fallback_collection(o, mode, target_type) -> t.Collection[t.Any]:
+    # DTFIX-MERGE: what setting should we be using here?
+    #              we might want a separate one so that this can default to error (as the code previously did), while the internal-to-templating case is warning
+    match _TemplateConfig.unsupported_variable_type_handler.action:
+        case ErrorAction.WARN:
+            display.warning(f'Converting unsupported type {AnsibleTagHelper.base_type_name(o)!r} to {target_type.__name__!r}.')
+        case ErrorAction.FAIL:
+            raise AnsibleVariableTypeError(variable_type=type(o))
+
+    return _finalize_collection(o, mode, target_type)
+
+
+def _finalize_collection(o, mode, target_type) -> t.Collection[t.Any]:
+    return AnsibleTagHelper.tag(_finalize_collection_map[target_type](o, mode), AnsibleTagHelper.tags(o), value_type=target_type)
+
 
 def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
     """Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions."""
     # DTFIX-MERGE: add tests to ensure this method doesn't drift from allowed types
     o_type = type(o)
 
-    value_type: type[dict | list | tuple | set]
-
-    if o_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES:
+    if o_type in PASS_THROUGH_SCALAR_VAR_TYPES:
         return o
-    elif o_type in _FINALIZE_MAPPING_TYPES:
-        value_expression = ((
-            _finalize_template_result(k, mode),
-            _finalize_template_result(v, mode)
-        ) for k, v in o.items() if v is not Omit)
-        value_type = dict
-    elif o_type in _FINALIZE_SEQUENCE_TYPES:
-        # silently convert known sequence types to list
-        value_expression = (_finalize_template_result(v, mode) for v in o if v is not Omit)
-        value_type = list
-    elif isinstance(o, Marker):
-        # this early return assumes handle_marker follows our variable type rules
+
+    if o_type in _FINALIZE_MAPPING_TYPES:  # silently convert known mapping types to dict
+        return _finalize_collection(o, mode, dict)
+
+    if o_type in _FINALIZE_SEQUENCE_TYPES:  # silently convert known sequence types to list
+        return _finalize_collection(o, mode, list)
+
+    if o_type in Marker.concrete_subclasses:  # this early return assumes handle_marker follows our variable type rules
         return TemplateContext.current().templar.marker_behavior.handle_marker(o)
-    elif o is Omit:
-        return o  # allow pass through of omit for later handling after top-level finalize completes
-    elif mode is FinalizeMode.TOP_LEVEL:  # unsupported type (raise)
-        raise AnsibleVariableTypeError(variable_type=o_type)
-    else:  # unsupported type (do not raise)
+
+    if mode is not FinalizeMode.TOP_LEVEL:  # unsupported type (do not raise)
         return o
 
-    # avoiding tag_copy to minimize call stack depth when dealing with recursive template calls on deeply nested lazy containers
-    return AnsibleTagHelper.tag(value_expression, AnsibleTagHelper.tags(o), value_type=value_type)
+    if isinstance(o, c.Mapping):  # since isinstance checks are slower, this is separate from the exact type check above
+        return _finalize_fallback_collection(o, mode, dict)
+
+    if isinstance(o, c.Sequence):  # since isinstance checks are slower, this is separate from the exact type check above
+        return _finalize_fallback_collection(o, mode, list)
+
+    raise AnsibleVariableTypeError(variable_type=o_type)

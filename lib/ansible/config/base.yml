@@ -223,6 +223,18 @@ CACHE_PLUGIN_TIMEOUT:
   - {key: fact_caching_timeout, section: defaults}
   type: integer
   yaml: {key: facts.cache.timeout}
+_CALLBACK_DISPATCH_ERROR_BEHAVIOR:
+  name: Callback dispatch error behavior
+  default: warn
+  description:
+    - Action to take when a callback dispatch results in an error.
+  type: choices
+  choices: &choices_ignore_warn_fail
+    - ignore
+    - warn
+    - fail
+  env: [ { name: _ANSIBLE_CALLBACK_DISPATCH_ERROR_BEHAVIOR } ]
+  version_added: '2.19'
 COLLECTIONS_SCAN_SYS_PATH:
   name: Scan PYTHONPATH for installed collections
   description: A boolean to enable or disable scanning the sys.path for installed collections.
@@ -2093,6 +2105,27 @@ TASK_TIMEOUT:
   - {key: task_timeout, section: defaults}
   type: integer
   version_added: '2.10'
+_TEMPLAR_UNSUPPORTED_VARIABLE_TYPE_BEHAVIOR:
+  name: Templar unsupported variable type behavior
+  default: warn
+  description:
+    - Action to take when an unsupported variable type is encountered during templating.
+    - This setting has no effect on the inability to store unsupported variable types as the result of templating.
+  type: choices
+  choices: *choices_ignore_warn_fail
+  env: [{name: _ANSIBLE_TEMPLAR_UNSUPPORTED_VARIABLE_TYPE_BEHAVIOR}]
+  version_added: '2.19'
+_TEMPLAR_UNTRUSTED_TEMPLATE_BEHAVIOR:
+  name: Templar untrusted template behavior
+  default: warn
+  description:
+    - Action to take when processing of an untrusted template is skipped.
+    - For `ignore` or `warn`, the input template string is returned as-is.
+    - This setting has no effect on expressions.
+  type: choices
+  choices: *choices_ignore_warn_fail
+  env: [{name: _ANSIBLE_TEMPLAR_UNTRUSTED_TEMPLATE_BEHAVIOR}]
+  version_added: '2.19'
 WORKER_SHUTDOWN_POLL_COUNT:
   name: Worker Shutdown Poll Count
   default: 0

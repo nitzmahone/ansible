@@ -25,6 +25,7 @@ from ansible.errors import (
 from ansible.module_utils.datatag import (
     AnsibleTaggedObject, NotTaggableError, AnsibleTagHelper
 )
+from ..errors.handler import Skippable
 from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 from ansible.module_utils.datatag.access import AnsibleAccessContext
 
@@ -611,35 +612,33 @@ class Templar:
         raise AnsibleBrokenConditionalError(msg, obj=conditional)
 
     @staticmethod
-    def _trust_check(data: str, mode: TemplateMode) -> bool:
+    def _trust_check(value: str, mode: TemplateMode) -> bool:
         """
-        Return True if the given template data is trusted for templating, otherwise return False.
+        Return True if the given value is trusted for templating, otherwise return False.
 
-        Emits a warning if the data is not trusted.
+        When the value is not trusted, a warning or error may be generated, depending on configuration.
         """
-        if not TrustedAsTemplate.is_tagged_on(data):
-            help_text = ('Expressions and templates must be defined by trusted sources such as playbooks, roles, etc., '
-                         'and not untrusted sources such as module results.')
+        if TrustedAsTemplate.is_tagged_on(value):
+            return True
 
-            if _TemplateConfig.raise_on_trust_check_fail or mode is TemplateMode.EXPRESSION:
-                thing = "expression" if mode is TemplateMode.EXPRESSION else "template"
+        handler = _TemplateConfig.untrusted_expression_handler if mode is TemplateMode.EXPRESSION else _TemplateConfig.untrusted_template_handler
 
-                raise TemplateTrustCheckFailedError(
-                    message=f'Failing on untrusted {thing}.',
-                    help_text=help_text,
-                    obj=data,
-                )
+        with Skippable, handler.handle(TemplateTrustCheckFailedError, skip_on_ignore=True):
+            raise TemplateTrustCheckFailedError(
+                message=f'Skipped untrusted {"expression" if mode is TemplateMode.EXPRESSION else "template"}.',
+                help_text=(
+                    'Expressions and templates must be defined by trusted sources such as playbooks, roles, etc., '
+                    'and not untrusted sources such as module results.'
+                ),
+                obj=value,
+            )
 
-            # DTFIX-FUTURE: Once we have defined what methods are entry-points into templating, we can use inspect.stack() to find the most recent non-template
-            #   caller and use that for source position when no source position is available. This could be useful for situations where the template
-            #   was embedded in a plugin, or a plugin is otherwise responsible for losing the source position and/or trust. We can't just use the first
-            #   non-template caller as that will lead to false positivies for re-entrant calls (e.g. template plugins that call into templar).
+        # DTFIX-FUTURE: Look through the TemplateContext hierarchy to find the most recent non-template
+        #   caller and use that for source position when no source position is available. This could be useful for situations where the template
+        #   was embedded in a plugin, or a plugin is otherwise responsible for losing the source position and/or trust. We can't just use the first
+        #   non-template caller as that will lead to false positivies for re-entrant calls (e.g. template plugins that call into templar).
 
-            _display.warning('Skipped untrusted template.', help_text=help_text, obj=data)
-
-            return False
-
-        return True
+        return False
 
     def proxy_or_render_template(self, item: t.Any, options: TemplateOptions | None = None) -> t.Any:
         # DTFIX-MERGE: always blindly access item here?

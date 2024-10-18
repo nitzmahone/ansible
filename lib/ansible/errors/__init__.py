@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from json import JSONDecodeError
 
 from ansible.module_utils.common.text.converters import to_text
+from ..module_utils.datatag import AnsibleTagHelper
 from ..utils.datatag.tags import AnsibleSourcePosition
 
 from .utils import concat_message, get_chained_message, RedactAnnotatedSourceContext, SourceContext, _dedupe_and_concat_message_chain
@@ -411,7 +412,7 @@ class AnsibleVariableTypeError(AnsibleRuntimeError):
     """An error due to attempted storage of an unsupported variable type."""
 
     def __init__(self, *, variable_type: type) -> None:
-        super().__init__(f'Variables of type {variable_type} are not supported.')
+        super().__init__(f'Variables of type {AnsibleTagHelper.base_type_name(variable_type)!r} are not supported.')
 
 
 class AnsibleValueOmittedError(AnsibleTemplateError):

@@ -17,22 +17,22 @@
 
 from __future__ import annotations
 
+import collections.abc as c
 import typing as t
 
-from collections.abc import Mapping
-
-from ansible.inventory.manager import InventoryManager
 from ansible.module_utils import datatag
-from ansible.parsing.dataloader import DataLoader
-from ansible.template.jinja_common import Marker
 
 if t.TYPE_CHECKING:
+    from ansible.inventory.manager import InventoryManager
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.template.jinja_common import Marker
     from ansible.vars.manager import VariableManager
+
 
 __all__ = ['HostVars', 'HostVarsVars']
 
 
-class HostVars(Mapping):
+class HostVars(c.Mapping):
     """A read-only wrapper to enable on-demand templating of a specific host's variables under that host's variable context."""
     # DTFIX-MERGE: why isn't this dict-ish enough to render eg `debug: var=hostvars`?
 
@@ -74,7 +74,7 @@ class HostVars(Mapping):
         return self
 
 
-class HostVarsVars(Mapping):
+class HostVarsVars(c.Mapping):
     """A read-only view of a specific host's vars that will template on access under that host's variable context."""
 
     def __init__(self, variables: dict[str, t.Any], loader: DataLoader | None, host: str) -> None:

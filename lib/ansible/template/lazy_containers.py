@@ -8,28 +8,25 @@ import typing as t
 
 from collections import abc as c
 
-from jinja2 import Environment
-from jinja2.nodes import EvalContext
-from jinja2.runtime import Context
-
 from ansible.module_utils.datatag import (
     AnsibleTaggedObject,
-    _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES,
     _AnsibleTaggedDict,
     _AnsibleTaggedList,
     _NO_INSTANCE_STORAGE,
     _try_get_internal_tags_mapping,
     AnsibleTagHelper,
 )
-from .jinja_common import JinjaCallContext, Marker
+from .jinja_common import JinjaCallContext, Marker, _TemplateConfig
 
-from .utils import Omit, TemplateContext
+from .utils import TemplateContext, PASS_THROUGH_SCALAR_VAR_TYPES
 
 from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
 
 from ._transform import _type_transform_mapping
-from ..errors import AnsibleVariableTypeError
+from ..errors import AnsibleTemplateError
+from ..errors.handler import Skippable
+from ..vars.hostvars import HostVarsVars, HostVars
 
 _ANSIBLE_LAZY_TEMPLATE_SLOTS = tuple(('_templar', '_mutator', '_template_options'))
 _ITERATOR_TYPES: t.Final = (c.Iterator, c.ItemsView, c.KeysView, c.ValuesView, range)
@@ -43,34 +40,36 @@ if t.TYPE_CHECKING:
 class _AnsibleLazyTemplateMixin:
     __slots__ = _NO_INSTANCE_STORAGE
 
-    # static dispatch entries for scalar types are listed here
-    # additional dispatch entries for container types are populated by our __init_subclass__
-    _dispatch_types: dict[type, type[_AnsibleLazyTemplateMixin] | None] = {scalar_type: None for scalar_type in _ANSIBLE_ALLOWED_SCALAR_VAR_TYPES}
-
     # due to the way Jinja handles globals, we may encounter things like functions/methods in hooked getitem/getattr that
     # always pass through this mixin; we want to silently ignore those types
-    # DTFIX-FUTURE: optimize this list by separating base types (using isinstance) from exact types using a set lookup
-    _ignore_types = (
-        types.FunctionType,  # DTFIX-MERGE: global functions returned from Jinja globals __getitem__ def _lookup
-        types.MethodType,  # DTFIX-MERGE: ?
-        functools.partial,  # triggered by TaskExecutor lookup partial injection as a template local
-        type,  # DTFIX-MERGE: this is a broad ignore for looking up `range` via `resolve_or_missing`; is there a better way?
-        # DTFIX-MERGE: is there a better way to include callables like these, so we're not playing whack-a-mole
-        type(''.startswith),  # DTFIX-MERGE: builtin_function_or_method
-        type(Omit),
-        # DTFIX-FUTURE: if we optimize to use type reference equality later, update this list to include relevant derived types
-        Marker,
-        # Jinja passes these into filters/tests via @pass_environment et al.; silently ignore them
-        Environment,
-        Context,
-        EvalContext,
+    # NB: additional values are added at runtime by other Python modules to avoid circular imports
+    _ignore_types: t.ClassVar[set[type]] = (
+        set(PASS_THROUGH_SCALAR_VAR_TYPES) |
+        set(Marker.concrete_subclasses) |  # vault marker is added later once it's defined
+        {
+            HostVars,
+            HostVarsVars,
+            types.FunctionType,  # DTFIX-MERGE: global functions returned from Jinja globals __getitem__ def _lookup
+            types.MethodType,  # DTFIX-MERGE: ?
+            functools.partial,  # triggered by TaskExecutor lookup partial injection as a template local
+            type,  # DTFIX-MERGE: this is a broad ignore for looking up `range` via `resolve_or_missing`; is there a better way?
+            type(''.startswith),  # DTFIX-MERGE: builtin_function_or_method - is there a better way to include callables so we're not playing whack-a-mole?
+        }
     )
+    _ignore_types_tuple: t.ClassVar[tuple[type, ...]] = tuple(_ignore_types)
 
-    _container_types: set[type] = set()  # populated by our __init_subclass__
+    _dispatch_types: dict[type, type[_AnsibleLazyTemplateMixin]] = {}  # populated by __init_subclass__
+    _container_types: set[type] = set()  # populated by __init_subclass__
 
     _templar: Templar
     _mutator: weakref.ReferenceType[JinjaCallContext] | None
     _template_options: TemplateOptions | None
+
+    @classmethod
+    def _register_ignore_types(cls, *args: type) -> None:
+        """Register additional types to ignore."""
+        cls._ignore_types.update(args)
+        cls._ignore_types_tuple = tuple(cls._ignore_types)
 
     def __init_subclass__(cls, **kwargs) -> None:
         tagged_type = cls.__mro__[1]
@@ -78,8 +77,7 @@ class _AnsibleLazyTemplateMixin:
 
         cls._dispatch_types[native_type] = cls
         cls._dispatch_types[tagged_type] = cls
-        cls._dispatch_types[cls] = None
-
+        cls._ignore_types.add(cls)
         cls._container_types.add(native_type)
         cls._empty_tags_as_native = False  # never revert to the native type when no tags remain
 
@@ -113,48 +111,30 @@ class _AnsibleLazyTemplateMixin:
     def _try_create(item: t.Any) -> t.Any:
         item_type = type(item)
 
-        # try to use exact type match first to determine which wrapper (if any) to apply; isinstance checks
-        # are extremely expensive, so try to avoid them for our commonly-supported types
-        if not (dispatcher_candidate := _AnsibleLazyTemplateMixin._dispatch_types.get(item_type, ...)):
-            return item
+        # Try to use exact type match first to determine which wrapper (if any) to apply; isinstance checks
+        # are extremely expensive, so try to avoid them for our commonly-supported types.
+        if (dispatcher := _AnsibleLazyTemplateMixin._dispatch_types.get(item_type)) is not None:
+            # Create a generator that yields the elements of `item` wrapped in a `_LazyValue` wrapper.
+            # The wrapper is used to signal to the lazy container that the value must be processed before being returned.
+            # Values added to the lazy container later through other means will be returned as-is, without any special processing.
+            lazy_values = dispatcher._lazy_values(item)
+            tags_mapping = _try_get_internal_tags_mapping(item)
+            value = t.cast(AnsibleTaggedObject, dispatcher)._instance_factory(lazy_values, tags_mapping)
 
-        if dispatcher_candidate is ...:
-            if transform := _type_transform_mapping.get(item_type):
-                unmask_type_names = TemplateContext.current().options.unmask_type_names
+            return value
 
-                if item_type.__name__ not in unmask_type_names:
-                    # send the transformed result back through _try_create to ensure lazification (where applicable)
-                    return _AnsibleLazyTemplateMixin._try_create(transform(item))
+        if transform := _type_transform_mapping.get(item_type):
+            unmask_type_names = TemplateContext.current().options.unmask_type_names
 
-            # we've deferred the expensive isinstance checks as late as possible
-            for container_type in _AnsibleLazyTemplateMixin._container_types:
-                if isinstance(item, container_type):
-                    display.warning(f'Converting unsupported {item_type} to {container_type}.', obj=item)
-                    dispatcher = _AnsibleLazyTemplateMixin._dispatch_types[container_type]
-                    break
-            else:
-                if isinstance(item, _ITERATOR_TYPES):
-                    # DTFIX-MERGE: document the reason for this being here (once we remember why)
-                    raise AnsibleVariableTypeError(variable_type=type(item))
+            if item_type.__name__ not in unmask_type_names:
+                # send the transformed result back through _try_create to ensure lazification (where applicable)
+                return _AnsibleLazyTemplateMixin._try_create(transform(item))
 
-                # DTFIX-MERGE: what do we want here? such as HostVars, HostVarsVars
-                # DTFIX-MERGE: we now have strict checking of variable types leaving templating, is this warning redundant?
-                if not isinstance(item, _AnsibleLazyTemplateMixin._ignore_types):
-                    display.warning(f'Encountered unsupported {item_type} type.')
+        with Skippable, _TemplateConfig.unsupported_variable_type_handler.handle(AnsibleTemplateError, skip_on_ignore=True):
+            if item_type not in _AnsibleLazyTemplateMixin._ignore_types and not isinstance(item, _AnsibleLazyTemplateMixin._ignore_types_tuple):
+                raise AnsibleTemplateError(f'Encountered unsupported {item_type.__name__!r} type.', obj=item)
 
-                return item
-        else:
-            dispatcher = dispatcher_candidate  # type: ignore
-
-        # Create a generator that yields the elements of `item` wrapped in a `_LazyValue` wrapper.
-        # The wrapper is used to signal to the lazy container that the value must be processed before being returned.
-        # Values added to the lazy container later through other means will be returned as-is, without any special processing.
-        lazy_values = dispatcher._lazy_values(item)
-
-        tags_mapping = _try_get_internal_tags_mapping(item)
-        value = t.cast(AnsibleTaggedObject, dispatcher)._instance_factory(lazy_values, tags_mapping)
-
-        return value
+        return item
 
     def _non_lazy_copy(self) -> t.Collection:
         """

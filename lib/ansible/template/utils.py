@@ -60,4 +60,8 @@ class _OmitType:
 Omit = object.__new__(_OmitType)
 
 # DTFIX-MERGE: decide if these should be taggable; do we need to support other kinds of Undefineds, etc
-datatag._untaggable_types.add(type(Omit))
+datatag._untaggable_types.add(_OmitType)
+
+PASS_THROUGH_SCALAR_VAR_TYPES = datatag._ANSIBLE_ALLOWED_SCALAR_VAR_TYPES | {
+    _OmitType,  # allow pass through of omit for later handling after top-level finalize completes
+}
