@@ -303,9 +303,16 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
     def _item_source(self):
         return _LazyIterator(dict.items(self), self)
 
+    def _yield_non_lazy_dict_items(self) -> tuple[str, t.Any]:
+        """
+        Delegate to the base collection items iterator to yield the raw contents.
+        As of Python 3.13, generator functions are significantly faster than inline generator expressions.
+        """
+        for k,v in dict.items(self):
+            yield k, v.value if type(v) is _LazyValue else v  # pylint: disable=unidiomatic-typecheck
+
     def _non_lazy_copy(self) -> dict:
-        # pylint: disable=unidiomatic-typecheck
-        return AnsibleTagHelper.tag_copy(self, ((k, v.value if type(v) is _LazyValue else v) for k, v in dict.items(self)), value_type=dict)
+        return AnsibleTagHelper.tag_copy(self, self._yield_non_lazy_dict_items(), value_type=dict)
 
     @staticmethod
     def _lazy_values(values: dict, /) -> t.Generator:
@@ -423,9 +430,16 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
     def _item_source(self):
         return _LazyIterator(list.__iter__(self), self)
 
+    def _yield_non_lazy_list_items(self):
+        """
+        Delegate to the base collection iterator to yield the raw contents.
+        As of Python 3.13, generator functions are significantly faster than inline generator expressions.
+        """
+        for v in list.__iter__(self):
+            yield v.value if type(v) is _LazyValue else v  # pylint: disable=unidiomatic-typecheck
+
     def _non_lazy_copy(self) -> list:
-        # pylint: disable=unidiomatic-typecheck
-        return AnsibleTagHelper.tag_copy(self, (v.value if type(v) is _LazyValue else v for v in list.__iter__(self)), value_type=list)
+        return AnsibleTagHelper.tag_copy(self, self._yield_non_lazy_list_items(), value_type=list)
 
     @staticmethod
     def _lazy_values(values: list, /) -> t.Generator:
@@ -531,6 +545,7 @@ def proxy_jinja_constant_container(value: t.Any) -> t.Any:
     Since variables and plugin output are already lazy, it's safe to assume native containers are Jinja constants.
     The native container type check avoids calling _try_create on types that could trigger unwanted warnings/errors.
     """
+    # DTFIX-PR: this was built when plugin output was lazy, now that it's not, the current uses may be over-lazifying things in unwanted ways, investigate
     if type(value) in (list, tuple, dict):
         return _AnsibleLazyTemplateMixin._try_create(value)
 

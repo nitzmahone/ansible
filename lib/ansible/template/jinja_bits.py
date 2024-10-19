@@ -832,25 +832,29 @@ def _finalize_list(o: t.Any, mode: FinalizeMode) -> t.Iterator[t.Any]:
             yield _finalize_template_result(v, mode)
 
 
-_finalize_collection_map = {
-    list: _finalize_list,
-    dict: _finalize_dict,
-}
-
-
-def _finalize_fallback_collection(o, mode, target_type) -> t.Collection[t.Any]:
+def _finalize_fallback_collection(
+    o: t.Any,
+    mode: FinalizeMode,
+    finalizer: t.Callable[[t.Any, FinalizeMode], t.Iterator],
+    target_type: type[list | dict],
+) -> t.Collection[t.Any]:
     match _TemplateConfig.unsupported_variable_type_handler.action:
         case ErrorAction.WARN:
             display.warning(f'Converting unsupported type {AnsibleTagHelper.base_type_name(o)!r} to {target_type.__name__!r}.')
         case ErrorAction.FAIL:
             raise AnsibleVariableTypeError(obj=o)
 
-    return _finalize_collection(o, mode, target_type)
+    return _finalize_collection(o, mode, finalizer, target_type)
 
 
-def _finalize_collection(o, mode, target_type) -> t.Collection[t.Any]:
+def _finalize_collection(
+    o: t.Any,
+    mode: FinalizeMode,
+    finalizer: t.Callable[[t.Any, FinalizeMode], t.Iterator],
+    target_type: type[list | dict],
+) -> t.Collection[t.Any]:
     # DTFIX-U: why does this function run faster than inlining the code? verify and explore
-    return AnsibleTagHelper.tag(_finalize_collection_map[target_type](o, mode), AnsibleTagHelper.tags(o), value_type=target_type)
+    return AnsibleTagHelper.tag(finalizer(o, mode), AnsibleTagHelper.tags(o), value_type=target_type)
 
 
 _DISALLOWED_TYPES = {
@@ -867,24 +871,24 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
         return o
 
     if o_type in _FINALIZE_MAPPING_TYPES:  # silently convert known mapping types to dict
-        return _finalize_collection(o, mode, dict)
+        return _finalize_collection(o, mode, _finalize_dict, dict)
 
     if o_type in _FINALIZE_SEQUENCE_TYPES:  # silently convert known sequence types to list
-        return _finalize_collection(o, mode, list)
+        return _finalize_collection(o, mode, _finalize_list, list)
 
     if o_type in Marker.concrete_subclasses:  # this early return assumes handle_marker follows our variable type rules
         return TemplateContext.current().templar.marker_behavior.handle_marker(o)
 
     if mode is not FinalizeMode.TOP_LEVEL:  # unsupported type (do not raise)
         return o
-    
+
     if o_type in _DISALLOWED_TYPES:  # early abort for disallowed types that would otherwise be handled below
         raise AnsibleVariableTypeError(obj=o)
 
     if isinstance(o, c.Mapping):  # since isinstance checks are slower, this is separate from the exact type check above
-        return _finalize_fallback_collection(o, mode, dict)
+        return _finalize_fallback_collection(o, mode, _finalize_dict, dict)
 
     if isinstance(o, c.Sequence):  # since isinstance checks are slower, this is separate from the exact type check above
-        return _finalize_fallback_collection(o, mode, list)
+        return _finalize_fallback_collection(o, mode, _finalize_list, list)
 
     raise AnsibleVariableTypeError(obj=o)
