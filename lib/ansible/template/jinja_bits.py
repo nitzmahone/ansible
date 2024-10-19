@@ -853,7 +853,6 @@ def _finalize_collection(
     finalizer: t.Callable[[t.Any, FinalizeMode], t.Iterator],
     target_type: type[list | dict],
 ) -> t.Collection[t.Any]:
-    # DTFIX-U: why does this function run faster than inlining the code? verify and explore
     return AnsibleTagHelper.tag(finalizer(o, mode), AnsibleTagHelper.tags(o), value_type=target_type)
 
 
