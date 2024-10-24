@@ -303,7 +303,7 @@ class JinjaCallContext(NotifiableAccessContextBase):
     _mask = True
 
     def __init__(self, accept_marker: bool) -> None:
-        self._tag_type_interest = frozenset() if accept_marker else frozenset(Marker.concrete_subclasses)
+        self._type_interest = frozenset() if accept_marker else frozenset(Marker.concrete_subclasses)
 
     def _notify(self, o: t.Any) -> t.NoReturn:
         o.trip()
