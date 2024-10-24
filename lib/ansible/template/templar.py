@@ -25,7 +25,7 @@ from ansible.errors import (
 from ansible.module_utils.datatag import (
     AnsibleTaggedObject, NotTaggableError, AnsibleTagHelper
 )
-from ..errors.handler import Skippable, ErrorHandler, ErrorAction
+from ..errors.handler import Skippable
 from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 
 from ansible.utils.display import Display

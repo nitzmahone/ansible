@@ -18,7 +18,7 @@ from ansible.module_utils.datatag import Tripwire, AnsibleTagHelper, _untaggable
 from ._access import NotifiableAccessContextBase, AnsibleAccessContext
 from .utils import TemplateContext
 from ..errors import AnsibleUndefinedVariable, AnsibleTypeError
-from ..errors.handler import ErrorHandler, ErrorAction
+from ..errors.handler import ErrorHandler
 
 from .jinja_patches import _patch_jinja
 
