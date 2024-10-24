@@ -25,7 +25,7 @@ from ansible.errors import (
 from ansible.module_utils.datatag import (
     AnsibleTaggedObject, NotTaggableError, AnsibleTagHelper
 )
-from ..errors.handler import Skippable
+from ..errors.handler import Skippable, ErrorHandler, ErrorAction
 from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 
 from ansible.utils.display import Display
@@ -48,7 +48,8 @@ def as_non_templatable_text(value: t.Any) -> str:
 
 
 class TemplateTrustCheckFailedError(AnsibleTemplateError):
-    pass
+    default_prefix = 'Encountered untrusted template or expression.',
+    default_help_text = 'Templates and expressions must be defined by trusted sources such as playbooks or roles, not untrusted sources such as module results.'
 
 
 _shared_empty_unmask_type_names: frozenset[str] = frozenset()
@@ -56,7 +57,6 @@ _shared_empty_unmask_type_names: frozenset[str] = frozenset()
 
 class TemplateMode(enum.Enum):
     DEFAULT = enum.auto()
-    EXPRESSION = enum.auto()
     STOP_ON_TEMPLATE = enum.auto()
     STOP_ON_CONTAINER = enum.auto()
 
@@ -282,21 +282,14 @@ class Templar:
         *,
         options: TemplateOptions | None = None,
         mode: TemplateMode = TemplateMode.DEFAULT,
-        template_locals: dict[str, t.Any] | None = None,
-        _render_jinja_const_template: bool = False,
     ) -> t.Any:
         """Templates (possibly recursively) any given data as input."""
 
         if variable is None:
             return variable
 
-        if mode is TemplateMode.EXPRESSION:
-            if not isinstance(variable, str):
-                raise TypeError(f"Expressions must be {str!r}, got {type(variable)!r}.")
-        elif NotATemplate.is_tagged_on(variable):
-            # When processing a template (ie, not an expression), silently ignore strings that were explicitly tagged NotATemplate.
-            # The exclusion of expression mode supports testing untrusted constants from playbooks tagged with `!unsafe` (since it applies NotATemplate).
-            # Plugins could encounter this situation if evaluate_expression is called with a value tagged NotATemplate.
+        if NotATemplate.is_tagged_on(variable):
+            # Silently ignore strings that were explicitly tagged NotATemplate.
             return variable
 
         # DTFIX-FUTURE: early exit on empty collections (hot code path for playbook templating/validation)
@@ -313,17 +306,9 @@ class Templar:
         if mode is TemplateMode.STOP_ON_TEMPLATE:
             stop_on_template = True
 
-        # track access to items that are tagged Deprecated during templating, handle accordingly
         with (
-            DeprecatedAccessAuditContext() as deprecated,
-            # stack the current active var value we're templating
-            TemplateContext(
-                template_value=variable,
-                templar=self,
-                options=options,
-                stop_on_template=stop_on_template,
-                _render_jinja_const_template=_render_jinja_const_template,
-            ) as template_ctx,
+            DeprecatedAccessAuditContext(),
+            TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template) as template_ctx,
         ):
             try:
                 if not isinstance(variable, str):
@@ -331,40 +316,25 @@ class Templar:
                         raise ValueError("Jinja overrides are only allowed on string inputs")
 
                     template_result = _AnsibleLazyTemplateMixin._try_create(variable)
-                elif mode is not TemplateMode.EXPRESSION and not is_possibly_template(variable, options.overrides):
+                elif not is_possibly_template(variable, options.overrides):
                     template_result = variable
-                elif not self._trust_check(variable, mode):
+                elif not self._trust_check(variable):
                     template_result = variable
+                elif stop_on_template:
+                    raise TemplateEncountered()
                 else:
-                    compiled_template: t.Callable[[dict[str, t.Any] | ChainMap[str, t.Any]], t.Any]
+                    compiled_template = self._compile_template(variable, options)
 
-                    if mode is TemplateMode.EXPRESSION:
-                        compiled_template = self._compile_expression(variable, options)
-                    elif stop_on_template:
-                        raise TemplateEncountered()
-                    else:
-                        compiled_template = self._compile_template(variable, options)
-
-                    template_variables: dict[str, t.Any] | ChainMap[str, t.Any]
-
-                    if template_locals:
-                        template_variables = ChainMap(template_locals, self.available_variables)
-                    else:
-                        template_variables = self.available_variables
-
-                    template_result = compiled_template(template_variables)
+                    template_result = compiled_template(self.available_variables)
                     template_result = self._post_render_mutation(variable, template_result, options)
             except TemplateEncountered:
                 raise
             except Exception as ex:
-                template_result = defer_template_error(ex, variable, mode is TemplateMode.EXPRESSION)
+                template_result = defer_template_error(ex, variable, is_expression=False)
 
             if template_ctx.is_top_level:
-                # If we're the outermost template operation, we need to recursively finalize the template result.
-                # This will render any embedded templates and trigger `Marker` and omit behaviors.
-                template_result = self._finalize_top_level_template_result(variable, options, mode, template_result)
-
-        self._emit_deprecation_warnings(deprecated)
+                template_result = self._finalize_top_level_template_result(variable, options, template_result,
+                                                                           stop_on_container=mode is TemplateMode.STOP_ON_CONTAINER)
 
         return template_result
 
@@ -372,9 +342,14 @@ class Templar:
     def _finalize_top_level_template_result(
         variable: t.Any,
         options: TemplateOptions,
-        mode: TemplateMode,
         template_result: t.Any,
+        is_expression: bool = False,
+        stop_on_container: bool = False,
     ) -> t.Any:
+        """
+        This method must be called for expressions and top-level templates to recursively finalize the result.
+        This renders any embedded templates and triggers `Marker` and omit behaviors.
+        """
         try:
             if template_result is Omit:
                 # When the template result is Omit, raise an AnsibleValueOmittedError if value_for_omit is Omit, otherwise return value_for_omit.
@@ -384,8 +359,8 @@ class Templar:
 
                 return options.value_for_omit  # trust that value_for_omit is an allowed type
 
-            if mode is TemplateMode.STOP_ON_CONTAINER and type(template_result) in AnsibleTaggedObject._collection_types:
-                # Use of STOP_ON_CONTAINER implies the caller will perform necessary checks on values,
+            if stop_on_container and type(template_result) in AnsibleTaggedObject._collection_types:
+                # Use of stop_on_container implies the caller will perform necessary checks on values,
                 # most likely by passing them back into the templating system.
                 try:
                     return template_result._non_lazy_copy()
@@ -409,7 +384,7 @@ class Templar:
                 exception_to_raise = ex
                 raise_from = ex
 
-            exception_to_raise = create_template_error(exception_to_raise, variable, mode is TemplateMode.EXPRESSION)
+            exception_to_raise = create_template_error(exception_to_raise, variable, is_expression)
 
             if exception_to_raise is ex:
                 raise  # when the exception to raise is the active exception, just re-raise it
@@ -445,7 +420,7 @@ class Templar:
             return self._defer_jinja_compile_error(ex, expression, True)
 
     def _defer_jinja_compile_error(self, ex: Exception, variable: str, is_expression: bool) -> t.Callable[[c.Mapping[str, t.Any]], t.Any]:
-        deferred_error = defer_template_error(ex, variable, is_expression)
+        deferred_error = defer_template_error(ex, variable, is_expression=is_expression)
 
         def deferred_exception(_jinja_vars: c.Mapping[str, t.Any]) -> t.Any:
             # a template/expression compile error always results in a single node representing the compile error
@@ -482,22 +457,6 @@ class Templar:
 
         return result
 
-    @staticmethod
-    def _emit_deprecation_warnings(deprecated: DeprecatedAccessAuditContext) -> None:
-        for item in deprecated.deprecated_access:
-            if AnsibleSourcePosition.is_tagged_on(item.template):
-                msg = item.deprecated.msg
-            else:
-                # without a source position, we need to include what context we do have (the template)
-                msg = f'While processing {item.template!r}: {item.deprecated.msg}'
-
-            _display.deprecated(
-                msg=msg,
-                version=item.deprecated.removal_version,
-                date=item.deprecated.removal_date,
-                obj=item.template,
-            )
-
     def is_template(self, data: t.Any) -> bool:
         """
         Evaluate the input data to determine if it contains a template. Containers will be recursively searched.
@@ -527,16 +486,30 @@ class Templar:
         """
         Evaluate a string Jinja expression in the current template context and return its result.
         Inline Jinja template delimiters (e.g., {{ }}, {% %}) are not supported within a string expression, and will fail with a syntax error.
+        Unlike templates, expressions do not honor the NotATemplate tag, to protect against silent failure.
         """
-        # DTFIX-MERGE: this is an entry point into templating, it could misbehave if already within a template context (see `except AnsibleUndefinedVariable`)
+        if not isinstance(expression, str):
+            raise TypeError(f"Expressions must be {str!r}, got {type(expression)!r}.")
 
-        return self.template(
-            expression,
-            options=TemplateOptions(escape_backslashes=escape_backslashes),
-            mode=TemplateMode.EXPRESSION,
-            template_locals=template_locals,
-            _render_jinja_const_template=_render_jinja_const_template,
-        )
+        options = TemplateOptions(escape_backslashes=escape_backslashes)
+
+        with (
+            DeprecatedAccessAuditContext(),
+            TemplateContext(template_value=expression, templar=self, options=options, _render_jinja_const_template=_render_jinja_const_template),
+        ):
+            try:
+                if not TrustedAsTemplate.is_tagged_on(expression):
+                    raise TemplateTrustCheckFailedError()
+
+                template_variables = ChainMap(template_locals, self.available_variables) if template_locals else self.available_variables
+                compiled_template = self._compile_expression(expression, options)
+
+                template_result = compiled_template(template_variables)
+                template_result = self._post_render_mutation(expression, template_result, options)
+            except Exception as ex:
+                template_result = defer_template_error(ex, expression, is_expression=True)
+
+            return self._finalize_top_level_template_result(expression, options, template_result, is_expression=True)
 
     _BROKEN_CONDITIONAL_ALLOWED_FRAGMENT = 'Broken conditionals are currently allowed because the `ALLOW_BROKEN_CONDITIONALS` configuration option is enabled.'
 
@@ -622,30 +595,15 @@ class Templar:
         raise AnsibleBrokenConditionalError(msg, obj=conditional)
 
     @staticmethod
-    def _trust_check(value: str, mode: TemplateMode) -> bool:
+    def _trust_check(value: str) -> bool:
         """
         Return True if the given value is trusted for templating, otherwise return False.
-
         When the value is not trusted, a warning or error may be generated, depending on configuration.
         """
         if TrustedAsTemplate.is_tagged_on(value):
             return True
 
-        handler = _TemplateConfig.untrusted_expression_handler if mode is TemplateMode.EXPRESSION else _TemplateConfig.untrusted_template_handler
-
-        with Skippable, handler.handle(TemplateTrustCheckFailedError, skip_on_ignore=True):
-            raise TemplateTrustCheckFailedError(
-                message=f'Skipped untrusted {"expression" if mode is TemplateMode.EXPRESSION else "template"}.',
-                help_text=(
-                    'Expressions and templates must be defined by trusted sources such as playbooks, roles, etc., '
-                    'and not untrusted sources such as module results.'
-                ),
-                obj=value,
-            )
-
-        # DTFIX-FUTURE: Look through the TemplateContext hierarchy to find the most recent non-template
-        #   caller and use that for source position when no source position is available. This could be useful for situations where the template
-        #   was embedded in a plugin, or a plugin is otherwise responsible for losing the source position and/or trust. We can't just use the first
-        #   non-template caller as that will lead to false positivies for re-entrant calls (e.g. template plugins that call into templar).
+        with Skippable, _TemplateConfig.untrusted_template_handler.handle(TemplateTrustCheckFailedError, skip_on_ignore=True):
+            raise TemplateTrustCheckFailedError()
 
         return False

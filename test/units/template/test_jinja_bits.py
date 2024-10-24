@@ -244,7 +244,7 @@ def test_defer_template_error_from_marker(marker: Marker) -> None:
     with pytest.raises(MarkerError) as error:
         raise MarkerError('', marker)
 
-    result = defer_template_error(error.value, None, False)
+    result = defer_template_error(error.value, None, is_expression=False)
 
     assert result is marker
 
@@ -254,7 +254,7 @@ def test_defer_template_error_from_exception(template_context: TemplateContext) 
     with pytest.raises(Exception) as error:
         raise Exception()
 
-    result = defer_template_error(error.value, None, False)
+    result = defer_template_error(error.value, None, is_expression=False)
 
     assert isinstance(result, CapturedExceptionMarker)
     assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
@@ -266,7 +266,7 @@ def test_defer_template_error_from_ansible_template_error(template_context: Temp
     with pytest.raises(AnsibleTemplateError) as error:
         raise AnsibleTemplateError()
 
-    result = defer_template_error(error.value, None, False)
+    result = defer_template_error(error.value, None, is_expression=False)
 
     assert isinstance(result, CapturedExceptionMarker)
     assert result._marker_captured_exception is error.value
@@ -276,4 +276,4 @@ def test_defer_template_requires_traceback(template_context: TemplateContext):
     """Verify that deferring an exception that has not been raised results in an AssertionError."""
     with pytest.raises(AssertionError, match='ex must be a previously raised exception'):
         # an exception without a traceback should be rejected with an AssertionError
-        defer_template_error(AnsibleTemplateError(), None, False)
+        defer_template_error(AnsibleTemplateError(), None, is_expression=False)

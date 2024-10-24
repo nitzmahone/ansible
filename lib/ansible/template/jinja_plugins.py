@@ -31,7 +31,6 @@ from .utils import TemplateContext
 
 _display = Display()
 
-_T = t.TypeVar('_T')
 _TCallable = t.TypeVar("_TCallable", bound=t.Callable)
 
 
@@ -316,11 +315,11 @@ def _now(utc=False, fmt=None):
     return now
 
 
-def _trust_jinja_constants(o: _T) -> _T:
+def _trust_jinja_constants(o: t.Any) -> t.Any:
     """
     Recursively apply TrustedAsTemplate to values tagged with _JinjaConstTemplate and remove the tag.
     Only container types emitted by the Jinja compiler are checked, since others do not contain constants.
-    This is used to provide backwards compatiblity with historical lookup behavior for positional arguments.
+    This is used to provide backwards compatibility with historical lookup behavior for positional arguments.
     """
     if _JinjaConstTemplate.is_tagged_on(o):
         return TrustedAsTemplate().tag(_JinjaConstTemplate.untag(o))

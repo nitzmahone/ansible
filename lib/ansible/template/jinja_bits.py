@@ -433,7 +433,7 @@ class AnsibleLexer(Lexer):
             yield token
 
 
-def defer_template_error(ex: Exception, variable: t.Any, is_expression: bool) -> Marker:
+def defer_template_error(ex: Exception, variable: t.Any, *, is_expression: bool) -> Marker:
     if not ex.__traceback__:
         raise AssertionError('ex must be a previously raised exception')
 
@@ -474,6 +474,11 @@ def create_template_error(ex: Exception, variable: t.Any, is_expression: bool) -
 
     if not exception_to_raise.obj:
         exception_to_raise.obj = TemplateContext.current().template_value
+
+    # DTFIX-FUTURE: Look through the TemplateContext hierarchy to find the most recent non-template
+    #   caller and use that for source position when no source position is available on obj. This could be useful for situations where the template
+    #   was embedded in a plugin, or a plugin is otherwise responsible for losing the source position and/or trust. We can't just use the first
+    #   non-template caller as that will lead to false positives for re-entrant calls (e.g. template plugins that call into templar).
 
     return exception_to_raise
 

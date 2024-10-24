@@ -15,7 +15,7 @@ class TemplateContext(_ambient_context.AmbientContextBase):
         template_value: t.Any,
         templar: Templar,
         options: TemplateOptions,
-        stop_on_template: bool,
+        stop_on_template: bool = False,
         _render_jinja_const_template: bool = False
     ):
         self._template_value = template_value

@@ -22,9 +22,10 @@ class NotifiableAccessContextBase(metaclass=abc.ABCMeta):
         AnsibleAccessContext.current()._register_interest(self)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         # noinspection PyProtectedMember
         AnsibleAccessContext.current()._unregister_interest(self)
+        return None
 
     @abc.abstractmethod
     def _notify(self, o: t.Any) -> t.Any:

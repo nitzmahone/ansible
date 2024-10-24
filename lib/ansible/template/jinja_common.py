@@ -32,7 +32,6 @@ class _TemplateConfig:
 
     unsupported_variable_type_handler = ErrorHandler.from_config('_TEMPLAR_UNSUPPORTED_VARIABLE_TYPE_BEHAVIOR')
     untrusted_template_handler = ErrorHandler.from_config('_TEMPLAR_UNTRUSTED_TEMPLATE_BEHAVIOR')
-    untrusted_expression_handler = ErrorHandler(ErrorAction.FAIL)
 
 
 class MarkerError(UndefinedError):

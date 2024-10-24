@@ -49,6 +49,7 @@ class AnsibleError(Exception):
     # DTFIX-MERGE: this is part of the new DT changes, the API needs additional cleanup before releasing
     exit_code = ExitCode.GENERIC_ERROR
     default_prefix = ''
+    default_help_text: str | None = None
     include_cause_message = True
     """
     When `True`, the exception message will be augmented with cause message(s).
@@ -81,7 +82,7 @@ class AnsibleError(Exception):
 
         self._show_content = show_content
         self._message = message
-        self._help_text = help_text
+        self._help_text = help_text or self.default_help_text
         self.obj = obj
 
         # deprecated: description='deprecate support for orig_exc, callers should use `raise ... from` only' core_version='2.22'

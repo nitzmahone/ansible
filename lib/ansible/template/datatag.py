@@ -34,6 +34,25 @@ class DeprecatedAccessAuditContext(NotifiableAccessContextBase):
     def __init__(self) -> None:
         self._tripped_deprecation_info: list[TrippedDeprecationInfo] = []
 
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        result = super().__exit__(exc_type, exc_val, exc_tb)
+
+        for item in self._tripped_deprecation_info:
+            if AnsibleSourcePosition.is_tagged_on(item.template):
+                msg = item.deprecated.msg
+            else:
+                # without a source position, we need to include what context we do have (the template)
+                msg = f'While processing {item.template!r}: {item.deprecated.msg}'
+
+            display.deprecated(
+                msg=msg,
+                version=item.deprecated.removal_version,
+                date=item.deprecated.removal_date,
+                obj=item.template,
+            )
+
+        return result
+
     def _notify(self, o: t.Any) -> None:
         deprecated = Deprecated.get_required_tag(o)
 
@@ -56,8 +75,3 @@ class DeprecatedAccessAuditContext(NotifiableAccessContextBase):
             template=NotATemplate().tag(template),
             deprecated=deprecated,
         ))
-
-    @property
-    def deprecated_access(self) -> tuple[TrippedDeprecationInfo, ...]:
-        """Returns a `TrippedDeprecationInfo` for each managed accesses to a `Deprecated`-tagged object."""
-        return tuple(self._tripped_deprecation_info)

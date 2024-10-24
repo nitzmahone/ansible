@@ -13,4 +13,4 @@ ansible --task-timeout 5 localhost -m command -a '{"cmd": "whoami"}' | grep 'rc=
 ansible '{{"localhost"}}' -m '{{"debug"}}' -a var=fromcli -e '{"fromcli":{"no_trust":{"__ansible_unsafe":"{{\"hello\"}}"},"trust":"{{ 1 }}"}}' > "${OUTPUT_DIR}/output.txt" 2>&1
 grep '"no_trust": "{{."hello."}}"' "${OUTPUT_DIR}/output.txt"  # ensure that the template was not rendered
 grep '"trust": 1' "${OUTPUT_DIR}/output.txt"  # ensure that the trusted template was rendered
-grep "Skipped untrusted template" "${OUTPUT_DIR}/output.txt"  # look for the untrusted template warning text
+grep "Encountered untrusted template" "${OUTPUT_DIR}/output.txt"  # look for the untrusted template warning text

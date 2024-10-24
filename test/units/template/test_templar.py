@@ -111,7 +111,7 @@ class TestTemplarTemplate(BaseTemplar, unittest.TestCase):
         assert mock_warning.call_count > 0
         warning_value = mock_warning.call_args.kwargs['exception']
         assert isinstance(warning_value, TemplateTrustCheckFailedError)
-        assert "Skipped untrusted template" in warning_value.message
+        assert "Encountered untrusted template" in warning_value.message
         assert warning_value.obj == untrusted_template
 
     def test_is_possible_template(self):
