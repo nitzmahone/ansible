@@ -10,7 +10,7 @@ import pytest
 
 from ansible.inventory.group import Group
 from ansible.inventory.host import Host
-from ansible.template.datatag import TrustedAsTemplate
+from ansible.utils.datatag.tags import TrustedAsTemplate
 from ansible.inventory.data import InventoryData
 from ansible.inventory import helpers
 
