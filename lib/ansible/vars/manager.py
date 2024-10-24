@@ -36,7 +36,6 @@ from ansible.module_utils.datatag import AnsibleTagHelper
 from ansible.module_utils.six import text_type
 from ansible.module_utils.datatag.tags import Deprecated
 from ansible.parsing.dataloader import DataLoader
-from ansible.utils.datatag.tags import NotATemplate
 from ansible.vars.fact_cache import FactCache
 from ansible.template.templar import Templar
 from ansible.utils.display import Display
@@ -504,11 +503,6 @@ class VariableManager:
         # Set options vars
         for option, option_value in self._options_vars.items():
             variables[option] = option_value
-
-        # everything template-able in `variables` should already have been templated by this point, or all accessible future copies of it
-        # will be (eg, `ansible_play_name`); mark them all NotATemplate to bail out of recursive templating as early as possible
-        nat = NotATemplate()
-        variables = {k: nat.tag(list(v) if type(v) is tuple else v) for k, v in variables.items()}  # pylint: disable=unidiomatic-typecheck
 
         if self._hostvars is not None and include_hostvars:
             variables['hostvars'] = self._hostvars

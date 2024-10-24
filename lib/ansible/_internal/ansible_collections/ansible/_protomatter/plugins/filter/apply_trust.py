@@ -7,10 +7,10 @@ from ansible.utils.datatag.tags import NotATemplate, TrustedAsTemplate
 
 def apply_trust(value: t.Any) -> t.Any:
     """
-    Filter that returns a tagged copy of the input value with TrustedAsTemplate and removes NotATemplate (if present).
-    Tags are not managed recursively for containers.
+    Filter that returns a tagged copy of the input string with TrustedAsTemplate and removes NotATemplate (if present).
+    Containers and other non-string values are returned unmodified.
     """
-    return NotATemplate.untag(TrustedAsTemplate().tag(value))
+    return NotATemplate.untag(TrustedAsTemplate().tag(value)) if isinstance(value, str) else value
 
 
 class FilterModule:

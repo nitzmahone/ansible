@@ -284,15 +284,13 @@ class Templar:
         mode: TemplateMode = TemplateMode.DEFAULT,
     ) -> t.Any:
         """Templates (possibly recursively) any given data as input."""
-
         if variable is None:
             return variable
 
-        if NotATemplate.is_tagged_on(variable):
-            # Silently ignore strings that were explicitly tagged NotATemplate.
-            return variable
+        value_is_str = isinstance(variable, str)
 
-        # DTFIX-FUTURE: early exit on empty collections (hot code path for playbook templating/validation)
+        if value_is_str and NotATemplate.is_tagged_on(variable):
+            return variable  # silently ignore strings explicitly tagged NotATemplate
 
         # DTFIX-MERGE: tighten this up, and figure out a better way to avoid propagating options
         if template_ctx := TemplateContext.current(optional=True):
@@ -311,7 +309,7 @@ class Templar:
             TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template) as template_ctx,
         ):
             try:
-                if not isinstance(variable, str):
+                if not value_is_str:
                     if options.overrides is not TemplateOverrides.DEFAULT:
                         raise ValueError("Jinja overrides are only allowed on string inputs")
 
