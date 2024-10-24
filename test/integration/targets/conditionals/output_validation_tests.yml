@@ -199,7 +199,7 @@
     assert:
       that:
       - result is failed
-      - "'untrusted expression' is in result.msg"
+      - result.msg is contains 'untrusted template or expression'
 
   - name: untrusted assert conditional list item indirected through template should hard fail (EXPECTED FAILURE)
     vars:
@@ -215,7 +215,7 @@
     assert:
       that:
       - result is failed
-      - "'untrusted expression' is in result.msg"
+      - result.msg is contains 'untrusted template or expression'
 
   - name: test inline constant template in an optimizable expression
     assert:
