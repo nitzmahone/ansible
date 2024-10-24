@@ -10,12 +10,20 @@ if t.TYPE_CHECKING:
 
 
 class TemplateContext(_ambient_context.AmbientContextBase):
-    def __init__(self, *, template_value: t.Any, templar: Templar, options: TemplateOptions, stop_on_template: bool):
+    def __init__(
+        self, *,
+        template_value: t.Any,
+        templar: Templar,
+        options: TemplateOptions,
+        stop_on_template: bool,
+        _render_jinja_const_template: bool = False
+    ):
         self._template_value = template_value
         self._templar = templar
         self._options = options
         self._stop_on_template = stop_on_template
         self._parent_ctx = TemplateContext.current(optional=True)
+        self._render_jinja_const_template = _render_jinja_const_template
 
     @property
     def is_top_level(self) -> bool:

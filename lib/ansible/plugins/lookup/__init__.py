@@ -23,13 +23,15 @@ from ansible.errors import AnsibleFileNotFound
 from ansible.plugins import AnsiblePlugin
 from ansible.utils.display import Display
 
+import typing as t
+
 display = Display()
 
 __all__ = ['LookupBase']
 
 
 class LookupBase(AnsiblePlugin):
-    accept_marker = False
+    accept_marker: t.ClassVar[bool] = False
     """Declare support for markers. Plugins with `False` here will never be invoked with markers for top-level arguments."""
 
     def __init__(self, loader=None, templar=None, **kwargs):

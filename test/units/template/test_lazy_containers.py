@@ -9,9 +9,8 @@ import typing as t
 import pytest
 
 from ansible.errors import AnsibleTemplateError, AnsibleUndefinedVariable
-from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError
+from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError, JinjaCallContext
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
-from ansible.template.jinja_plugins import JinjaCallContext
 from ansible.template.utils import TemplateContext
 from ansible.template.templar import Templar, TemplateOptions
 from ansible.template.lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateList, _AnsibleLazyTemplateDict, _LazyValue
@@ -152,9 +151,8 @@ def test_dict_get_with_default(template_context) -> None:
     my_dict = _AnsibleLazyTemplateMixin._try_create({})
     value = TrustedAsTemplate().tag("{{ 1 }}")
 
-    with JinjaCallContext(eager_trip_marker=False):
-        # A mutation from another context is required to enter the code path where templating and/or storage can occur.
-        my_dict['x'] = TrustedAsTemplate().tag("{{ 2 }}")
+    # A mutation from another context is required to enter the code path where templating and/or storage can occur.
+    my_dict['x'] = TrustedAsTemplate().tag("{{ 2 }}")
 
     result = my_dict.get('a', value)
 
@@ -167,36 +165,31 @@ def test_dict_setdefault(template_context) -> None:
     my_dict = _AnsibleLazyTemplateMixin._try_create(dict(invalid_template=TRUST.tag("{{ 1/0 }}"), valid_template=TRUST.tag("{{ 1 }}")))
     value_for_default = TrustedAsTemplate().tag("{{ 'default' }}")
 
-    with JinjaCallContext(eager_trip_marker=False):
-        assert my_dict.setdefault('valid_template') == 1
-        assert my_dict.setdefault('valid_template', value_for_default) == 1
-        assert my_dict.setdefault('nonexistent_key', value_for_default) is value_for_default
+    assert my_dict.setdefault('valid_template') == 1
+    assert my_dict.setdefault('valid_template', value_for_default) == 1
+    assert my_dict.setdefault('nonexistent_key', value_for_default) is value_for_default
 
-        result = my_dict.setdefault('invalid_template', value_for_default)
-        assert isinstance(result, CapturedExceptionMarker)
-        assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
+    result = my_dict.setdefault('invalid_template', value_for_default)
+    assert isinstance(result, CapturedExceptionMarker)
+    assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
 
-        # repeat to ensure we didn't record any change
-        result = my_dict.setdefault('invalid_template', value_for_default)
-        assert isinstance(result, CapturedExceptionMarker)
-        assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
+    # repeat to ensure we didn't record any change
+    result = my_dict.setdefault('invalid_template', value_for_default)
+    assert isinstance(result, CapturedExceptionMarker)
+    assert isinstance(result._marker_captured_exception, AnsibleTemplateError)
 
 
 def test_dict_pop(template_context) -> None:
     """Ensure that pop does not template or store its default, and that templating occurs before the collection is mutated."""
-    my_dict = _AnsibleLazyTemplateMixin._try_create({})
+    my_dict = _AnsibleLazyTemplateMixin._try_create(dict(busted_template=TRUST.tag("{{ 1 / 0 }}")))
     value_for_default = TRUST.tag("{{ 1 }}")
-
-    with JinjaCallContext(eager_trip_marker=False):
-        # A mutation from another context is required to enter the code path where templating and/or storage can occur.
-        my_dict['busted_template'] = TRUST.tag("{{ 1 / 0 }}")
 
     result = my_dict.pop("boguskey", value_for_default)
 
     assert result is value_for_default
     assert "boguskey" not in my_dict
 
-    with JinjaCallContext(eager_trip_marker=True):
+    with JinjaCallContext(accept_marker=False):
         with pytest.raises(MarkerError):
             my_dict.pop('busted_template')
 
@@ -220,7 +213,7 @@ def test_dict_popitem(template_context):
 
     assert my_dict.popitem() == ('valid_template', 1)
 
-    with JinjaCallContext(eager_trip_marker=True):
+    with JinjaCallContext(accept_marker=False):
         with pytest.raises(MarkerError):
             my_dict.popitem()
 
@@ -452,12 +445,6 @@ def test_lazy_container_operators(expression: str, expected_value: t.Any, expect
         else:
             expected_result = expected_value
 
-        if isinstance(result, _AnsibleLazyTemplateMixin):
-            if expect_mutation:
-                assert result._mutator() is JinjaCallContext.current()
-            else:
-                assert result._mutator is None
-
         assert result == expected_result
 
     templar = Templar(variables=variables)
@@ -641,11 +628,11 @@ def test_lazy_mutation_cross_plugin_dirty_template(expr: str, new_value: t.Any, 
 
 
 @pytest.mark.parametrize("expr, new_value, some_var, expected_value", [
-    ("access_and_mutate_dict(mutate_dict(some_var))", TRUST.tag("{{ 'mom' }}"), dict(one="one"), dict(one="one", new="mom", secondnew="mom")),
-    ("access_and_mutate_list(mutate_list(some_var))", TRUST.tag("{{ 'mom' }}"), ["one"], ["one", "mom", "mom"]),
+    ("access_and_mutate_dict(mutate_dict(some_var))", TRUST.tag("{{ 'mom' }}"), dict(one="one"), dict(one="one", new="{{ 'mom' }}", secondnew="{{ 'mom' }}")),
+    ("access_and_mutate_list(mutate_list(some_var))", TRUST.tag("{{ 'mom' }}"), ["one"], ["one", "{{ 'mom' }}", "{{ 'mom' }}"]),
 ])
 def test_lazy_mutation_cross_plugin_dirty_container(expr: str, new_value: t.Any, some_var: t.Any, expected_value: t.Any):
-    """Ensure that values returned from one plugin are lazily processed by subsequent plugins and after template finalization."""
+    """Ensure that new templates sourced from a plugin are not processed by subsequent plugins or template finalization."""
 
     def mutate_list(value: list) -> list:
         value.append(new_value)
@@ -706,7 +693,8 @@ def test_undefined_in_jinja_constant_container():
     templar.environment.filters['demo'] = demo
 
     with pytest.raises(AnsibleUndefinedVariable):
-        templar.template(TRUST.tag("{{ True | demo([bogus_var]) }}"))
+        x = templar.template(TRUST.tag("{{ True | demo([bogus_var]) }}"))
+        pass
     assert not plugin_retrieved_the_value
 
     assert templar.template(TRUST.tag("{{ True | demo([bogus_var]) | default('nope') }}")) == 'nope'

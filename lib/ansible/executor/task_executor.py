@@ -32,7 +32,7 @@ from ansible.playbook.task import Task
 from ansible.plugins import get_plugin_class
 from ansible.plugins.action import ActionBase
 from ansible.plugins.loader import become_loader, cliconf_loader, connection_loader, httpapi_loader, netconf_loader, terminal_loader
-from ansible.template.jinja_plugins import _invoke_lookup
+from ansible.template.jinja_plugins import _invoke_lookup, _DirectCall
 from ansible.template.templar import Templar
 from ansible.utils.collection_loader import AnsibleCollectionConfig
 from ansible.utils.display import Display, _DeferredWarningContext
@@ -211,13 +211,14 @@ class TaskExecutor:
             if not isinstance(terms, list):
                 terms = [terms]
 
+            @_DirectCall.mark
             def invoke_lookup() -> t.Any:
                 """Scope-capturing wrapper around _invoke_lookup to avoid functools.partial obscuring its usage from type-checking tools."""
                 return _invoke_lookup(
                     plugin_name=self._task.loop_with,
                     lookup_terms=terms,
                     lookup_kwargs=dict(wantlist=True),
-                    te_invoking_action_name=self._task.action,  # FIXME: this value has not been templated or resolved, it should be (historical problem)...
+                    invoked_as_with=True,
                 )
 
             # Smuggle a special wrapped lookup invocation in as a template local for its exclusive use when being evaluated as `with_(lookup)`.

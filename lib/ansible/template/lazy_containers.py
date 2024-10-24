@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 import functools
 import types
-import weakref
 import typing as t
 
 from collections import abc as c
@@ -16,7 +15,7 @@ from ansible.module_utils.datatag import (
     _try_get_internal_tags_mapping,
     AnsibleTagHelper,
 )
-from .jinja_common import JinjaCallContext, Marker, _TemplateConfig
+from .jinja_common import Marker, _TemplateConfig
 
 from .utils import TemplateContext, PASS_THROUGH_SCALAR_VAR_TYPES
 
@@ -26,15 +25,16 @@ from ansible.utils.sentinel import Sentinel
 from ._transform import _type_transform_mapping
 from ..errors import AnsibleVariableTypeError
 from ..errors.handler import Skippable
+from .jinja_common import mutate_and_access
 from ..vars.hostvars import HostVarsVars, HostVars
-
-_ANSIBLE_LAZY_TEMPLATE_SLOTS = tuple(('_templar', '_mutator', '_template_options'))
-_ITERATOR_TYPES: t.Final = (c.Iterator, c.ItemsView, c.KeysView, c.ValuesView, range)
-
-display = Display()
 
 if t.TYPE_CHECKING:
     from .templar import Templar, TemplateOptions
+
+_ANSIBLE_LAZY_TEMPLATE_SLOTS = tuple(('_templar', '_template_options'))
+_ITERATOR_TYPES: t.Final = (c.Iterator, c.ItemsView, c.KeysView, c.ValuesView, range)
+
+display = Display()
 
 
 class _AnsibleLazyTemplateMixin:
@@ -62,7 +62,6 @@ class _AnsibleLazyTemplateMixin:
     _container_types: set[type] = set()  # populated by __init_subclass__
 
     _templar: Templar
-    _mutator: weakref.ReferenceType[JinjaCallContext] | None
     _template_options: TemplateOptions | None
 
     @classmethod
@@ -96,19 +95,16 @@ class _AnsibleLazyTemplateMixin:
 
         if isinstance(contents, _LazyIterator):
             self._templar = contents.lazy._templar
-            self._mutator = contents.lazy._mutator
         elif isinstance(contents, _AnsibleLazyTemplateMixin):
             self._templar = contents._templar
-            self._mutator = contents._mutator
         else:
             self._templar = ctx.templar  # pylint: disable=assigning-non-slot  # slot defined in derived type
-            self._mutator = None  # pylint: disable=assigning-non-slot  # slot defined in derived type
 
     def __reduce_ex__(self, protocol):
         raise NotImplementedError("Pickling of Ansible lazy objects is not permitted.")
 
     @staticmethod
-    def _try_create(item: t.Any) -> t.Any:
+    def _try_create(item: t.Any, auto_template: bool = True) -> t.Any:
         item_type = type(item)
 
         # Try to use exact type match first to determine which wrapper (if any) to apply; isinstance checks
@@ -117,7 +113,7 @@ class _AnsibleLazyTemplateMixin:
             # Create a generator that yields the elements of `item` wrapped in a `_LazyValue` wrapper.
             # The wrapper is used to signal to the lazy container that the value must be processed before being returned.
             # Values added to the lazy container later through other means will be returned as-is, without any special processing.
-            lazy_values = dispatcher._lazy_values(item)
+            lazy_values = dispatcher._lazy_values(item) if auto_template else item
             tags_mapping = _try_get_internal_tags_mapping(item)
             value = t.cast(AnsibleTaggedObject, dispatcher)._instance_factory(lazy_values, tags_mapping)
 
@@ -152,19 +148,6 @@ class _AnsibleLazyTemplateMixin:
         """
         raise NotImplementedError()  # pragma: nocover
 
-    def _pre_mutate(self) -> None:
-        """
-        Ensure that the collection values are properly lazified if we were modified by a different mutation context, then record the current mutation context.
-        """
-        if self._mutator:
-            if self._mutator() is not (jcc := JinjaCallContext.current()):
-                self._ensure_lazy_values()
-
-                # avoid resetting mutator on repeated setitems in the same context
-                self._mutator = weakref.ref(jcc)  # pylint: disable=assigning-non-slot  # slot defined in derived type
-        else:
-            self._mutator = weakref.ref(JinjaCallContext.current())  # pylint: disable=assigning-non-slot  # slot defined in derived type
-
     def _ensure_lazy_values(self) -> None:
         """Ensure that all values in the collection are properly lazified (required, abstract)."""
         raise NotImplementedError()  # pragma: nocover
@@ -174,14 +157,16 @@ class _AnsibleLazyTemplateMixin:
         Ensure that the value is lazy-proxied or rendered, and if a key is provided, replace the original value with the result.
         """
         if type(value) is _LazyValue:  # pylint: disable=unidiomatic-typecheck
-            new_value = self._templar.proxy_or_render_template(value.value, options=self._template_options)
-        elif self._mutator and ((jcc := JinjaCallContext.current(optional=True)) is None or self._mutator() is not jcc):
-            new_value = self._templar.proxy_or_render_template(value, options=self._template_options)
+            new_value = mutate_and_access(value := value.value)
+            new_value = self._templar.template(new_value, options=self._template_options)
 
-            if value is new_value:
-                return value
+            if new_value is not value:
+                new_value = mutate_and_access(new_value)
         else:
-            return value
+            new_value = mutate_and_access(value)
+
+            if new_value is value:
+                return new_value  # bypass pointless __setitem__
 
         if key is not NoKeySentinel:
             self._native_type.__setitem__(self, key, new_value)  # type: ignore  # pylint: disable=unnecessary-dunder-call
@@ -201,7 +186,7 @@ class NoKeySentinel(Sentinel):
     ...
 
 
-@t.final
+@t.final  # consumers of lazy collections rely heavily on the concrete types being final
 class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
     __slots__ = _ANSIBLE_LAZY_TEMPLATE_SLOTS
 
@@ -242,27 +227,13 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
             if type(value) is not _LazyValue:  # pylint: disable=unidiomatic-typecheck
                 super().__setitem__(key, _LazyValue(value))
 
-    def __setitem__(self, key, value):
-        self._pre_mutate()
-        super().__setitem__(key, value)
-
     def setdefault(self, key, default=None, /) -> t.Any:
         if (value := self.get(key, NoKeySentinel)) is not NoKeySentinel:
             return value
 
-        self._pre_mutate()
-
         super().__setitem__(key, default)
 
         return default
-
-    def update(self, *args, **kwargs) -> None:
-        self._pre_mutate()
-        super().update(*args, **kwargs)
-
-    def clear(self) -> None:
-        self._mutator = None
-        super().clear()
 
     def items(self):
         for key, value in super().items():
@@ -300,8 +271,12 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
     def _native_copy(self) -> dict:
         return dict(self.items())
 
-    def _item_source(self):
-        return _LazyIterator(dict.items(self), self)
+    @staticmethod
+    def _item_source(value: dict) -> dict | _LazyIterator:
+        if isinstance(value, _AnsibleLazyTemplateDict):
+            return _LazyIterator(dict.items(value), value)
+
+        return value
 
     def _yield_non_lazy_dict_items(self) -> tuple[str, t.Any]:
         """
@@ -355,12 +330,13 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
 
 
 class _LazyIterator:
+    # DTFIX-MERGE: better way to smuggle this state around without this wrapper?
     def __init__(self, iterator: t.Iterable, lazy: _AnsibleLazyTemplateMixin) -> None:
         self.iterator = iterator
         self.lazy = lazy
 
 
-@t.final
+@t.final  # consumers of lazy collections rely heavily on the concrete types being final
 class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
     __slots__ = _ANSIBLE_LAZY_TEMPLATE_SLOTS
 
@@ -386,26 +362,6 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
         for key, value in enumerate(super().__iter__()):
             yield self._proxy_or_render_lazy_value(key, value)
 
-    def insert(self, *args, **kwargs) -> None:
-        self._pre_mutate()
-        super().insert(*args, **kwargs)
-
-    def clear(self) -> None:
-        self._mutator = None
-        super().clear()
-
-    def append(self, *args, **kwargs) -> None:
-        self._pre_mutate()
-        super().append(*args, **kwargs)
-
-    def extend(self, *args, **kwargs) -> None:
-        self._pre_mutate()
-        super().extend(*args, **kwargs)
-
-    def __setitem__(self, *args, **kwargs) -> None:
-        self._pre_mutate()
-        super().__setitem__(*args, **kwargs)
-
     def pop(self, idx: t.SupportsIndex = -1, /) -> t.Any:
         if not self:
             raise IndexError('pop from empty list')
@@ -427,8 +383,12 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
     def __repr__(self):
         return repr(self.copy()._native_copy())  # inefficient, but avoids mutating the current instance (to make debugging practical)
 
-    def _item_source(self):
-        return _LazyIterator(list.__iter__(self), self)
+    @staticmethod
+    def _item_source(value: list) -> list | _LazyIterator:
+        if isinstance(value, _AnsibleLazyTemplateList):
+            return _LazyIterator(list.__iter__(value), value)
+
+        return value
 
     def _yield_non_lazy_list_items(self):
         """
@@ -545,7 +505,6 @@ def proxy_jinja_constant_container(value: t.Any) -> t.Any:
     Since variables and plugin output are already lazy, it's safe to assume native containers are Jinja constants.
     The native container type check avoids calling _try_create on types that could trigger unwanted warnings/errors.
     """
-    # DTFIX-PR: this was built when plugin output was lazy, now that it's not, the current uses may be over-lazifying things in unwanted ways, investigate
     if type(value) in (list, tuple, dict):
         return _AnsibleLazyTemplateMixin._try_create(value)
 

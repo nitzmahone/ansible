@@ -85,7 +85,7 @@ class DataLoader:
             json_only: bool = False,
     ) -> t.Any:
         """Backwards compat for now"""
-        with RedactAnnotatedSourceContext.maybe(create=not show_content):
+        with RedactAnnotatedSourceContext.when(not show_content):
             return from_yaml(data=data, file_name=file_name, vault_secrets=self._vault.secrets, json_only=json_only)
 
     def load_from_file(self, file_name: str, cache: str = 'all', unsafe: bool = False, json_only: bool = False, trusted_as_template: bool = False) -> t.Any:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections.abc as c
+import dataclasses
 import datetime
 import functools
 import typing as t
@@ -14,6 +15,7 @@ from ..errors import (
     AnsibleTemplatePluginLoadError,
     AnsibleTemplatePluginRuntimeError,
 )
+from ..module_utils._internal._ambient_context import AmbientContextBase
 
 from ..module_utils.common.collections import is_sequence
 from ..module_utils.datatag import AnsibleTagHelper
@@ -23,8 +25,8 @@ from ..plugins.loader import lookup_loader, Jinja2Loader
 from ..plugins.lookup import LookupBase
 from ..utils.display import Display
 from .datatag import _JinjaConstTemplate
-from .jinja_common import MarkerError, _TemplateConfig, get_first_marker_arg, JinjaCallContext, Marker
-from .lazy_containers import _ITERATOR_TYPES, proxy_kwargs, proxy_args, proxy_jinja_constant_container
+from .jinja_common import MarkerError, _TemplateConfig, get_first_marker_arg, Marker, JinjaCallContext, mutate_and_access
+from .lazy_containers import _ITERATOR_TYPES, proxy_kwargs, proxy_args, proxy_jinja_constant_container, _AnsibleLazyTemplateMixin
 from .utils import TemplateContext
 
 _display = Display()
@@ -131,7 +133,7 @@ class JinjaPluginIntercept(c.MutableMapping):
                     return first_marker
 
             try:
-                with JinjaCallContext(eager_trip_marker=not accept_marker):
+                with JinjaCallContext(accept_marker=accept_marker):
                     test_res = func(*proxy_args(args), **proxy_kwargs(kwargs))
             except MarkerError as ex:
                 return ex.source
@@ -166,7 +168,7 @@ class JinjaPluginIntercept(c.MutableMapping):
                     return first_marker
 
             try:
-                with JinjaCallContext(eager_trip_marker=not accept_marker):
+                with JinjaCallContext(accept_marker=accept_marker):
                     return _wrap_plugin_output(func(*proxy_args(args), **proxy_kwargs(kwargs)))
             except MarkerError as ex:
                 return ex.source
@@ -181,7 +183,6 @@ _TCallable = t.TypeVar("_TCallable", bound=t.Callable)
 
 class _DirectCall:
     """Functions/methods marked `_DirectCall` bypass Jinja Environment checks for `Marker`."""
-    # DTFIX-MERGE: refine this API and make it public?
     _marker_attr: str = "_directcall"
 
     @classmethod
@@ -207,8 +208,14 @@ def _lookup(plugin_name: str, /, *args, **kwargs) -> t.Any:
     return _invoke_lookup(plugin_name=plugin_name, lookup_terms=list(args), lookup_kwargs=kwargs)
 
 
+@dataclasses.dataclass
+class _LookupContext(AmbientContextBase):
+    """Ambient context that wraps lookup execution, providing information about how it was invoked."""
+    invoked_as_with: bool
+
+
 @_DirectCall.mark
-def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[str, t.Any], te_invoking_action_name: str | None = None) -> t.Any:
+def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[str, t.Any], invoked_as_with: bool = False) -> t.Any:
     templar = TemplateContext.current().templar
 
     try:
@@ -219,6 +226,8 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
     if instance is None:
         raise AnsibleTemplatePluginNotFoundError('lookup', plugin_name)
 
+    instance.invoked_as_with = invoked_as_with
+
     # if the lookup doesn't understand `Marker` and there's at least one in the top level, short-circuit by returning the first one we found
     if not instance.accept_marker and (first_marker := get_first_marker_arg(lookup_terms, lookup_kwargs)) is not None:
         return first_marker
@@ -227,15 +236,19 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
     wantlist = lookup_kwargs.pop('wantlist', False)
     errors = lookup_kwargs.pop('errors', 'strict')
 
-    with JinjaCallContext(
-        eager_trip_marker=not instance.accept_marker,
-        _te_invoking_action_name=te_invoking_action_name,
+    with (
+        JinjaCallContext(accept_marker=instance.accept_marker),
+        _LookupContext(invoked_as_with=invoked_as_with),
     ):
         # safely catch run failures per #5059
         try:
             if _TemplateConfig.allow_embedded_templates:
                 # for backwards compat, only trust constant templates in lookup terms
-                lookup_terms = templar.proxy_or_render_template(_trust_jinja_constants(lookup_terms))
+                lookup_terms = templar.template(_trust_jinja_constants(lookup_terms))
+
+                # if embedded template support is enabled, repeat the check for `Marker` on lookup_terms, since a template may render as a `Marker`
+                if not instance.accept_marker and (first_marker := get_first_marker_arg(lookup_terms, {})) is not None:
+                    return first_marker
             else:
                 # not using proxy_args since it's a list, and we want to preserve tags
                 lookup_terms = AnsibleTagHelper.tag_copy(lookup_terms, (proxy_jinja_constant_container(value) for value in lookup_terms), value_type=list)
@@ -303,6 +316,7 @@ def _now(utc=False, fmt=None):
     return now
 
 
+_T = t.TypeVar('T_')
 def _trust_jinja_constants(o: t.Any) -> t.Any:
     """
     Recursively apply TrustedAsTemplate to values tagged with _JinjaConstTemplate and remove the tag.
@@ -328,4 +342,4 @@ def _wrap_plugin_output(o: t.Any) -> t.Any:
     if isinstance(o, _ITERATOR_TYPES):
         o = list(o)
 
-    return o
+    return _AnsibleLazyTemplateMixin._try_create(o, auto_template=False)

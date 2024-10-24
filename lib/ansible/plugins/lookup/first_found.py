@@ -144,11 +144,12 @@ import os
 import re
 import typing as t
 
+from ansible._internal import _task_context
 from ansible.errors import AnsibleError
 from ansible.module_utils.datatag import AnsibleTagHelper
 from ansible.plugins.lookup import LookupBase
 from ansible.template.jinja_common import UndefinedMarker
-from ansible.template.jinja_plugins import JinjaCallContext
+from ansible.template.jinja_plugins import _LookupContext
 from ansible.utils.path import unfrackpath
 
 
@@ -210,11 +211,12 @@ class LookupModule(LookupBase):
         return total_search
 
     def run(self, terms, variables=None, **kwargs):
-        # DTFIX-MERGE: JinjaCallContext is not finalized user-facing API, need caution tape of some sort here?
-        if te_action := JinjaCallContext.current()._te_invoking_action_name:
+        if _LookupContext.current().invoked_as_with:
             # we're being invoked by TaskExecutor.get_loop_items(), special backcompat behavior
-
             terms = _omit_undefined_markers(terms)  # recursively drop undefined values from terms for backwards compatibility
+
+            # invoked_as_with shouldn't be possible outside a TaskContext
+            te_action = _task_context.TaskContext.current().task.action  # FIXME: this value has not been templated or resolved, it should be (historical problem)...
 
             # based on the presence of `var`/`template`/`file` in the enclosing task action name, choose a subdir to search
             for subdir in ['template', 'var', 'file']:

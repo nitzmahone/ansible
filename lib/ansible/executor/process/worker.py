@@ -24,6 +24,7 @@ import traceback
 from jinja2.exceptions import TemplateNotFound
 from multiprocessing.queues import Queue
 
+from ansible._internal import _task_context
 from ansible.errors import AnsibleConnectionFailure, AnsibleError
 from ansible.executor.task_executor import TaskExecutor
 from ansible.module_utils.common.text.converters import to_text
@@ -136,7 +137,8 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
         to suddenly assume the role and prior state of its parent.
         """
         try:
-            return self._run()
+            with _task_context.TaskContext(self._task):
+                return self._run()
         except BaseException as e:
             self._hard_exit(e)
         finally:

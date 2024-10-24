@@ -33,7 +33,6 @@ from ..datatag import (
 )
 
 from ..datatag.tags import Deprecated as _Deprecated
-from ..datatag.access import AnsibleAccessContext
 
 # transformations to "final" JSON representations can only use:
 # str, float, int, bool, None, dict, list
@@ -333,7 +332,7 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         if type(o) is _WrappedValue:  # pylint: disable=unidiomatic-typecheck
             o = o.wrapped
         # managed access; allows external access audit and/or replacement of values
-        o = AnsibleAccessContext.current().access(o)
+        # o = AnsibleAccessContext.current().access(o)
 
         if isinstance(o, Tripwire):
             # DTFIX-FUTURE: since Tripwire.trip() is NoReturn, ideally we'd not need this bogus assignment, but it's not handled properly by all tools

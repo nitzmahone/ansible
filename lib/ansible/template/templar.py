@@ -27,18 +27,15 @@ from ansible.module_utils.datatag import (
 )
 from ..errors.handler import Skippable
 from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
-from ansible.module_utils.datatag.access import AnsibleAccessContext
 
 from ansible.utils.display import Display
 from ansible.utils.vars import validate_variable_name
 from ansible.parsing.dataloader import DataLoader
 
-from .datatag import DeprecatedAccessAuditContext, _RenderJinjaConstAsTemplate
+from .datatag import DeprecatedAccessAuditContext
 from .jinja_bits import AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, AnsibleEnvironment, defer_template_error, create_template_error, \
     is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result, FinalizeMode
-from .jinja_common import Marker, _TemplateConfig, MarkerError, ExceptionMarker
-from .vault import UndecryptableAccessMutator
-from .jinja_plugins import JinjaCallContext
+from .jinja_common import _TemplateConfig, MarkerError, ExceptionMarker
 from .utils import Omit, TemplateContext
 from .lazy_containers import _AnsibleLazyTemplateMixin
 from .marker_behaviors import MarkerBehavior, FAIL_ON_UNDEFINED
@@ -286,6 +283,7 @@ class Templar:
         options: TemplateOptions | None = None,
         mode: TemplateMode = TemplateMode.DEFAULT,
         template_locals: dict[str, t.Any] | None = None,
+        _render_jinja_const_template: bool = False,
     ) -> t.Any:
         """Templates (possibly recursively) any given data as input."""
 
@@ -317,10 +315,15 @@ class Templar:
 
         # track access to items that are tagged Deprecated during templating, handle accordingly
         with (
-            UndecryptableAccessMutator(),  # trigger injection of VaultBomb
             DeprecatedAccessAuditContext() as deprecated,
             # stack the current active var value we're templating
-            TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template) as template_ctx,
+            TemplateContext(
+                template_value=variable,
+                templar=self,
+                options=options,
+                stop_on_template=stop_on_template,
+                _render_jinja_const_template=_render_jinja_const_template,
+            ) as template_ctx,
         ):
             try:
                 if not isinstance(variable, str):
@@ -513,7 +516,13 @@ class Templar:
         """
         return self.template(variable, options=options, mode=TemplateMode.STOP_ON_CONTAINER)
 
-    def evaluate_expression(self, expression: str, escape_backslashes=True, template_locals: dict[str, t.Any] | None = None) -> t.Any:
+    def evaluate_expression(
+            self,
+            expression: str,
+            escape_backslashes=True,
+            template_locals: dict[str, t.Any] | None = None,
+            _render_jinja_const_template: bool = False,
+    ) -> t.Any:
         """
         Evaluate a string Jinja expression in the current template context and return its result.
         Inline Jinja template delimiters (e.g., {{ }}, {% %}) are not supported within a string expression, and will fail with a syntax error.
@@ -525,6 +534,7 @@ class Templar:
             options=TemplateOptions(escape_backslashes=escape_backslashes),
             mode=TemplateMode.EXPRESSION,
             template_locals=template_locals,
+            _render_jinja_const_template=_render_jinja_const_template,
         )
 
     _BROKEN_CONDITIONAL_ALLOWED_FRAGMENT = 'Broken conditionals are currently allowed because the `ALLOW_BROKEN_CONDITIONALS` configuration option is enabled.'
@@ -581,11 +591,10 @@ class Templar:
 
             elif _TemplateConfig.allow_embedded_templates:
                 if is_expression:
-                    with _RenderJinjaConstAsTemplate():
-                        # Disable escape_backslashes when processing conditionals, to maintain backwards compatibility.
-                        # This is necessary because conditionals were previously evaluated using {% %}, which was *NOT* affected by escape_backslashes.
-                        # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
-                        result = self.evaluate_expression(conditional, escape_backslashes=False)
+                    # Disable escape_backslashes when processing conditionals, to maintain backwards compatibility.
+                    # This is necessary because conditionals were previously evaluated using {% %}, which was *NOT* affected by escape_backslashes.
+                    # Now that conditionals use expressions, they would be affected by escape_backslashes if it was not disabled.
+                    result = self.evaluate_expression(conditional, escape_backslashes=False, _render_jinja_const_template=True)
                 else:
                     result = self.template(conditional)
             else:
@@ -639,21 +648,3 @@ class Templar:
         #   non-template caller as that will lead to false positivies for re-entrant calls (e.g. template plugins that call into templar).
 
         return False
-
-    def proxy_or_render_template(self, item: t.Any, options: TemplateOptions | None = None) -> t.Any:
-        # DTFIX-MERGE: always blindly access item here?
-        res = self.template(AnsibleAccessContext.current().access(item), options=options)
-
-        if isinstance(res, Marker) and ((jc := JinjaCallContext.current(optional=True)) and jc.eager_trip_marker):
-            res.trip()
-
-        return res
-
-    def access_and_maybe_trip_marker(self, item: t.Any) -> t.Any:
-        # DTFIX-MERGE: always blindly access item here?
-        res = AnsibleAccessContext.current().access(item)
-
-        if isinstance(res, Marker) and ((jc := JinjaCallContext.current(optional=True)) and jc.eager_trip_marker):
-            res.trip()
-
-        return res

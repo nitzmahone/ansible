@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import abc
 import collections.abc as c
-import dataclasses
 import inspect
 import itertools
 import typing as t
@@ -10,13 +9,16 @@ import typing as t
 from jinja2 import UndefinedError, StrictUndefined, TemplateRuntimeError
 from jinja2.utils import missing
 
+from ansible._internal import _errors
+from ansible.module_utils.common.messages import ErrorDetail, ErrorMessage
+from ansible.utils.datatag.tags import UndecryptableVaultedValue
 from ansible.constants import config
 from ansible.module_utils.datatag import Tripwire, AnsibleTagHelper, _untaggable_types
 
+from ._access import NotifiableAccessContextBase, AnsibleAccessContext
 from .utils import TemplateContext
 from ..errors import AnsibleUndefinedVariable, AnsibleTypeError
 from ..errors.handler import ErrorHandler, ErrorAction
-from ..module_utils._internal import _ambient_context
 
 from .jinja_patches import _patch_jinja
 
@@ -249,6 +251,40 @@ class CapturedExceptionMarker(ExceptionMarker):
         return self._marker_captured_exception
 
 
+class UndecryptableVaultError(_errors.AnsibleCapturedError):
+    """Template-external error raised by VaultExceptionMarker when an undecryptable variable is accessed."""
+
+    context = 'vault'
+    default_prefix = "Attempt to use undecryptable variable."
+
+
+class VaultExceptionMarker(ExceptionMarker):
+    """A `Marker` value that represents an error accessing a vaulted value during templating."""
+
+    __slots__ = ('_marker_undecryptable_vaulted_value',)
+
+    def __init__(self, value: str) -> None:
+        # DTFIX-MERGE: when does this show up, should it contain more details?
+        #          see also CapturedExceptionMarker for a similar issue
+        super().__init__(hint='A vault exception marker was tripped.')
+
+        self._marker_undecryptable_vaulted_value = value
+
+    def _as_exception(self) -> Exception:
+        uvv_tag = UndecryptableVaultedValue.get_required_tag(self._marker_undecryptable_vaulted_value)
+
+        return UndecryptableVaultError(
+            obj=self._marker_undecryptable_vaulted_value,
+            error_detail=ErrorDetail(
+                errors=[ErrorMessage(msg=uvv_tag.reason)],
+                formatted_traceback=uvv_tag.traceback,
+            ),
+        )
+
+    def _disarm(self) -> str:
+        return self._marker_undecryptable_vaulted_value
+
+
 def get_first_marker_arg(args: c.Sequence, kwargs: dict[str, t.Any]) -> Marker | None:
     """Utility method to inspect plugin args and return the first `Marker` encountered, otherwise `None`."""
     # DTFIX-MERGE: this may or may not need to be public API, move back to utils or once usage is wrapped in a decorator?
@@ -259,15 +295,18 @@ def get_first_marker_arg(args: c.Sequence, kwargs: dict[str, t.Any]) -> Marker |
     return None
 
 
-@dataclasses.dataclass(kw_only=True)
-class JinjaCallContext(_ambient_context.AmbientContextBase):
+class JinjaCallContext(NotifiableAccessContextBase):
     """
-    A context that wraps all Jinja plugin and method invocations to propagate per-call behaviors to consumers underneath.
-    When `eager_trip_marker=True`, `Marker` values are automatically "tripped" on retrieval or access when running Jinja
-    plugins/functions/methods that have not declared understanding of embedded `Marker` objects with `accept_marker`.
+    An audit context that wraps all Jinja (template/filter/test/lookup/method/function) calls.
+    While active, calls `trip()` on managed access of `Marker` objects unless the callee declares an understanding of markers.
     """
-    eager_trip_marker: bool
-    _te_invoking_action_name: str | None = None
+    _mask = True
+
+    def __init__(self, accept_marker: bool) -> None:
+        self._tag_type_interest = frozenset() if accept_marker else frozenset(Marker.concrete_subclasses)
+
+    def _notify(self, o: t.Any) -> t.NoReturn:
+        o.trip()
 
 
 def validate_arg_type(name: str, value: t.Any, allowed_type_or_types: type | tuple[type, ...], /) -> None:
@@ -288,3 +327,13 @@ def validate_arg_type(name: str, value: t.Any, allowed_type_or_types: type | tup
             raise AnsibleTypeError(f"The {name!r} argument must be of type {arg_type_description}.") from ex
 
     raise TypeError(f"The {name!r} argument must be of type {arg_type_description}, not {AnsibleTagHelper.base_type_name(value)!r}.")
+
+
+def mutate_and_access(value: t.Any) -> t.Any:
+    """Apply templating specific mutations to the given value (if applicable) and then access the value through AnsibleAccessContext before returning it."""
+    if UndecryptableVaultedValue.is_tagged_on(value):
+        value = VaultExceptionMarker(value)
+
+    AnsibleAccessContext.current().access(value)
+
+    return value

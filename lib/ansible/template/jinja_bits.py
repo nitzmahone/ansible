@@ -24,7 +24,6 @@ from ansible.utils.display import Display
 from ansible.errors import AnsibleVariableTypeError, AnsibleTemplateSyntaxError, AnsibleTemplateError
 from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.datatag import (
-    AnsibleDatatagBase,
     _AnsibleTaggedDict,
     _AnsibleTaggedList,
     _AnsibleTaggedSet,
@@ -32,7 +31,7 @@ from ansible.module_utils.datatag import (
     AnsibleTagHelper,
 )
 from ..errors.handler import ErrorAction
-from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
+from ..utils.datatag.tags import AnsibleSourcePosition, NotATemplate, TrustedAsTemplate
 
 from .datatag import _JinjaConstTemplate
 from .jinja_common import (
@@ -43,6 +42,8 @@ from .jinja_common import (
     _TemplateConfig,
     TruncationMarker,
     validate_arg_type,
+    JinjaCallContext,
+    mutate_and_access,
 )
 from .utils import Omit, TemplateContext, PASS_THROUGH_SCALAR_VAR_TYPES
 from .lazy_containers import (
@@ -54,9 +55,8 @@ from .lazy_containers import (
     proxy_jinja_constant_container,
 )
 
-from .jinja_plugins import JinjaPluginIntercept, _query, _lookup, _now, _wrap_plugin_output, get_first_marker_arg, JinjaCallContext, _DirectCall
+from .jinja_plugins import JinjaPluginIntercept, _query, _lookup, _now, _wrap_plugin_output, get_first_marker_arg, _DirectCall
 from ..module_utils._internal import _ambient_context, _dataclass_validation
-from ..module_utils.datatag.access import AnsibleAccessContext
 from ..plugins.loader import filter_loader, test_loader
 from ..vars.hostvars import HostVars, HostVarsVars
 
@@ -178,8 +178,19 @@ class AnsibleContext(Context):
     __repr__ = object.__repr__  # prevent Jinja from dumping vars in case this gets repr'd
 
     def resolve_or_missing(self, key):
-        val = super(AnsibleContext, self).resolve_or_missing(key)
-        return AnsibleAccessContext.current().access(val)
+        # DTFIX-U: determine if we're double-accessing here and if we can fix it
+        #          if self.vars is never lazy and self.parent is always lazy we may need to implement resolve_or_missing directly
+        #          this also impacts if we need access on getattr/getitem or not
+        # value = super(AnsibleContext, self).resolve_or_missing(key)
+
+        if key in self.vars:
+            value = self.vars[key]  # native dict
+        elif key in self.parent:
+            value = self.parent[key]  # ChainMap of lazy dicts
+        else:
+            value = missing
+
+        return mutate_and_access(value)
 
     def get_all(self):
         """
@@ -533,7 +544,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     _DEBUGGABLE_TEMPLATE_SOURCE = False  # DTFIX-FUTURE: bikeshed a name/mechanism to control template debugging
 
     def from_string(self, *args, **kwargs):
-        with _CompileStateSmugglingCtx.maybe(create=self._DEBUGGABLE_TEMPLATE_SOURCE) as ctx:
+        with _CompileStateSmugglingCtx.when(self._DEBUGGABLE_TEMPLATE_SOURCE) as ctx:
             template_obj = super().from_string(*args, **kwargs)
 
             if isinstance(ctx, _CompileStateSmugglingCtx):
@@ -596,12 +607,10 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         containing template, and performs a managed access on it. This allows custom behavior on constants for backward-compatibility (eg,
         application of trust or inline template rendering).
         """
-        tags: list[AnsibleDatatagBase] = [_JinjaConstTemplate()]
+        ctx = TemplateContext.current()
 
-        if (tv := TemplateContext.current().template_value) and (source_pos := AnsibleSourcePosition.get_tag(tv)):
-            tags.append(source_pos)
-
-        const_template = AnsibleTagHelper.tag(const_template, tags)
+        if (tv := ctx.template_value) and (source_pos := AnsibleSourcePosition.get_tag(tv)):
+            const_template = source_pos.tag(const_template)
 
         # deprecated: description='embedded Jinja constant string template support' core_version='2.21'
         # NOTE: This will fire on Jinja string constants that look like templates, whether templating is applied or not.
@@ -609,23 +618,21 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         #       As a result, we're erring on the side of more warnings here over fewer, until this backwards compatibility feature is removed.
         display.deprecated(msg="Jinja constant strings should not contain embedded templates.", obj=const_template, version="2.21")
 
-        return AnsibleAccessContext.current().access(const_template)
+        const_template = TrustedAsTemplate().tag(const_template)
 
-    @staticmethod
-    def _render_const_template(const_template: t.LiteralString) -> t.Any:
-        """
-        This method is for exclusive use by the template compiler to render embedded constant templates.
-        Since these values may be stored in locals that will receive no further processing before use, they must be trusted and templated, not just trusted.
-        """
-        # example: "{{ '{{ "hi" }}' }}" -- const_template is '{{ "hi" }}'
-        # access on const_template should not be necessary
-        return TemplateContext.current().templar.proxy_or_render_template(TrustedAsTemplate().tag(const_template))
+        if ctx._render_jinja_const_template:
+            result = ctx.templar.template(const_template)
+        else:
+            result = _JinjaConstTemplate().tag(const_template)
+
+        # DTFIX-U: is this access correct?
+        return mutate_and_access(result)
 
     def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
-        # DTFIX-MERGE: do we actually need to managed-access both sides of templates/strings here?
+        # DTFIX-U: do we actually need to managed-access both sides of templates/strings here?
         # example: "{{ some['thing'] }}" -- obj is the "some" dict, argument is "thing"
         # access on the result of super().getitem is necessary
-        return TemplateContext.current().templar.access_and_maybe_trip_marker(super().getitem(obj, argument))
+        return mutate_and_access(super().getitem(obj, argument))
 
     def getattr(self, obj: t.Any, attribute: str) -> t.Any:
         """
@@ -652,7 +659,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             except (TypeError, LookupError):
                 return self.undefined(obj=obj, name=attribute) if is_safe else self.unsafe_undefined(obj, attribute)
 
-        return TemplateContext.current().templar.access_and_maybe_trip_marker(value)
+        # DTFIX-U: is this access correct?
+        return mutate_and_access(value)
 
     def call(
         self,
@@ -670,7 +678,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             return first_marker
 
         try:
-            with JinjaCallContext(eager_trip_marker=True):
+            with JinjaCallContext(accept_marker=False):
                 call_res = super().call(__context, __obj, *proxy_args(args), **proxy_kwargs(kwargs))
 
                 if __obj is range:
@@ -865,6 +873,8 @@ def _finalize_template_result(o: t.Any, mode: FinalizeMode) -> t.Any:
     """Recurse the template result, rendering any encountered templates, converting containers to non-lazy versions."""
     # DTFIX-MERGE: add tests to ensure this method doesn't drift from allowed types
     o_type = type(o)
+
+    # DTFIX-FUTURE: provide an optional way to check for trusted templates leaking out of templating (injected, but not passed through templar.template)
 
     if o_type in PASS_THROUGH_SCALAR_VAR_TYPES:
         return o

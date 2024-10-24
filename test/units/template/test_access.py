@@ -1,72 +1,96 @@
 from __future__ import annotations
 
-from ansible.utils.datatag.tags import TrustedAsTemplate
-from ansible.template.templar import Templar
+import abc
+import typing as t
 
-trust = TrustedAsTemplate()
+from dataclasses import dataclass
 
+# noinspection PyProtectedMember
+from ansible.module_utils.datatag import AnsibleTaggedObject, AnsibleTagHelper
+# noinspection PyProtectedMember
+from ansible.template._access import AnsibleAccessContext, NotifiableAccessContextBase
 
-# DTFIX-MERGE: this is a work-in-progress to explore access, complete it or rip it out
+from units.module_utils.datatag.test_datatag import ExampleSingletonTag, ExampleTagWithContent
 
-
-def test_scalar_indirect() -> None:
-    # 1) resolve('access_me') -> proxy_or_render_template -> access("{{ 'hi mom' }}")
-    # 2) resolve('access_me') -> resolve_or_missing -> access('hi mom')
-    templar = Templar(None, dict(
-        access_me=trust.tag("{{ 'hi mom' }}"),
-    ))
-    templar.template(trust.tag('{{ access_me }}'))
+untagged_values = (123, 123.45, 'dude', ['dude'], dict(dude='mar'))
 
 
-def test_scalar_indirect2() -> None:
-    # 1) resolve('access_me') -> proxy_or_render_template -> access("{{ 'hi mom' + something }}")
-    # 2) resolve('something') -> proxy_or_render_template -> access('hello')
-    # 3) resolve('something') -> resolve_or_missing -> access('hello')
-    # 4) resolve('access_me') -> resolve_or_missing -> access('hi momhello')
-    templar = Templar(None, dict(
-        access_me=trust.tag("{{ 'hi mom' + something }}"),
-        something='hello',
-    ))
-    templar.template(trust.tag('{{ access_me }}'))
+@dataclass(frozen=True)
+class LoggedAccess:
+    ctx: NotifiableAccessContextBase
+    obj: object
 
 
-def test_scalar_result() -> None:
-    # 1) resolve('access_me') -> proxy_or_render_template -> access('{{ indirected_var }}')
-    # 2) resolve('indirected_var') -> proxy_or_render_template -> access('I am indirected')
-    # 3) resolve('indirected_var') -> resolve_or_missing -> access('I am indirected')
-    # 4) resolve('access_me') -> resolve_or_missing -> access('I am indirected')
-    templar = Templar(None, dict(
-        access_me=trust.tag("{{ indirected_var }}"),
-        indirected_var="I am indirected",
-    ))
-    templar.template(trust.tag('{{ access_me }}'))
+class LoggingTagAccessNotifier(NotifiableAccessContextBase, metaclass=abc.ABCMeta):
+    def __init__(self, access_list: list):
+        self._access_list: list = access_list
+
+    def _log(self, o: t.Any) -> t.Any:
+        self._access_list.append(LoggedAccess(ctx=self, obj=o))
 
 
-def test_deeply_nested_scalar_result() -> None:
-    # 1) resolve('access_me') -> proxy_or_render_template -> access('{{ indirected_var }}')
-    # 2) resolve('indirected_var') -> proxy_or_render_template -> access('{{ another_indirected_var }}')
-    # 3) resolve('another_indirected_var') -> proxy_or_render_template -> access('I am deeply nested')
-    # 4) resolve('another_indirected_var') -> resolve_or_missing -> access('I am deeply nested')
-    # 5) resolve('indirected_var') -> resolve_or_missing -> access('I am deeply nested')
-    # 6) resolve('access_me') -> resolve_or_missing -> access('I am deeply nested')
-    templar = Templar(None, dict(
-        access_me=trust.tag("{{ indirected_var }}"),
-        indirected_var=trust.tag("{{ another_indirected_var }}"),
-        another_indirected_var='I am deeply nested',
-    ))
-    templar.template(trust.tag('{{ access_me }}'))
+class ExampleTagWithContentAccessNotifier(LoggingTagAccessNotifier):
+    _type_interest = frozenset([ExampleTagWithContent])
+
+    def _notify(self, o: t.Any) -> t.Any:
+        super()._log(o)  # get parent logging behavior
+        return o
 
 
-def test_non_templated_scalar() -> None:
-    # 1) resolve('access_me') -> proxy_or_render_template -> access('hi mom')
-    # 2) resolve('access_me') -> resolve_or_missing -> access('hi mom')
-    templar = Templar(None, dict(
-        access_me='hi mom',
-    ))
-    templar.template(trust.tag('{{ access_me }}'))
+class ExampleSingletonTagAccessNotifier(LoggingTagAccessNotifier):
+    _type_interest = frozenset([ExampleSingletonTag])
+
+    def _notify(self, o: t.Any) -> t.Any:
+        super()._log(o)  # get parent logging behavior
+        return o
 
 
-def test_scalar_no_variables() -> None:
-    # no access calls
-    templar = Templar(None, {})
-    templar.template(trust.tag('{{ "hi mom" }}'))
+class ExampleMaskingSingletonTagAccessNotifier1(ExampleSingletonTagAccessNotifier):
+    _mask = True
+
+
+class ExampleMaskingSingletonTagAccessNotifier2(ExampleMaskingSingletonTagAccessNotifier1): ...
+
+
+def test_ansibleaccesscontext_untagged():
+    # accessing untagged objects should always succeed, be a no-op, and return the original value
+    for v in untagged_values:
+        AnsibleAccessContext.current().access(v)
+
+
+def test_ansibleaccesscontext_notify():
+    tagged_values = [AnsibleTagHelper.tag(v, [ExampleSingletonTag(), ExampleTagWithContent(content_str='replacement')]) for v in untagged_values]
+
+    instance_access_list = []
+    singleton_access_list = []
+
+    with ExampleTagWithContentAccessNotifier(instance_access_list):
+        with ExampleSingletonTagAccessNotifier(singleton_access_list):
+            for tv in tagged_values:
+                AnsibleAccessContext.current().access(tv)
+
+    assert [v.obj for v in instance_access_list] == [v.obj for v in singleton_access_list] == tagged_values
+
+
+def test_mixed_mask_unmask():
+    """Ensure that only the innermost instance of each type of a masking access context is notified, while non-masking contexts are always notified."""
+    value = ExampleSingletonTag().tag('blah')
+
+    access_log = []
+
+    with (ExampleSingletonTagAccessNotifier(access_log) as outer_nonmasked,
+          ExampleMaskingSingletonTagAccessNotifier1(access_log),  # masked
+          ExampleMaskingSingletonTagAccessNotifier2(access_log),
+          ExampleMaskingSingletonTagAccessNotifier1(access_log) as inner_masked_1,
+          ExampleMaskingSingletonTagAccessNotifier2(access_log) as inner_masked_2,
+          ExampleSingletonTagAccessNotifier(access_log) as inner_nonmasked,
+          ):
+        AnsibleAccessContext.current().access(value)
+
+    assert len(access_log) == 4
+    assert access_log == [
+        LoggedAccess(inner_nonmasked, value),
+        LoggedAccess(inner_masked_2, value),
+        LoggedAccess(inner_masked_1, value),
+        LoggedAccess(outer_nonmasked, value)
+    ]

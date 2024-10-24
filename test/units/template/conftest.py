@@ -9,7 +9,7 @@ from ansible.module_utils.common._utils import get_all_subclasses
 from ansible.template.jinja_common import Marker, TruncationMarker, CapturedExceptionMarker
 from ansible.template.templar import Templar, TemplateOptions
 from ansible.template.utils import TemplateContext
-from ansible.template.vault import VaultExceptionMarker
+from ansible.template.jinja_common import VaultExceptionMarker
 from ansible.utils.datatag.tags import UndecryptableVaultedValue
 
 

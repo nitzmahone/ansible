@@ -31,7 +31,7 @@ def from_yaml(
 
     # DTFIX-MERGE: provide Ansible-specific top-level APIs to expose JSON and YAML serialization/deserialization to hide the error handling logic
 
-    with RedactAnnotatedSourceContext.maybe(create=not show_content):
+    with RedactAnnotatedSourceContext.when(not show_content):
         # FIXME: this whole two-step should be unnecessary, implement this natively in the YAML decoder or delegate?
         try:
             # we first try to load this data as JSON.

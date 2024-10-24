@@ -23,7 +23,6 @@ import typing as t
 # DTFIX-MERGE: consider using AnsibleSerializable to register known types automatically?
 from ansible.module_utils.datatag import AnsibleTaggedObject, Tripwire, AnsibleTagHelper
 from ansible.utils.datatag.tags import VaultedValue
-from ansible.module_utils.datatag.access import AnsibleAccessContext
 from ansible.module_utils.common.yaml import SafeDumper
 
 
@@ -38,7 +37,7 @@ class AnsibleDumper(SafeDumper):
 
 
 def represent_ansible_tagged_object(self, data):
-    data = AnsibleAccessContext.current().access(data)
+    # data = AnsibleAccessContext.current().access(data)
 
     if (vv := VaultedValue.get_tag(data)) and self._dump_vault_tags is not False:
         # deprecated: description='enable the deprecation warning below' core_version='2.21'

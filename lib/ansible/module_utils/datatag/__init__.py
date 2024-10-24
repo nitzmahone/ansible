@@ -375,7 +375,15 @@ class AnsibleDatatagBase(AnsibleSerializableDataclass, metaclass=abc.ABCMeta):
 
     @classmethod
     def get_tag(cls: t.Type[_TAnsibleDatatagBase], value: t.Any) -> t.Optional[_TAnsibleDatatagBase]:
-        return _try_get_internal_tags_mapping(value).get(cls)  # type: ignore[return-value]
+        return _try_get_internal_tags_mapping(value).get(cls)
+
+    @classmethod
+    def get_required_tag(cls: t.Type[_TAnsibleDatatagBase], value: t.Any) -> _TAnsibleDatatagBase:
+        if (tag := cls.get_tag(value)) is None:
+            # DTFIX-FUTURE: we really should have a way to use AnsibleError with obj in module_utils when it's controller-side
+            raise ValueError(f'The type {type(value).__name__!r} is not tagged with {cls.__name__!r}.')
+
+        return tag
 
     @classmethod
     def untag(cls, value: _T) -> _T:
@@ -643,7 +651,7 @@ class AnsibleTaggedObject(AnsibleSerializable):
         Return a shallow copy of this instance, which must be a collection.
         This uses the underlying iterator to avoid access/iteration side effects (e.g. templating/wrapping on Lazy subclasses).
         """
-        return AnsibleTagHelper.tag_copy(self, self._item_source(), value_type=type(self))  # type: ignore[misc]
+        return AnsibleTagHelper.tag_copy(self, type(self)._item_source(self), value_type=type(self))  # type: ignore[misc]
 
     @classmethod
     def _new(cls, value: t.Any, *args, **kwargs) -> t.Self:

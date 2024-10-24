@@ -123,7 +123,7 @@ class AnsibleError(Exception):
     def formatted_source_context(self) -> str | None:
         # DTFIX-MERGE: this is part of the new DT changes, the API needs additional cleanup before releasing
 
-        with RedactAnnotatedSourceContext.maybe(create=not self._show_content):
+        with RedactAnnotatedSourceContext.when(not self._show_content):
             if source_context := SourceContext.from_value(self.obj):
                 return str(source_context)
 
