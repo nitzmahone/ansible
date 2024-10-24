@@ -491,24 +491,20 @@ class Constructable(_BaseInventoryPlugin):
 class _AutoTrustInputTemplar(Templar):
     """Compatibility wrapper around Templar that automatically trusts templates passed directly to some templating methods."""
 
-    # DTFIX-MERGE: bikeshed name and location of this class
+    # DTFIX-MERGE: bikeshed name and location of this class, and review for correctness
+    # DTFIX-MERGE: we only want to auto-trust values passed directly in from inventory
+    #              however when this templar is inherited the auto-trust will apply to lazy containers which inherit this templar, which is not desirable
+    #              solving this requires a proxy, not an actual templar -- which we need anyways, since this should expose the old templar API not the new one
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self._visitor = _serialization.AnsibleVariableVisitor(trusted_as_template=True)
 
-    def template(
-        self,
-        variable: t.Any,  # DTFIX-MERGE: once we settle the new/old API boundaries, rename this (here and in other methods)
-        *,
-        options: TemplateOptions | None = None,
-        mode: TemplateMode = TemplateMode.DEFAULT,
-        template_locals: dict[str, t.Any] | None = None,
-    ) -> t.Any:
-        return super().template(self._visitor.visit(variable), options=options, mode=mode, template_locals=template_locals)
+    def template(self, variable: t.Any, **kwargs) -> t.Any:
+        return super().template(self._visitor.visit(variable), **kwargs)
 
-    def evaluate_expression(self, expression: str, escape_backslashes=True, template_locals: dict[str, t.Any] | None = None) -> t.Any:
-        return super().evaluate_expression(self._visitor.visit(expression), escape_backslashes=escape_backslashes, template_locals=template_locals)
+    def evaluate_expression(self, expression: str, **kwargs) -> t.Any:
+        return super().evaluate_expression(self._visitor.visit(expression), **kwargs)
 
     def evaluate_conditional(self, conditional: str | bool | None) -> bool:
         return super().evaluate_conditional(self._visitor.visit(conditional))

@@ -25,11 +25,14 @@ from ..plugins.loader import lookup_loader, Jinja2Loader
 from ..plugins.lookup import LookupBase
 from ..utils.display import Display
 from .datatag import _JinjaConstTemplate
-from .jinja_common import MarkerError, _TemplateConfig, get_first_marker_arg, Marker, JinjaCallContext, mutate_and_access
+from .jinja_common import MarkerError, _TemplateConfig, get_first_marker_arg, Marker, JinjaCallContext
 from .lazy_containers import _ITERATOR_TYPES, proxy_kwargs, proxy_args, proxy_jinja_constant_container, _AnsibleLazyTemplateMixin
 from .utils import TemplateContext
 
 _display = Display()
+
+_T = t.TypeVar('_T')
+_TCallable = t.TypeVar("_TCallable", bound=t.Callable)
 
 
 class JinjaPluginIntercept(c.MutableMapping):
@@ -178,9 +181,6 @@ class JinjaPluginIntercept(c.MutableMapping):
         return wrapper
 
 
-_TCallable = t.TypeVar("_TCallable", bound=t.Callable)
-
-
 class _DirectCall:
     """Functions/methods marked `_DirectCall` bypass Jinja Environment checks for `Marker`."""
     _marker_attr: str = "_directcall"
@@ -316,8 +316,7 @@ def _now(utc=False, fmt=None):
     return now
 
 
-_T = t.TypeVar('T_')
-def _trust_jinja_constants(o: t.Any) -> t.Any:
+def _trust_jinja_constants(o: _T) -> _T:
     """
     Recursively apply TrustedAsTemplate to values tagged with _JinjaConstTemplate and remove the tag.
     Only container types emitted by the Jinja compiler are checked, since others do not contain constants.

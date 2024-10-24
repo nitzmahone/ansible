@@ -29,7 +29,6 @@ class NotifiableAccessContextBase(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def _notify(self, o: t.Any) -> t.Any:
         """Derived classes implement custom notification behavior when a registered type or tag is accessed."""
-        pass
 
 
 class AnsibleAccessContext:

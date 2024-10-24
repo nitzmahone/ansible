@@ -278,12 +278,12 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
 
         return value
 
-    def _yield_non_lazy_dict_items(self) -> tuple[str, t.Any]:
+    def _yield_non_lazy_dict_items(self) -> t.Iterator[tuple[str, t.Any]]:
         """
         Delegate to the base collection items iterator to yield the raw contents.
         As of Python 3.13, generator functions are significantly faster than inline generator expressions.
         """
-        for k,v in dict.items(self):
+        for k, v in dict.items(self):
             yield k, v.value if type(v) is _LazyValue else v  # pylint: disable=unidiomatic-typecheck
 
     def _non_lazy_copy(self) -> dict:

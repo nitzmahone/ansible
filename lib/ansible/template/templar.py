@@ -517,11 +517,12 @@ class Templar:
         return self.template(variable, options=options, mode=TemplateMode.STOP_ON_CONTAINER)
 
     def evaluate_expression(
-            self,
-            expression: str,
-            escape_backslashes=True,
-            template_locals: dict[str, t.Any] | None = None,
-            _render_jinja_const_template: bool = False,
+        self,
+        expression: str,
+        *,
+        escape_backslashes: bool = True,
+        template_locals: dict[str, t.Any] | None = None,
+        _render_jinja_const_template: bool = False,
     ) -> t.Any:
         """
         Evaluate a string Jinja expression in the current template context and return its result.

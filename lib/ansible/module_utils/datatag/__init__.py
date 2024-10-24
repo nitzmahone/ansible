@@ -374,11 +374,11 @@ class AnsibleDatatagBase(AnsibleSerializableDataclass, metaclass=abc.ABCMeta):
         return cls in _try_get_internal_tags_mapping(value)
 
     @classmethod
-    def get_tag(cls: t.Type[_TAnsibleDatatagBase], value: t.Any) -> t.Optional[_TAnsibleDatatagBase]:
+    def get_tag(cls, value: t.Any) -> t.Optional[t.Self]:
         return _try_get_internal_tags_mapping(value).get(cls)
 
     @classmethod
-    def get_required_tag(cls: t.Type[_TAnsibleDatatagBase], value: t.Any) -> _TAnsibleDatatagBase:
+    def get_required_tag(cls, value: t.Any) -> t.Self:
         if (tag := cls.get_tag(value)) is None:
             # DTFIX-FUTURE: we really should have a way to use AnsibleError with obj in module_utils when it's controller-side
             raise ValueError(f'The type {type(value).__name__!r} is not tagged with {cls.__name__!r}.')
@@ -404,7 +404,7 @@ if sys.version_info >= (3, 9):
     # Include the key and value types in the type hints on Python 3.9 and later.
     # Earlier versions do not support subscriptable dict.
     # deprecated: description='always use subscriptable dict' python_version='3.8'
-    class _AnsibleTagsMapping(dict[type[AnsibleDatatagBase], AnsibleDatatagBase]):
+    class _AnsibleTagsMapping(dict[type[_TAnsibleDatatagBase], _TAnsibleDatatagBase]):
         __slots__ = _NO_INSTANCE_STORAGE
 
         # DTFIX-FUTURE: do we want to try to implement read-only dict support?
@@ -838,7 +838,7 @@ class _AnsibleTaggedTime(datetime.time, AnsibleTaggedObject):
 class _AnsibleTaggedDict(dict, AnsibleTaggedObject):
     __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
 
-    _item_source = dict.items
+    _item_source: t.Optional[t.Callable] = dict.items
 
     def __copy__(self):
         return super()._copy_collection()

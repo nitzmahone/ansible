@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass
 
 # noinspection PyProtectedMember
-from ansible.module_utils.datatag import AnsibleTaggedObject, AnsibleTagHelper
+from ansible.module_utils.datatag import AnsibleTagHelper
 # noinspection PyProtectedMember
 from ansible.template._access import AnsibleAccessContext, NotifiableAccessContextBase
 
@@ -49,7 +49,8 @@ class ExampleMaskingSingletonTagAccessNotifier1(ExampleSingletonTagAccessNotifie
     _mask = True
 
 
-class ExampleMaskingSingletonTagAccessNotifier2(ExampleMaskingSingletonTagAccessNotifier1): ...
+class ExampleMaskingSingletonTagAccessNotifier2(ExampleMaskingSingletonTagAccessNotifier1):
+    ...
 
 
 def test_ansibleaccesscontext_untagged():
