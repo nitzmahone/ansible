@@ -618,10 +618,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         #       As a result, we're erring on the side of more warnings here over fewer, until this backwards compatibility feature is removed.
         display.deprecated(msg="Jinja constant strings should not contain embedded templates.", obj=const_template, version="2.21")
 
-        const_template = TrustedAsTemplate().tag(const_template)
-
         if ctx._render_jinja_const_template:
-            result = ctx.templar.template(const_template)
+            result = ctx.templar.template(TrustedAsTemplate().tag(const_template))
         else:
             result = _JinjaConstTemplate().tag(const_template)
 
