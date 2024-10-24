@@ -48,7 +48,7 @@ def as_non_templatable_text(value: t.Any) -> str:
 
 
 class TemplateTrustCheckFailedError(AnsibleTemplateError):
-    default_prefix = 'Encountered untrusted template or expression.',
+    default_prefix = 'Encountered untrusted template or expression.'
     default_help_text = 'Templates and expressions must be defined by trusted sources such as playbooks or roles, not untrusted sources such as module results.'
 
 
