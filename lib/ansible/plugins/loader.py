@@ -405,6 +405,7 @@ class PluginLoader:
 
             # if type name != 'module_doc_fragment':
             if type_name in C.CONFIGURABLE_PLUGINS and not C.config.has_configuration_definition(type_name, name):
+                # DTFIX-MERGE: can this be from_yaml -- also, is AnsibleLoader even the right thing in this context (vault support)?
                 dstring = AnsibleLoader(getattr(module, 'DOCUMENTATION', ''), file_name=path).get_single_data()
 
                 # TODO: allow configurable plugins to use sidecar

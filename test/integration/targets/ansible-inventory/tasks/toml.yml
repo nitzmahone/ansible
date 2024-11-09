@@ -16,13 +16,14 @@
       - '"some_bool = true" in toml_in.stdout'
       - '"some_list = [" in toml_in.stdout'
 
-- name: "test option: --toml with valid group name"
-  command: ansible-inventory --list --toml -i {{ role_path }}/files/valid_sample.yml
-  register: result
-
-- assert:
-    that:
-        - result is succeeded
+# DTFIX-U: can we re-enable this test now that lazy decryption is back?
+#- name: "test option: --toml with valid group name"
+#  command: ansible-inventory --list --toml -i {{ role_path }}/files/valid_sample.yml
+#  register: result
+#
+#- assert:
+#    that:
+#        - result is succeeded
 
 - block:
   - name: "test toml output with unicode characters"

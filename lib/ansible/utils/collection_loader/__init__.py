@@ -6,8 +6,16 @@
 
 from __future__ import annotations
 
+import typing as t
 
-def _to_text(value: str | bytes | None, strict: bool = False) -> str | None:
+
+class EncryptedStringProtocol(t.Protocol):
+    """Protocol representing an EncryptedString, which cannot be imported here."""
+    def _decrypt(self) -> str:
+        ...
+
+
+def _to_text(value: str | bytes | EncryptedStringProtocol | None, strict: bool = False) -> str | None:
     """Internal implementation to keep collection loader standalone."""
     if value is None:
         return None
@@ -15,10 +23,14 @@ def _to_text(value: str | bytes | None, strict: bool = False) -> str | None:
     if isinstance(value, str):
         return value
 
-    return value.decode(errors='strict' if strict else 'surrogateescape')
+    if isinstance(value, bytes):
+        return value.decode(errors='strict' if strict else 'surrogateescape')
+
+    # DTFIX-U: ensure we have unit test coverage for this case
+    return value._decrypt()
 
 
-def _to_bytes(value: str | bytes | None, strict: bool = False) -> bytes | None:
+def _to_bytes(value: str | bytes | EncryptedStringProtocol | None, strict: bool = False) -> bytes | None:
     """Internal implementation to keep collection loader standalone."""
     if value is None:
         return None
@@ -26,7 +38,11 @@ def _to_bytes(value: str | bytes | None, strict: bool = False) -> bytes | None:
     if isinstance(value, bytes):
         return value
 
-    return value.encode(errors='strict' if strict else 'surrogateescape')
+    if isinstance(value, str):
+        return value.encode(errors='strict' if strict else 'surrogateescape')
+
+    # DTFIX-U: ensure we have unit test coverage for this case
+    return value._decrypt().encode(errors='strict' if strict else 'surrogateescape')
 
 
 def resource_from_fqcr(ref):

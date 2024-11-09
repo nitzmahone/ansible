@@ -30,7 +30,9 @@ from ansible.module_utils.datatag import (
     _AnsibleTaggedTuple,
     AnsibleTagHelper,
 )
+from ._access import AnsibleAccessContext
 from ..errors.handler import ErrorAction
+from ..parsing import vault as _vault
 from ..utils.datatag.tags import AnsibleSourcePosition, NotATemplate, TrustedAsTemplate
 
 from .datatag import _JinjaConstTemplate
@@ -43,16 +45,15 @@ from .jinja_common import (
     TruncationMarker,
     validate_arg_type,
     JinjaCallContext,
-    mutate_and_access,
 )
 from .utils import Omit, TemplateContext, PASS_THROUGH_SCALAR_VAR_TYPES
 from .lazy_containers import (
     _AnsibleLazyTemplateMixin,
     _AnsibleLazyTemplateDict,
     _AnsibleLazyTemplateList,
-    proxy_args,
-    proxy_kwargs,
-    proxy_jinja_constant_container,
+    lazify_container_args,
+    lazify_container_kwargs,
+    lazify_container,
 )
 
 from .jinja_plugins import JinjaPluginIntercept, _query, _lookup, _now, _wrap_plugin_output, get_first_marker_arg, _DirectCall
@@ -172,6 +173,8 @@ class AnsibleContext(Context):
     runs them through AnsibleAccessContext. This allows usage of variables
     to be tracked. If needed, values can also be modified before being returned.
     """
+    environment: AnsibleEnvironment  # narrow the type specified by the base
+
     def __init__(self, *args, **kwargs):
         super(AnsibleContext, self).__init__(*args, **kwargs)
 
@@ -190,7 +193,7 @@ class AnsibleContext(Context):
         else:
             value = missing
 
-        return mutate_and_access(value)
+        return AnsibleAccessContext.current().access(value)
 
     def get_all(self):
         """
@@ -363,7 +366,7 @@ def _ansible_finalize(_ctx: AnsibleContext, value: t.Any) -> t.Any:
     The important part for us is that this blocks constant folding, which ensures our custom visit_Const is used.
     It also ensures that template results are wrapped in lazy containers.
     """
-    return proxy_jinja_constant_container(value)
+    return lazify_container(value)
 
 
 @dataclasses.dataclass(kw_only=True, slots=True)
@@ -472,7 +475,7 @@ def create_template_error(ex: Exception, variable: t.Any, is_expression: bool) -
 
         exception_to_raise = ex_type(NotATemplate().tag(msg), obj=variable)
 
-    if not exception_to_raise.obj:
+    if exception_to_raise.obj is None:
         exception_to_raise.obj = TemplateContext.current().template_value
 
     # DTFIX-FUTURE: Look through the TemplateContext hierarchy to find the most recent non-template
@@ -629,13 +632,13 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             result = _JinjaConstTemplate().tag(const_template)
 
         # DTFIX-U: is this access correct?
-        return mutate_and_access(result)
+        return AnsibleAccessContext.current().access(result)
 
     def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
         # DTFIX-U: do we actually need to managed-access both sides of templates/strings here?
         # example: "{{ some['thing'] }}" -- obj is the "some" dict, argument is "thing"
         # access on the result of super().getitem is necessary
-        return mutate_and_access(super().getitem(obj, argument))
+        return AnsibleAccessContext.current().access(super().getitem(obj, argument))
 
     def getattr(self, obj: t.Any, attribute: str) -> t.Any:
         """
@@ -663,7 +666,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
                 return self.undefined(obj=obj, name=attribute) if is_safe else self.unsafe_undefined(obj, attribute)
 
         # DTFIX-U: is this access correct?
-        return mutate_and_access(value)
+        return AnsibleAccessContext.current().access(value)
 
     def call(
         self,
@@ -682,7 +685,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         try:
             with JinjaCallContext(accept_marker=False):
-                call_res = super().call(__context, __obj, *proxy_args(args), **proxy_kwargs(kwargs))
+                call_res = super().call(__context, __obj, *lazify_container_args(args), **lazify_container_kwargs(kwargs))
 
                 if __obj is range:
                     # Preserve the ability to do `range(1000000000) | random` by not converting range objects to lists.
@@ -803,7 +806,8 @@ def is_possibly_template(value: str, overrides: TemplateOverrides = TemplateOver
     A lightweight check to determine if the given string looks like it contains a template, even if that template is invalid.
     Return True if the given string starts with a Jinja overrides header or if it contains template start strings.
     """
-    return value.startswith(JINJA2_OVERRIDE) or overrides._contains_start_string(value)
+    # pylint: disable=unidiomatic-typecheck
+    return type(value) is _vault.EncryptedString or value.startswith(JINJA2_OVERRIDE) or overrides._contains_start_string(value)
 
 
 def is_possibly_all_template(value: str, overrides: TemplateOverrides = TemplateOverrides.DEFAULT):
@@ -811,7 +815,8 @@ def is_possibly_all_template(value: str, overrides: TemplateOverrides = Template
     A lightweight check to determine if the given string looks like it contains *only* a template, even if that template is invalid.
     Return True if the given string starts with a Jinja overrides header or if it starts and ends with Jinja template delimiters.
     """
-    return value.startswith(JINJA2_OVERRIDE) or overrides._starts_and_ends_with_jinja_delimiters(value)
+    # pylint: disable=unidiomatic-typecheck
+    return type(value) is _vault.EncryptedString or value.startswith(JINJA2_OVERRIDE) or overrides._starts_and_ends_with_jinja_delimiters(value)
 
 
 class FinalizeMode(enum.Enum):

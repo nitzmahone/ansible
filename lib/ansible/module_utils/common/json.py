@@ -7,7 +7,6 @@ from __future__ import annotations
 import collections.abc as _c
 import datetime
 import functools
-import importlib
 import json
 import typing as t
 
@@ -223,7 +222,7 @@ class _JSONSerializationProfile(t.Generic[_T_encoder, _T_decoder]):
 
         # no current need to preserve tags on controller-only types or custom behavior for anything in `allowed_serializable_types`
         cls.serialize_map.update({obj: cls.serialize_serializable_object for obj in cls.allowed_ansible_serializable_types})
-        cls.serialize_map.update({obj: cls.discard_tags for obj in _internal.get_controller_types()})
+        cls.serialize_map.update({obj: func for obj, func in _internal.get_controller_serialize_map().items() if obj not in cls.serialize_map})
 
         cls.deserialize_map[AnsibleSerializable._TYPE_KEY] = cls.deserialize_serializable  # always recognize tagged types
 
@@ -331,8 +330,6 @@ class AnsibleJSONEncoder(json.JSONEncoder):
         # native types get short-circuited through their default representation by the serializer.
         if type(o) is _WrappedValue:  # pylint: disable=unidiomatic-typecheck
             o = o.wrapped
-        # managed access; allows external access audit and/or replacement of values
-        # o = AnsibleAccessContext.current().access(o)
 
         if isinstance(o, Tripwire):
             # DTFIX-FUTURE: since Tripwire.trip() is NoReturn, ideally we'd not need this bogus assignment, but it's not handled properly by all tools
@@ -447,7 +444,7 @@ def _create_encoding_check_error() -> Exception:
     Return an AnsibleError for use when a UTF8 string encoding check has failed.
     These checks are only performed in the controller context, but since this is module_utils code, dynamic loading of the `errors` module is required.
     """
-    errors = importlib.import_module('ansible.errors')  # bypass AnsiballZ import scanning
+    errors = _internal.import_controller_module('ansible.errors')  # bypass AnsiballZ import scanning
 
     return errors.AnsibleRuntimeError(
         message='Refusing to deserialize an invalid UTF8 string value.',
@@ -458,12 +455,10 @@ def _create_encoding_check_error() -> Exception:
 @functools.lru_cache
 def _string_encoding_check_enabled() -> bool:
     """Return True if JSON deserialization should verify strings can be encoded as valid UTF8."""
-    try:
-        config = importlib.import_module('ansible.constants').config  # bypass AnsiballZ import scanning
-    except ImportError:
-        return False
+    if constants := _internal.import_controller_module('ansible.constants'):  # bypass AnsiballZ import scanning
+        return constants.config.get_config_value(_check_encoding_setting)  # covers all profile-based deserializers, not just modules
 
-    return config.get_config_value(_check_encoding_setting)  # covers all profile-based deserializers, not just modules
+    return False
 
 
 def _recursively_check_string_encoding(value: t.Any) -> None:

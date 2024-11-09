@@ -42,6 +42,7 @@ class _LegacyVariableVisitor(_serialization.AnsibleVariableVisitor):
             trusted_as_template=trusted_as_template,
             source_position=source_position,
             allow_mapping=allow_mapping,
+            allow_encrypted_string=True,
         )
 
         self.invert_trust = invert_trust
@@ -86,9 +87,9 @@ class _Profile(_json._JSONSerializationProfile["Encoder", "Decoder"]):
 
     @classmethod
     def serialize_tagged_str(cls, value: _datatag.AnsibleTaggedObject) -> _t.Any:
-        if vault_tag := _tags.VaultedValue.get_tag(value):
+        if ciphertext := _vault.VaultHelper.get_ciphertext(value, preserve_tags=False):
             return dict(
-                __ansible_vault=vault_tag.ciphertext,
+                __ansible_vault=ciphertext,
             )
 
         return _datatag.AnsibleTagHelper.as_untagged_type(value)
@@ -103,18 +104,26 @@ class _Profile(_json._JSONSerializationProfile["Encoder", "Decoder"]):
         return _Untrusted(ansible_unsafe)
 
     @classmethod
-    def deserialize_vault(cls, value: dict[str, _t.Any]) -> str:
+    def deserialize_vault(cls, value: dict[str, _t.Any]) -> _vault.EncryptedString:
         ansible_vault = value['__ansible_vault']
 
         if type(ansible_vault) is not str:  # pylint: disable=unidiomatic-typecheck
             raise TypeError(f"__ansible_vault is {type(ansible_vault)} not {str}")
 
-        return _vault._maybe_decrypt_ciphertext(ansible_vault)
+        encrypted_string = _vault.EncryptedString(ciphertext=ansible_vault)
+
+        return encrypted_string
 
     @classmethod
     def serialize_as_untrusted_isoformat(cls, value: _datetime.date | _datetime.time | _datetime.datetime) -> _Untrusted:
         """Untrust is applied to strings during pre_serialize, but strings created during serialization must have Untrust applied when created."""
         return _Untrusted(super().serialize_as_isoformat(value))
+
+    @classmethod
+    def serialize_encrypted_string(cls, value: _vault.EncryptedString) -> dict[str, str]:
+        return dict(
+            __ansible_vault=_vault.VaultHelper.get_ciphertext(value, preserve_tags=False),
+        )
 
     @classmethod
     def post_init(cls) -> None:
@@ -127,6 +136,7 @@ class _Profile(_json._JSONSerializationProfile["Encoder", "Decoder"]):
             _datatag._AnsibleTaggedDate: cls.discard_tags,
             _datatag._AnsibleTaggedTime: cls.discard_tags,
             _datatag._AnsibleTaggedDateTime: cls.discard_tags,
+            _vault.EncryptedString: cls.serialize_encrypted_string,
             _datatag._AnsibleTaggedStr: cls.serialize_tagged_str,  # for VaultedValue tagged str
             _datatag._AnsibleTaggedInt: cls.discard_tags,
             _datatag._AnsibleTaggedFloat: cls.discard_tags,
@@ -176,15 +186,12 @@ class Decoder(_json.AnsibleProfileJSONDecoder):
         # DTFIX-MERGE: can we eliminate origin and trusted_as_template args by having a way to attach them to input streams?
         origin: _tags.AnsibleSourcePosition | None = None,
         trusted_as_template: bool | None = None,
-        # DTFIX-MERGE: can the VaultSecretsContext be managed by the CLI so we don't need to pass it in here?
-        vault_secrets: list[tuple[str, _vault.VaultSecret]] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
 
         self._origin: _tags.AnsibleSourcePosition | None = origin
         self._trusted_as_template = trusted_as_template
-        self._vault_secrets = vault_secrets
 
     def raw_decode(self, s: str, idx: int = 0) -> tuple[_t.Any, int]:
         if self._origin is None:
@@ -193,5 +200,4 @@ class Decoder(_json.AnsibleProfileJSONDecoder):
         if self._trusted_as_template is None:
             self._trusted_as_template = _tags.TrustedAsTemplate.is_tagged_on(s)
 
-        with _vault.VaultSecretsContext(self._vault_secrets):
-            return super().raw_decode(s, idx)
+        return super().raw_decode(s, idx)

@@ -7,13 +7,20 @@ import sys
 import typing as t
 
 try:
+    from ansible import _internal  # sets is_controller=True in controller context
+    from ansible.module_utils._internal import is_controller  # allow checking is_controller
     from ansible.template.jinja_common import _TemplateConfig
     from ansible.errors.handler import ErrorHandler, ErrorAction
 except ImportError:
     # likely doing only module_utils testing; ignore here and rely on test_templar::test_trust_fail_raises_in_tests to ensure the right behavior
     pass
 else:
+    assert _internal
+    assert is_controller
+
     _TemplateConfig.untrusted_template_handler = ErrorHandler(ErrorAction.FAIL)
+
+    from .controller_only_conftest import *  # pylint: disable=wildcard-import,unused-wildcard-import
 
 
 def pytest_configure(config: pytest.Config):

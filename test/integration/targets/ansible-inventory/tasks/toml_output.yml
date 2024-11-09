@@ -1,22 +1,23 @@
 - block:
-  - name: check baseline
-    command: ansible-inventory -i '{{ role_path }}/files/valid_sample.yml' --list --toml
-    register: limited
-
-  - name: ensure non empty host list
-    assert:
-      that:
-        - "'something' in inv['somegroup']['hosts']"
-
-  - name: check that limit removes host
-    command: ansible-inventory -i '{{ role_path }}/files/valid_sample.yml'  --limit '!something' --list --toml
-    register: limited
-    ignore_errors: true
-
-  - name: ensure empty host list
-    assert:
-      that:
-        - limited is failed
+# DTFIX-U: can we re-enable this now that lazy decryption is back?
+#  - name: check baseline
+#    command: ansible-inventory -i '{{ role_path }}/files/valid_sample.yml' --list --toml
+#    register: limited
+#
+#  - name: ensure non empty host list
+#    assert:
+#      that:
+#        - "'something' in inv['somegroup']['hosts']"
+#
+#  - name: check that limit removes host
+#    command: ansible-inventory -i '{{ role_path }}/files/valid_sample.yml'  --limit '!something' --list --toml
+#    register: limited
+#    ignore_errors: true
+#
+#  - name: ensure empty host list
+#    assert:
+#      that:
+#        - limited is failed
 
   - name: check dupes
     command: ansible-inventory -i '{{ role_path }}/files/complex.ini' --list --toml

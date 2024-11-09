@@ -47,13 +47,22 @@ class AnsibleTagHelper:
     # DTFIX-MERGE: add docstrings to all non-override methods in this class
 
     @staticmethod
-    def untag(value: _T, tag_type: t.Type[AnsibleDatatagBase]) -> _T:
+    def untag(value: _T, *tag_types: t.Type[AnsibleDatatagBase]) -> _T:
+        """
+        If tags matching any of `tag_types` are present on `value`, return a copy with those tags removed.
+        If no `tag_types` are specified and the object has tags, return a copy with all tags removed.
+        Otherwise, the original `value` is returned.
+        """
+        # DTFIX-U: this can probably replace as_untagged_type?
         tag_set = AnsibleTagHelper.tags(value)
 
         if not tag_set:
             return value
 
-        tags_mapping = _AnsibleTagsMapping((type(tag), tag) for tag in tag_set if type(tag) is not tag_type)  # pylint: disable=unidiomatic-typecheck
+        if tag_types:
+            tags_mapping = _AnsibleTagsMapping((type(tag), tag) for tag in tag_set if type(tag) not in tag_types)  # pylint: disable=unidiomatic-typecheck
+        else:
+            tags_mapping = None
 
         if not tags_mapping:
             if t.cast(AnsibleTaggedObject, value)._empty_tags_as_native:
@@ -253,7 +262,7 @@ class AnsibleSerializableWrapper(AnsibleSerializable, t.Generic[_T], metaclass=a
     __slots__ = ('_value',)
 
     _wrapped_types: t.ClassVar[dict[type, type[AnsibleSerializable]]] = {}
-    _wrapped_type: t.ClassVar[type]
+    _wrapped_type: t.ClassVar[type] = type(None)
 
     def __init__(self, value: _T) -> None:
         self._value: _T = value
@@ -372,6 +381,15 @@ class AnsibleDatatagBase(AnsibleSerializableDataclass, metaclass=abc.ABCMeta):
     @classmethod
     def is_tagged_on(cls, value: t.Any) -> bool:
         return cls in _try_get_internal_tags_mapping(value)
+
+    @classmethod
+    def first_tagged_on(cls, *values: t.Any) -> t.Any | None:
+        """Return the first value which is tagged with this type, or None if no match is found."""
+        for value in values:
+            if cls.is_tagged_on(value):
+                return value
+
+        return None
 
     @classmethod
     def get_tag(cls, value: t.Any) -> t.Optional[t.Self]:
@@ -527,30 +545,34 @@ class AnsibleSingletonTagBase(AnsibleDatatagBase):
 class AnsibleTaggedObject(AnsibleSerializable):
     __slots__ = _NO_INSTANCE_STORAGE
 
-    _native_type: type
-    _item_source: t.Optional[t.Callable] = None
+    _native_type: t.ClassVar[type]
+    _item_source: t.ClassVar[t.Optional[t.Callable]] = None
 
-    _tagged_type_map: t.Dict[type, t.Type['AnsibleTaggedObject']] = {}
-    _tagged_collection_types: t.Set[t.Type[c.Collection]] = set()
-    _collection_types: t.Set[t.Type[c.Collection]] = set()
+    _tagged_type_map: t.ClassVar[t.Dict[type, t.Type['AnsibleTaggedObject']]] = {}
+    _tagged_collection_types: t.ClassVar[t.Set[t.Type[c.Collection]]] = set()
+    _collection_types: t.ClassVar[t.Set[t.Type[c.Collection]]] = set()
 
-    _empty_tags_as_native = True  # by default, untag will revert to the native type when no tags remain
-    _subclasses_native_type = True  # by default, tagged types are assumed to subclass the type they augment
-    _ansible_tags_mapping = _EMPTY_INTERNAL_TAGS_MAPPING
+    _empty_tags_as_native: t.ClassVar[bool] = True  # by default, untag will revert to the native type when no tags remain
+    _subclasses_native_type: t.ClassVar[bool] = True  # by default, tagged types are assumed to subclass the type they augment
+
+    _ansible_tags_mapping: _AnsibleTagsMapping | _EmptyROInternalTagsMapping = _EMPTY_INTERNAL_TAGS_MAPPING
     """
     Efficient internal storage of tags, indexed by tag type.
     Contains no more than one instance of each tag type.
     This is defined as a class attribute to support type hinting and documentation.
     It is overwritten with an instance attribute during instance creation.
+    The instance attribute slot is provided by the derived type.
     """
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
 
         try:
-            cls._init_class()  # type: ignore[attr-defined]
+            init_class = cls._init_class  # type: ignore[attr-defined]
         except AttributeError:
             pass
+        else:
+            init_class()
 
         if not cls._subclasses_native_type:
             return  # NOTE: When not subclassing a native type, the derived type must set cls._native_type itself and cls._empty_tags_as_native to False.
@@ -620,10 +642,10 @@ class AnsibleTaggedObject(AnsibleSerializable):
         # DTFIX-MERGE: this is probably incomplete; don't we need a full deep copy (possibly with templating and access)?
         #  This isn't a problem for consumers that are inherently recursive already (eg JSON serialization, repr, YAML)
         #  Maybe just docstring clarification that it's not recursive and that returned nested containers may still have tagged types inside?
-        return {
-            'value': self._native_copy(),
-            'tags': list(self._ansible_tags_mapping.values()),
-        }
+        return dict(
+            value=self._native_copy(),
+            tags=list(self._ansible_tags_mapping.values()),
+        )
 
     @classmethod
     def _from_dict(cls: t.Type[_TAnsibleTaggedObject], d: t.Dict[str, t.Any]) -> _TAnsibleTaggedObject:
@@ -838,7 +860,7 @@ class _AnsibleTaggedTime(datetime.time, AnsibleTaggedObject):
 class _AnsibleTaggedDict(dict, AnsibleTaggedObject):
     __slots__ = _ANSIBLE_TAGGED_OBJECT_SLOTS
 
-    _item_source: t.Optional[t.Callable] = dict.items
+    _item_source: t.ClassVar[t.Optional[t.Callable]] = dict.items
 
     def __copy__(self):
         return super()._copy_collection()

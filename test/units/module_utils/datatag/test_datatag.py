@@ -286,6 +286,9 @@ class Later:
 
 
 def _default_id_func(obj: object) -> str:
+    if type(obj).__name__ == 'EncryptedString':
+        return 'EncryptedString'
+
     res = str(obj)
 
     if "genexpr" in res:
@@ -770,3 +773,48 @@ def test_conflicting_tagged_type_map_entry():
 
     with pytest.raises(TypeError, match="Cannot define type 'SecondaryDict' since '_AnsibleTaggedDict' already extends 'dict'."):
         create_problem()
+
+
+@pytest.mark.parametrize("value,expected_idx", (
+    (('a', ExampleSingletonTag().tag('b'), ExampleSingletonTag().tag('c')), 1),
+    ((ExampleSingletonTag().tag('a'), ExampleSingletonTag().tag('b'), 'c'), 0),
+    ((ExampleTagWithContent(content_str='').tag('a'), 'b'), None),
+))
+def test_first_tagged_on(value: c.Sequence, expected_idx: int | None):
+    expected = value[expected_idx] if expected_idx is not None else None
+
+    assert ExampleSingletonTag.first_tagged_on(*value) is expected
+
+
+class NonNativeTaggedType(AnsibleTaggedObject):
+    """A surrogate test type that allows empty tags."""
+    __slots__ = ('_ansible_tags_mapping', '_value')
+    _empty_tags_as_native: t.ClassVar[bool] = False
+
+    _value: str
+
+    def __init__(self, value: str):
+        self._ansible_tags_mapping = _EMPTY_INTERNAL_TAGS_MAPPING
+
+
+def test_helper_untag():
+    """Validate the behavior of the `AnsibleTagHelper.untag` method."""
+    value = AnsibleTagHelper.tag("value", tags=[ExampleSingletonTag(), ExampleTagWithContent(content_str="blah")])
+    assert len(AnsibleTagHelper.tag_types(value)) == 2
+
+    less_est = AnsibleTagHelper.untag(value, ExampleSingletonTag)
+    assert AnsibleTagHelper.tag_types(less_est) == {ExampleTagWithContent}
+
+    no_tags_explicit = AnsibleTagHelper.untag(value, ExampleSingletonTag, ExampleTagWithContent)
+    assert type(no_tags_explicit) is str  # pylint: disable=unidiomatic-typecheck
+
+    no_tags_implicit = AnsibleTagHelper.untag(value)
+    assert type(no_tags_implicit) is str  # pylint: disable=unidiomatic-typecheck
+
+    untagged_value = "not a tagged value"
+    assert AnsibleTagHelper.untag(untagged_value) is untagged_value
+
+    tagged_empty_tags_ok_value = ExampleSingletonTag().tag(NonNativeTaggedType("blah"))
+    untagged_empty_tags_ok_value = AnsibleTagHelper.untag(tagged_empty_tags_ok_value)
+    assert type(untagged_empty_tags_ok_value) is NonNativeTaggedType  # pylint: disable=unidiomatic-typecheck
+    assert not AnsibleTagHelper.tags(untagged_empty_tags_ok_value)

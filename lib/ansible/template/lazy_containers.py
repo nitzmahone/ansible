@@ -15,6 +15,7 @@ from ansible.module_utils.datatag import (
     _try_get_internal_tags_mapping,
     AnsibleTagHelper,
 )
+from ._access import AnsibleAccessContext
 from .jinja_common import Marker, _TemplateConfig
 
 from .utils import TemplateContext, PASS_THROUGH_SCALAR_VAR_TYPES
@@ -22,10 +23,8 @@ from .utils import TemplateContext, PASS_THROUGH_SCALAR_VAR_TYPES
 from ansible.utils.display import Display
 from ansible.utils.sentinel import Sentinel
 
-from ._transform import _type_transform_mapping
 from ..errors import AnsibleVariableTypeError
 from ..errors.handler import Skippable
-from .jinja_common import mutate_and_access
 from ..vars.hostvars import HostVarsVars, HostVars
 
 if t.TYPE_CHECKING:
@@ -119,15 +118,10 @@ class _AnsibleLazyTemplateMixin:
 
             return value
 
-        if transform := _type_transform_mapping.get(item_type):
-            unmask_type_names = TemplateContext.current().options.unmask_type_names
-
-            if item_type.__name__ not in unmask_type_names:
-                # send the transformed result back through _try_create to ensure lazification (where applicable)
-                return _AnsibleLazyTemplateMixin._try_create(transform(item))
-
         with Skippable, _TemplateConfig.unsupported_variable_type_handler.handle(AnsibleVariableTypeError, skip_on_ignore=True):
             if item_type not in _AnsibleLazyTemplateMixin._ignore_types and not isinstance(item, _AnsibleLazyTemplateMixin._ignore_types_tuple):
+                # DTFIX-MERGE: need a way to reliably ascend the template stack to describe the context for constant tuples
+                #              we have a similar need in other locations for more than just constant tuples
                 raise AnsibleVariableTypeError(obj=item)
 
         return item
@@ -157,13 +151,13 @@ class _AnsibleLazyTemplateMixin:
         Ensure that the value is lazy-proxied or rendered, and if a key is provided, replace the original value with the result.
         """
         if type(value) is _LazyValue:  # pylint: disable=unidiomatic-typecheck
-            new_value = mutate_and_access(value := value.value)
+            new_value = AnsibleAccessContext.current().access(value := value.value)
             new_value = self._templar.template(new_value, options=self._template_options)
 
             if new_value is not value:
-                new_value = mutate_and_access(new_value)
+                new_value = AnsibleAccessContext.current().access(new_value)
         else:
-            new_value = mutate_and_access(value)
+            new_value = AnsibleAccessContext.current().access(value)
 
             if new_value is value:
                 return new_value  # bypass pointless __setitem__
@@ -499,31 +493,30 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
         raise NotImplementedError("Deep copy of Ansible lazy types is not supported.")
 
 
-def proxy_jinja_constant_container(value: t.Any) -> t.Any:
+def lazify_container(value: t.Any) -> t.Any:
     """
-    Return the given value as a lazy container if it is a Jinja constant container, otherwise return the value as-is.
-    Since variables and plugin output are already lazy, it's safe to assume native containers are Jinja constants.
-    The native container type check avoids calling _try_create on types that could trigger unwanted warnings/errors.
-    """
-    if type(value) in (list, tuple, dict):
-        return _AnsibleLazyTemplateMixin._try_create(value)
+    If the given value is a supported container type, return its lazy version, otherwise return the value as-is.
+    This is used to ensure that managed access and templating occur on args and kwargs to a callable, even if they were sourced from Jinja constants.
+    Since both variable access and plugin output are already lazified, this mostly affects Jinja constant containers.
+    However, plugins that directly invoke other plugins (e.g., `Environment.call_filter`) are another potential source of non-lazy containers.
 
-    return value
+    Sets, tuples, and dictionary keys cannot be lazy, since their correct operation requires hashability and equality.
+    These properties are mutually exclusive with the following lazy features:
 
+    - managed access on encrypted strings - may raise errors on both operations when decryption fails
+    - managed access on markers - must raise errors on both operations
+    - templating - mutates values
 
-def proxy_args(item: tuple) -> tuple:
+    That leaves non-raising managed access as the only remaining feature, which is insufficient to warrant lazy support.
     """
-    Return the given args with values wrapped in lazy containers as needed.
-    This is used to ensure lazy container behavior is applied to Jinja constant containers.
-    No templating is attempted, since any kwargs with templates should have already been rendered.
-    """
-    return tuple(proxy_jinja_constant_container(value) for value in item)
+    return _AnsibleLazyTemplateMixin._try_create(value)
 
 
-def proxy_kwargs(item: dict[str, t.Any]) -> dict[str, t.Any]:
-    """
-    Return the given kwargs with values wrapped in lazy containers as needed.
-    This is used to ensure lazy container behavior is applied to Jinja constant containers.
-    No templating is attempted, since any kwargs with templates should have already been rendered.
-    """
-    return {key: proxy_jinja_constant_container(value) for key, value in item.items()}
+def lazify_container_args(item: tuple) -> tuple:
+    """Return the given args with values converted to lazy containers as needed."""
+    return tuple(lazify_container(value) for value in item)
+
+
+def lazify_container_kwargs(item: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Return the given kwargs with values converted to lazy containers as needed."""
+    return {key: lazify_container(value) for key, value in item.items()}

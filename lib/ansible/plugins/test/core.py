@@ -29,10 +29,10 @@ from ansible.module_utils.compat.version import LooseVersion, StrictVersion
 
 from ansible import errors
 from ansible.module_utils.common.text.converters import to_native, to_text, to_bytes
-from ansible.utils.datatag.tags import VaultedValue
+from ansible.template.jinja_common import Marker
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.plugins import accept_marker
-from ansible.parsing.vault import is_encrypted_file
+from ansible.parsing.vault import is_encrypted_file, VaultHelper, VaultLib
 from ansible.utils.display import Display
 from ansible.utils.version import SemanticVersion
 
@@ -146,12 +146,19 @@ def regex(value='', pattern='', ignorecase=False, multiline=False, match_type='s
     return bool(getattr(_re, match_type, 'search')(value))
 
 
-def vault_encrypted(value):
+@accept_marker
+def vault_encrypted(value: object) -> bool:
     """Evaluate whether a variable is a single vault encrypted value
 
     .. versionadded:: 2.10
     """
-    return VaultedValue.is_tagged_on(value)
+    if ciphertext := VaultHelper.get_ciphertext(value, preserve_tags=False):
+        return VaultLib.is_encrypted(ciphertext)
+
+    if isinstance(value, Marker):
+        value.trip()
+
+    return False
 
 
 def vaulted_file(value):

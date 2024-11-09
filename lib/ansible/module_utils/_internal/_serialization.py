@@ -7,6 +7,7 @@ import types
 import typing as t
 
 from ansible.module_utils.common.json import AnsibleProfileJSONEncoder, AnsibleProfileJSONDecoder, _JSONSerializationProfile
+from ansible.module_utils import _internal
 
 _T = t.TypeVar('_T', AnsibleProfileJSONEncoder, AnsibleProfileJSONDecoder)
 
@@ -49,7 +50,8 @@ def get_serialization_module_name(name: str | types.ModuleType) -> str:
     if importlib.util.find_spec(target_name):
         return target_name
 
-    if importlib.util.find_spec(controller_name):
+    # the value of is_controller can change after import; always pick it up from the module
+    if _internal.is_controller and importlib.util.find_spec(controller_name):
         return controller_name
 
     raise ValueError(f'Unknown profile name {name!r}.')

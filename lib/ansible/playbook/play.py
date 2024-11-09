@@ -31,6 +31,7 @@ from ansible.playbook.helpers import load_list_of_blocks, load_list_of_roles
 from ansible.playbook.role import Role
 from ansible.playbook.task import Task
 from ansible.playbook.taggable import Taggable
+from ansible.parsing.vault import EncryptedString
 from ansible.vars.manager import preprocess_vars
 from ansible.utils.display import Display
 
@@ -123,7 +124,7 @@ class Play(Base, Taggable, CollectionSearch):
                     elif not isinstance(entry, (binary_type, text_type)):
                         raise AnsibleParserError("Hosts list contains an invalid host value: '{host!s}'".format(host=entry))
 
-            elif not isinstance(value, (binary_type, text_type)):
+            elif not isinstance(value, (binary_type, text_type, EncryptedString)):
                 raise AnsibleParserError("Hosts list must be a sequence or string. Please check your playbook.")
 
     def get_name(self):

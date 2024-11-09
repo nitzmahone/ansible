@@ -7,8 +7,10 @@ import re
 import typing as t
 
 import pytest
+from jinja2 import pass_environment
 
 from ansible.errors import AnsibleTemplateError, AnsibleUndefinedVariable
+from ansible.template.jinja_bits import is_possibly_all_template, AnsibleEnvironment
 from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError, JinjaCallContext
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
 from ansible.template.utils import TemplateContext
@@ -699,3 +701,45 @@ def test_undefined_in_jinja_constant_container():
 
     assert templar.template(TRUST.tag("{{ True | demo([bogus_var]) | default('nope') }}")) == 'nope'
     assert not plugin_retrieved_the_value
+
+
+@pytest.mark.parametrize("template_or_expression", (
+    # "tuple_with_template()",
+    #"noop(something())",
+    "[] | something",
+))
+def test_plugin_results_not_auto_templated(template_or_expression: str) -> None:
+    # DTFIX-U: test scenarios:
+    #  * plugin returns set/tuple with embedded markers, which are passed to a plugin that does not accept them
+    #  * Jinja constant list/dict/tuple with embedded undefineds/markers is passed to a plugin that does not accept them
+    #  * TBD - how to reflect expected templating behavior in these tests?
+    #  * TBD - override call_filter/call_template to lazify args the same way we do for plugin output (e.g., no templating)?
+    templar = Templar()
+
+    def tuple_with_template() -> tuple[str]:
+        return (TRUST.tag('{{ 1 / 0 }}'),)
+
+    @pass_environment
+    def something(env: AnsibleEnvironment, *args, **kwargs) -> t.Any:
+        env.call_filter('noop', "value", kwargs=dict(rawlist=[TRUST.tag('{{ 1/0 }}')]))
+        #return (TRUST.tag('{{ 1 / 0 }}'),)
+
+    def noop(value: t.Any, *args, **kwargs) -> t.Any:
+        return value
+
+    templar.environment.filters['something'] = something
+    templar.environment.filters['noop'] = noop
+
+
+    templar.environment.globals.update(
+        tuple_with_template=tuple_with_template,
+        noop=noop,
+        something=something,
+    )
+
+    template_or_expression = TRUST.tag(template_or_expression)
+
+    if is_possibly_all_template(template_or_expression):
+        templar.template(template_or_expression)
+    else:
+        templar.evaluate_expression(template_or_expression)

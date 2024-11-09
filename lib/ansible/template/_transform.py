@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import typing as t
 
+from ansible.errors import get_chained_message
+from ansible.module_utils._internal import _traceback
 from ansible.module_utils.common.messages import ErrorDetail, WarningMessageDetail, DeprecationMessageDetail
-from ansible.module_utils.datatag import AnsibleTagHelper
+from ansible.template.jinja_common import VaultExceptionMarker
+from ansible.parsing.vault import EncryptedString, VaultHelper
 from ansible.utils.display import Display
 
 display = Display()
@@ -29,16 +32,22 @@ def deprecation_message_detail(value: DeprecationMessageDetail) -> dict[str, t.A
     return dict(msg=value.msg, version=value.version, collection_name=value.collection_name)
 
 
-def as_list(value: set | tuple) -> list:
-    """Render sets and tuples as lists for backward-compatibility with pre-2.18 behavior."""
-    display.deprecated(f'Variables of type {type(value)} are not supported. Converted to a {list}.', obj=value, version='2.22')
-
-    return AnsibleTagHelper.tag_copy(value, iter(value), value_type=list)
+def decrypt_string(value: EncryptedString) -> str | VaultExceptionMarker:
+    """Decrypt an encrypted string and return its value, or a VaultExceptionMarker if decryption fails."""
+    try:
+        return value._decrypt()
+    except Exception as ex:
+        return VaultExceptionMarker(
+            ciphertext=VaultHelper.get_ciphertext(value, preserve_tags=True),
+            reason=get_chained_message(ex),
+            traceback=_traceback.maybe_extract_traceback(ex, _traceback.TracebackEvent.ERROR),
+        )
 
 
 _type_transform_mapping: dict[type, t.Callable[[t.Any], t.Any]] = {
     ErrorDetail: error_detail,
     WarningMessageDetail: warning_message_detail,
     DeprecationMessageDetail: deprecation_message_detail,
+    EncryptedString: decrypt_string,
 }
-"""This mapping is consulted by _AnsibleLazyTemplateMixin._try_create to provide custom views of some objects to templating/vars."""
+"""This mapping is consulted by `Templar.template` to provide custom views of some objects."""

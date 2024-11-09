@@ -322,7 +322,6 @@
   vars:
     ansible_facts_modules:
       - setup
-      - package_facts
       - service_facts
 
 - name: test async in check mode

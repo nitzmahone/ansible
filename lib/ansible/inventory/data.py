@@ -326,6 +326,7 @@ class _InventoryDataWrapper(ObjectProxy):
         return _serialization.AnsibleVariableVisitor(
             trusted_as_template=self._target_plugin.trusted_by_default,
             source_position=self._default_source_position_tag,
+            allow_encrypted_string=True,
         )
 
     def set_variable(self, entity: str, varname: str, value: t.Any) -> None:

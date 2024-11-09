@@ -13,33 +13,34 @@ from collections.abc import Mapping
 from datetime import date, datetime, timezone, timedelta
 
 from ansible.module_utils.common.json import AnsibleJSONEncoder
-from ansible.utils.datatag.tags import VaultedValue, UndecryptableVaultedValue, TrustedAsTemplate
+from ansible.parsing.vault import EncryptedString, AnsibleVaultError
+from ansible.utils.datatag.tags import TrustedAsTemplate
 from ansible.module_utils.serialization import get_decoder, get_encoder
 from ansible.utils.serialization import legacy
 
 
-def test_AnsibleJSONDecoder_vault():
+def test_AnsibleJSONDecoder_vault(_empty_vault_secrets_context):
     profile = legacy
 
     with open(os.path.join(os.path.dirname(__file__), 'fixtures/ajson.json')) as f:
         data = json.load(f, cls=get_decoder(profile))
 
-    assert isinstance(data['password'], str)
-    assert VaultedValue.is_tagged_on(data['password'])
-    assert UndecryptableVaultedValue.is_tagged_on(data['password'])
+    assert isinstance(data['password'], EncryptedString)
+    with pytest.raises(AnsibleVaultError):
+        str(data['password'])
 
-    assert isinstance(data['bar']['baz'][0]['password'], str)
-    assert VaultedValue.is_tagged_on(data['bar']['baz'][0]['password'])
-    assert UndecryptableVaultedValue.is_tagged_on(data['bar']['baz'][0]['password'])
+    assert isinstance(data['bar']['baz'][0]['password'], EncryptedString)
+    with pytest.raises(AnsibleVaultError):
+        str(data['bar']['baz'][0]['password'])
 
-    assert isinstance(data['foo']['password'], str)
-    assert VaultedValue.is_tagged_on(data['foo']['password'])
-    assert UndecryptableVaultedValue.is_tagged_on(data['foo']['password'])
+    assert isinstance(data['foo']['password'], EncryptedString)
+    with pytest.raises(AnsibleVaultError):
+        str(data['foo']['password'])
 
 
 def vault_data():
     """
-    Prepare AnsibleVaultEncryptedUnicode test data for AnsibleJSONEncoder.default().
+    Prepare vault test data for AnsibleJSONEncoder.default().
 
     Return a list of tuples (input, expected).
     """
@@ -156,7 +157,7 @@ class TestAnsibleJSONEncoder:
     @pytest.mark.parametrize('test_input,expected', vault_data())
     def test_ansible_json_encoder_vault(self, test_input, expected):
         """
-        Test for passing AnsibleVaultEncryptedUnicode to AnsibleJSONEncoder.default().
+        Test for passing vaulted values to AnsibleJSONEncoder.default().
         """
         profile = legacy
         assert json.dumps(test_input, cls=get_encoder(profile)) == '{"__ansible_vault": "%s"}' % expected.replace('\n', '\\n')

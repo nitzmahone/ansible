@@ -11,11 +11,10 @@ from jinja2.utils import missing
 
 from ansible._internal import _errors
 from ansible.module_utils.common.messages import ErrorDetail, ErrorMessage
-from ansible.utils.datatag.tags import UndecryptableVaultedValue
 from ansible.constants import config
 from ansible.module_utils.datatag import Tripwire, AnsibleTagHelper, _untaggable_types
 
-from ._access import NotifiableAccessContextBase, AnsibleAccessContext
+from ._access import NotifiableAccessContextBase
 from .utils import TemplateContext
 from ..errors import AnsibleUndefinedVariable, AnsibleTypeError
 from ..errors.handler import ErrorHandler
@@ -260,28 +259,28 @@ class UndecryptableVaultError(_errors.AnsibleCapturedError):
 class VaultExceptionMarker(ExceptionMarker):
     """A `Marker` value that represents an error accessing a vaulted value during templating."""
 
-    __slots__ = ('_marker_undecryptable_vaulted_value',)
+    __slots__ = ('_marker_undecryptable_ciphertext', '_marker_undecryptable_reason', '_marker_undecryptable_traceback')
 
-    def __init__(self, value: str) -> None:
+    def __init__(self, ciphertext: str, reason: str, traceback: str | None) -> None:
         # DTFIX-MERGE: when does this show up, should it contain more details?
         #          see also CapturedExceptionMarker for a similar issue
         super().__init__(hint='A vault exception marker was tripped.')
 
-        self._marker_undecryptable_vaulted_value = value
+        self._marker_undecryptable_ciphertext = ciphertext
+        self._marker_undecryptable_reason = reason
+        self._marker_undecryptable_traceback = traceback
 
     def _as_exception(self) -> Exception:
-        uvv_tag = UndecryptableVaultedValue.get_required_tag(self._marker_undecryptable_vaulted_value)
-
         return UndecryptableVaultError(
-            obj=self._marker_undecryptable_vaulted_value,
+            obj=self._marker_undecryptable_ciphertext,
             error_detail=ErrorDetail(
-                errors=[ErrorMessage(msg=uvv_tag.reason)],
-                formatted_traceback=uvv_tag.traceback,
+                errors=[ErrorMessage(msg=self._marker_undecryptable_reason)],
+                formatted_traceback=self._marker_undecryptable_traceback,
             ),
         )
 
     def _disarm(self) -> str:
-        return self._marker_undecryptable_vaulted_value
+        return self._marker_undecryptable_ciphertext
 
 
 def get_first_marker_arg(args: c.Sequence, kwargs: dict[str, t.Any]) -> Marker | None:
@@ -326,13 +325,3 @@ def validate_arg_type(name: str, value: t.Any, allowed_type_or_types: type | tup
             raise AnsibleTypeError(f"The {name!r} argument must be of type {arg_type_description}.") from ex
 
     raise TypeError(f"The {name!r} argument must be of type {arg_type_description}, not {AnsibleTagHelper.base_type_name(value)!r}.")
-
-
-def mutate_and_access(value: t.Any) -> t.Any:
-    """Apply templating specific mutations to the given value (if applicable) and then access the value through AnsibleAccessContext before returning it."""
-    if UndecryptableVaultedValue.is_tagged_on(value):
-        value = VaultExceptionMarker(value)
-
-    AnsibleAccessContext.current().access(value)
-
-    return value

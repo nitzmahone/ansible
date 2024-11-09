@@ -10,7 +10,6 @@ from ansible.template.jinja_common import Marker, TruncationMarker, CapturedExce
 from ansible.template.templar import Templar, TemplateOptions
 from ansible.template.utils import TemplateContext
 from ansible.template.jinja_common import VaultExceptionMarker
-from ansible.utils.datatag.tags import UndecryptableVaultedValue
 
 
 @pytest.fixture
@@ -36,7 +35,7 @@ def marker(request, template_context: TemplateContext) -> t.Iterator[Marker]:
     if issubclass(request_type, TruncationMarker):
         yield request_type()
     elif issubclass(request_type, VaultExceptionMarker):
-        yield request_type(UndecryptableVaultedValue(reason='i am an undecryptable reason').tag('i am undecryptable'))
+        yield VaultExceptionMarker(ciphertext='a ciphertext', reason='a reason', traceback='a traceback')
     elif issubclass(request_type, CapturedExceptionMarker):
         try:
             try:

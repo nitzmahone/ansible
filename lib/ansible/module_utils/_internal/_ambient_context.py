@@ -45,7 +45,7 @@ class AmbientContextBase:
             if optional:
                 return None
 
-            raise ReferenceError(f"A required {cls.__name__} context is not active.")
+            raise ReferenceError(f"A required {cls.__name__} context is not active.") from None
 
     def __enter__(self) -> t.Self:
         # DTFIX-RELEASE: actively block multiple entry

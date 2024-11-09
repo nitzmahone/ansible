@@ -365,6 +365,7 @@ class VariableManager:
                         try:
                             play_search_stack = play.get_search_path()
                             found_file = self._loader.path_dwim_relative_stack(play_search_stack, 'vars', vars_file)
+                            display.vvv(f"Read `vars_file` {found_file!r}.")
                             data = preprocess_vars(self._loader.load_from_file(found_file, unsafe=True, cache='vaulted', trusted_as_template=True))
                             if data is not None:
                                 for item in data:
@@ -375,21 +376,21 @@ class VariableManager:
                             continue
                         except AnsibleParserError:
                             raise
+                        except AnsibleUndefinedVariable:
+                            raise
                         except Exception as ex:
                             raise AnsibleParserError(f"Error reading `vars_files` file {vars_file!r}.", obj=vars_file) from ex
 
                 except AnsibleUndefinedVariable as ex:
-                    # FIXME: this appears to be unreachable, and the skip logic seems faulty...
+                    # DTFIX-U: this appears to be unreachable, and the skip logic seems faulty...
+                    #          at least in DT, due to the Exception caught above, which devel doesn't have
+                    #          to fix the unreachable part, we now re-raise AnsibleUndefinedVariable, but this still seems wrong
                     if host is not None and self._fact_cache.get(host.name, dict()).get('module_setup') and task is not None:
                         raise AnsibleUndefinedVariable("an undefined variable was found when attempting to template the vars_files item '%s'"
                                                        % vars_file_item, obj=vars_file_item) from ex
                     else:
-                        # we do not have a full context here, and the missing variable could be because of that
-                        # so just show a warning and continue
-                        display.vvv("skipping vars_file '%s' due to an undefined variable" % vars_file_item)
+                        display.warning("skipping vars_file item due to an undefined variable", obj=vars_file_item)
                         continue
-
-                display.vvv("Read vars_file '%s'" % vars_file_item)
 
             # We now merge in all exported vars from all roles in the play (very high precedence)
             for role in play.roles:

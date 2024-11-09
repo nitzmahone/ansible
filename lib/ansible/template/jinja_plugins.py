@@ -26,7 +26,7 @@ from ..plugins.lookup import LookupBase
 from ..utils.display import Display
 from .datatag import _JinjaConstTemplate
 from .jinja_common import MarkerError, _TemplateConfig, get_first_marker_arg, Marker, JinjaCallContext
-from .lazy_containers import _ITERATOR_TYPES, proxy_kwargs, proxy_args, proxy_jinja_constant_container, _AnsibleLazyTemplateMixin
+from .lazy_containers import _ITERATOR_TYPES, lazify_container_kwargs, lazify_container_args, lazify_container, _AnsibleLazyTemplateMixin
 from .utils import TemplateContext
 
 _display = Display()
@@ -136,7 +136,7 @@ class JinjaPluginIntercept(c.MutableMapping):
 
             try:
                 with JinjaCallContext(accept_marker=accept_marker):
-                    test_res = func(*proxy_args(args), **proxy_kwargs(kwargs))
+                    test_res = func(*lazify_container_args(args), **lazify_container_kwargs(kwargs))
             except MarkerError as ex:
                 return ex.source
             except Exception as ex:
@@ -171,7 +171,7 @@ class JinjaPluginIntercept(c.MutableMapping):
 
             try:
                 with JinjaCallContext(accept_marker=accept_marker):
-                    return _wrap_plugin_output(func(*proxy_args(args), **proxy_kwargs(kwargs)))
+                    return _wrap_plugin_output(func(*lazify_container_args(args), **lazify_container_kwargs(kwargs)))
             except MarkerError as ex:
                 return ex.source
             except Exception as ex:
@@ -250,9 +250,9 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
                     return first_marker
             else:
                 # not using proxy_args since it's a list, and we want to preserve tags
-                lookup_terms = AnsibleTagHelper.tag_copy(lookup_terms, (proxy_jinja_constant_container(value) for value in lookup_terms), value_type=list)
+                lookup_terms = AnsibleTagHelper.tag_copy(lookup_terms, (lazify_container(value) for value in lookup_terms), value_type=list)
 
-            lookup_res = instance.run(lookup_terms, variables=templar.available_variables, **proxy_kwargs(lookup_kwargs))
+            lookup_res = instance.run(lookup_terms, variables=templar.available_variables, **lazify_container_kwargs(lookup_kwargs))
 
             # DTFIX-FUTURE: Consider allowing/requiring lookup plugins to declare how their result should be handled.
             #        Currently there are multiple behaviors that are less than ideal and poorly documented (or not at all):
@@ -276,6 +276,7 @@ def _invoke_lookup(*, plugin_name: str, lookup_terms: list, lookup_kwargs: dict[
         except MarkerError as ex:
             return ex.source
         except Exception as ex:
+            # DTFIX-MERGE: convert this to the new error/warn/ignore context manager
             if isinstance(ex, AnsibleTemplatePluginError):
                 msg = f'Lookup failed but the error is being ignored: {ex}'
             else:

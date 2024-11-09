@@ -7,7 +7,7 @@ from ansible.module_utils.common.text.converters import to_native, to_bytes
 from ansible.plugins import accept_marker
 from ansible.template.jinja_common import get_first_marker_arg, VaultExceptionMarker
 from ansible.utils.datatag.tags import VaultedValue
-from ansible.parsing.vault import is_encrypted, VaultSecret, VaultLib
+from ansible.parsing.vault import is_encrypted, VaultSecret, VaultLib, VaultHelper
 from ansible.utils.display import Display
 
 display = Display()
@@ -68,8 +68,8 @@ def do_unvault(vault, secret, vault_id='filter_default', vaultid=None):
     vs = VaultSecret(to_bytes(secret))
     vl = VaultLib([(vault_id, vs)])
 
-    if vault_tag := VaultedValue.get_tag(vault):
-        vault = vault_tag.ciphertext
+    if ciphertext := VaultHelper.get_ciphertext(vault, preserve_tags=True):
+        vault = ciphertext
 
     if is_encrypted(vault):
         try:

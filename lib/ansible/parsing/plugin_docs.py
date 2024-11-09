@@ -43,6 +43,7 @@ def read_docstring_from_yaml_file(filename, verbose=True, ignore_errors=True):
 
     try:
         with open(filename, 'rb') as yamlfile:
+            # DTFIX-MERGE: use from_yaml instead of direct AnsibleLoader usage; also, is AnsibleLoader even the right thing in this context (vault support)?
             file_data = AnsibleLoader(yamlfile.read(), file_name=filename).get_single_data()
     except Exception as ex:
         msg = f"Unable to parse yaml file {filename}"

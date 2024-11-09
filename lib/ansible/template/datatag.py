@@ -66,6 +66,9 @@ class DeprecatedAccessAuditContext(NotifiableAccessContextBase):
             src_pos = AnsibleSourcePosition.get_tag(template)
 
             # DTFIX-MERGE: not clear if this is reachable from playbook scenarios; if so, it should probably use a synthesized description value on the tag
+            #              yes it is, from data_tagging_controller test: ../playbook_output_validator/filter.py actual_stdout.txt actual_stderr.txt
+            # -[DEPRECATION WARNING]: `something_old` is deprecated, don't use it! This feature will be removed in version 1.2.3.
+            # +[DEPRECATION WARNING]: While processing '<<container>>': `something_old` is deprecated, don't use it! This feature will be removed in ...
             template = '<<container>>'
 
             if src_pos:

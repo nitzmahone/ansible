@@ -36,9 +36,10 @@ from .datatag import DeprecatedAccessAuditContext
 from .jinja_bits import AnsibleTemplate, _TemplateCompileContext, TemplateOverrides, AnsibleEnvironment, defer_template_error, create_template_error, \
     is_possibly_template, is_possibly_all_template, AnsibleTemplateExpression, _finalize_template_result, FinalizeMode
 from .jinja_common import _TemplateConfig, MarkerError, ExceptionMarker
-from .utils import Omit, TemplateContext
+from .utils import Omit, TemplateContext, IGNORE_SCALAR_VAR_TYPES
 from .lazy_containers import _AnsibleLazyTemplateMixin
 from .marker_behaviors import MarkerBehavior, FAIL_ON_UNDEFINED
+from ._transform import _type_transform_mapping
 
 _display = Display()
 
@@ -65,10 +66,14 @@ class TemplateMode(enum.Enum):
 class TemplateOptions:
     DEFAULT: t.ClassVar[t.Self]
 
-    preserve_trailing_newlines: bool = t.cast(bool, ...)
-    escape_backslashes: bool = t.cast(bool, ...)
-    overrides: TemplateOverrides = t.cast(TemplateOverrides, ...)  # DTFIX-MERGE: these aren't really overrides anymore, rename the dataclass and this field
+    # non-inheritable
     value_for_omit: t.Any = ...
+    escape_backslashes: bool = t.cast(bool, ...)
+    # DTFIX-MERGE: these aren't really overrides anymore, rename the dataclass and this field
+    #              also mention in docstring this has no effect unless used to template a string
+    overrides: TemplateOverrides = t.cast(TemplateOverrides, ...)
+    # inheritable
+    preserve_trailing_newlines: bool = t.cast(bool, ...)
     unmask_type_names: frozenset[str] = _shared_empty_unmask_type_names
 
     def __post_init__(self):
@@ -284,57 +289,68 @@ class Templar:
         mode: TemplateMode = TemplateMode.DEFAULT,
     ) -> t.Any:
         """Templates (possibly recursively) any given data as input."""
-        if variable is None:
-            return variable
+        for _attempt in range(10):
+            if variable is None or (value_type := type(variable)) in IGNORE_SCALAR_VAR_TYPES:
+                return variable  # quickly ignore supported scalar types which are not be templated
 
-        value_is_str = isinstance(variable, str)
+            value_is_str = isinstance(variable, str)
 
-        if value_is_str and NotATemplate.is_tagged_on(variable):
-            return variable  # silently ignore strings explicitly tagged NotATemplate
+            if value_is_str and NotATemplate.is_tagged_on(variable):
+                return variable  # silently ignore strings explicitly tagged NotATemplate
 
-        # DTFIX-MERGE: tighten this up, and figure out a better way to avoid propagating options
-        if template_ctx := TemplateContext.current(optional=True):
-            # DTFIX-FUTURE: ideally avoid re-creating TemplateOptions every time here
-            options = options or TemplateOptions()  # DTFIX-MERGE: dangerous because it looks like it's the default, but it's a context-aware factory method
-            stop_on_template = template_ctx.stop_on_template
-        else:
-            options = options or TemplateOptions.DEFAULT
-            stop_on_template = False
+            # DTFIX-MERGE: tighten this up, and figure out a better way to avoid propagating options
+            if template_ctx := TemplateContext.current(optional=True):
+                # DTFIX-FUTURE: ideally avoid re-creating TemplateOptions every time here
+                options = options or TemplateOptions()  # DTFIX-MERGE: dangerous because it looks like it's the default, but it's a context-aware factory method
+                stop_on_template = template_ctx.stop_on_template
+            else:
+                options = options or TemplateOptions.DEFAULT
+                stop_on_template = False
 
-        if mode is TemplateMode.STOP_ON_TEMPLATE:
-            stop_on_template = True
+            if mode is TemplateMode.STOP_ON_TEMPLATE:
+                stop_on_template = True
 
-        with (
-            DeprecatedAccessAuditContext(),
-            TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template) as template_ctx,
-        ):
-            try:
-                if not value_is_str:
-                    if options.overrides is not TemplateOverrides.DEFAULT:
-                        raise ValueError("Jinja overrides are only allowed on string inputs")
+            with (
+                DeprecatedAccessAuditContext(),
+                TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template) as template_ctx,
+            ):
+                try:
+                    if transform := _type_transform_mapping.get(value_type):
+                        if stop_on_template:
+                            raise TemplateEncountered()  # DTFIX-U: should transforms count as a "template" for stop_on_template?
 
-                    template_result = _AnsibleLazyTemplateMixin._try_create(variable)
-                elif not is_possibly_template(variable, options.overrides):
-                    template_result = variable
-                elif not self._trust_check(variable):
-                    template_result = variable
-                elif stop_on_template:
-                    raise TemplateEncountered()
-                else:
-                    compiled_template = self._compile_template(variable, options)
+                        # DTFIX-U: this is probably the wrong way to handle the context, but hacked up this way to test out the early transform approach
+                        unmask_type_names = TemplateContext.current().options.unmask_type_names
 
-                    template_result = compiled_template(self.available_variables)
-                    template_result = self._post_render_mutation(variable, template_result, options)
-            except TemplateEncountered:
-                raise
-            except Exception as ex:
-                template_result = defer_template_error(ex, variable, is_expression=False)
+                        if value_type.__name__ not in unmask_type_names:
+                            variable = transform(variable)
+                            continue
 
-            if template_ctx.is_top_level:
-                template_result = self._finalize_top_level_template_result(variable, options, template_result,
-                                                                           stop_on_container=mode is TemplateMode.STOP_ON_CONTAINER)
+                    if not value_is_str:
+                        template_result = _AnsibleLazyTemplateMixin._try_create(variable)
+                    elif not is_possibly_template(variable, options.overrides):
+                        template_result = variable
+                    elif not self._trust_check(variable):
+                        template_result = variable
+                    elif stop_on_template:
+                        raise TemplateEncountered()
+                    else:
+                        compiled_template = self._compile_template(variable, options)
 
-        return template_result
+                        template_result = compiled_template(self.available_variables)
+                        template_result = self._post_render_mutation(variable, template_result, options)
+                except TemplateEncountered:
+                    raise
+                except Exception as ex:
+                    template_result = defer_template_error(ex, variable, is_expression=False)
+
+                if template_ctx.is_top_level:
+                    template_result = self._finalize_top_level_template_result(variable, options, template_result,
+                                                                               stop_on_container=mode is TemplateMode.STOP_ON_CONTAINER)
+
+            return template_result
+
+        raise RuntimeError('oops')  # DTFIX-U: better error, explanation at the top of the loop
 
     @staticmethod
     def _finalize_top_level_template_result(
@@ -497,7 +513,7 @@ class Templar:
         ):
             try:
                 if not TrustedAsTemplate.is_tagged_on(expression):
-                    raise TemplateTrustCheckFailedError()
+                    raise TemplateTrustCheckFailedError(obj=expression)
 
                 template_variables = ChainMap(template_locals, self.available_variables) if template_locals else self.available_variables
                 compiled_template = self._compile_expression(expression, options)
@@ -602,6 +618,6 @@ class Templar:
             return True
 
         with Skippable, _TemplateConfig.untrusted_template_handler.handle(TemplateTrustCheckFailedError, skip_on_ignore=True):
-            raise TemplateTrustCheckFailedError()
+            raise TemplateTrustCheckFailedError(obj=value)
 
         return False

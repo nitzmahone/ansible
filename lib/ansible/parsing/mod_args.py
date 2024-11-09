@@ -24,6 +24,7 @@ from ansible.module_utils.six import string_types
 from ansible.module_utils.common.sentinel import Sentinel
 from ansible.module_utils.common.text.converters import to_text
 from ansible.parsing.splitter import parse_kv, split_args
+from ansible.parsing.vault import EncryptedString
 from ansible.plugins.loader import module_loader, action_loader
 from ansible.template.jinja_bits import is_possibly_template
 from ansible.template.templar import Templar
@@ -159,7 +160,7 @@ class ModuleArgsParser:
         # than those which may be parsed/normalized next
         final_args = dict()
         if additional_args:
-            if isinstance(additional_args, str):
+            if isinstance(additional_args, (str, EncryptedString)):
                 # DTFIX-MERGE: should this be is_possibly_template?
                 if Templar().is_template(additional_args):
                     final_args['_variable_params'] = additional_args
@@ -226,6 +227,9 @@ class ModuleArgsParser:
             # form is like: copy: src=a dest=b
             check_raw = action in FREEFORM_ACTIONS
             args = parse_kv(thing, check_raw=check_raw)
+        elif isinstance(thing, EncryptedString):
+            # DTFIX-MERGE: this doesn't work in devel- do we want to allow it here or not?
+            args = dict(_raw_params=thing)
         elif thing is None:
             # this can happen with modules which take no params, like ping:
             args = None

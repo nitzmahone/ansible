@@ -93,13 +93,6 @@ class VaultedValue(AnsibleDatatagBase):
 
 
 @dataclasses.dataclass(**_tag_dataclass_kwargs)
-class UndecryptableVaultedValue(AnsibleDatatagBase):
-    """Additional tag for vaulted values we couldn't decrypt on load that may contain forensic detail."""
-    reason: str
-    traceback: str | None = None
-
-
-@dataclasses.dataclass(**_tag_dataclass_kwargs)
 class TrustedAsTemplate(AnsibleSingletonTagBase):
     """
     Indicates the tagged string is trusted to parse and render as a template.

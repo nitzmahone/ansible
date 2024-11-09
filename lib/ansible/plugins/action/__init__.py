@@ -35,6 +35,7 @@ from ansible.module_utils.json_utils import _filter_non_json_lines
 from ansible.module_utils.serialization import get_module_decoder, Direction, get_module_encoder
 from ansible.module_utils.six import binary_type, string_types, text_type
 from ansible.module_utils.common.text.converters import to_bytes, to_native, to_text
+from ansible.parsing import vault as _vault
 from ansible.release import __version__
 from ansible.template.templar import Templar, TemplateOptions
 from ansible.utils.collection_loader import resource_from_fqcr
@@ -1509,7 +1510,7 @@ class TaskArgsFinalizer:
         resolved_layers: list[c.Mapping[str, t.Any]] = []
 
         for layer in self._args_layers:
-            if isinstance(layer, str):
+            if isinstance(layer, (str, _vault.EncryptedString)):  # EncryptedString can hide a template
                 if C.config.get_config_value('INJECT_FACTS_AS_VARS'):
                     Display().warning(
                         "Using a template for task args is unsafe in some situations "

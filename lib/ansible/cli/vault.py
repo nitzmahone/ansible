@@ -227,6 +227,7 @@ class VaultCLI(CLI):
                                          vault_ids=new_vault_ids,
                                          vault_password_files=new_vault_password_files,
                                          ask_vault_pass=context.CLIARGS['ask_vault_pass'],
+                                         initialize_context=False,
                                          create_new_password=True)
 
             if not new_vault_secrets:

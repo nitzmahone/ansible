@@ -95,14 +95,14 @@ except Exception as ex:
 
 from ansible import context
 from ansible.cli.arguments import option_helpers as opt_help
-from ansible.errors import AnsibleError, AnsibleOptionsError, AnsibleParserError, ExitCode
+from ansible.errors import AnsibleError, ExitCode
 from ansible.inventory.manager import InventoryManager
 from ansible.module_utils.six import string_types
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.module_utils.common.collections import is_sequence
 from ansible.module_utils.common.file import is_executable
 from ansible.parsing.dataloader import DataLoader
-from ansible.parsing.vault import PromptVaultSecret, get_file_vault_secret
+from ansible.parsing.vault import PromptVaultSecret, get_file_vault_secret, VaultSecretsContext
 from ansible.plugins.loader import add_all_plugin_dirs, init_plugin_loader
 from ansible.release import __version__
 from ansible.utils.collection_loader import AnsibleCollectionConfig
@@ -213,7 +213,7 @@ class CLI(ABC):
     @staticmethod
     def setup_vault_secrets(loader, vault_ids, vault_password_files=None,
                             ask_vault_pass=None, create_new_password=False,
-                            auto_prompt=True):
+                            auto_prompt=True, initialize_context=True):
         # list of tuples
         vault_secrets = []
 
@@ -309,6 +309,9 @@ class CLI(ABC):
         # if no valid vault secret was found.
         if last_exception and not found_vault_secret:
             raise last_exception
+
+        if initialize_context:
+            VaultSecretsContext.initialize(VaultSecretsContext(vault_secrets))
 
         return vault_secrets
 

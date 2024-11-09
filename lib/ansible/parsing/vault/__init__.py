@@ -28,14 +28,17 @@ import subprocess
 import sys
 import tempfile
 import warnings
+import typing as t
 
 from binascii import hexlify
 from binascii import unhexlify
 from binascii import Error as BinasciiError
 
-from ansible.module_utils._internal import _ambient_context, _traceback
-from ansible.module_utils.datatag import AnsibleDatatagBase, AnsibleTagHelper
-from ansible.utils.datatag.tags import AnsibleSourcePosition, VaultedValue, UndecryptableVaultedValue
+from ansible.module_utils.datatag import (
+    AnsibleTagHelper, AnsibleTaggedObject, _AnsibleTagsMapping, _EmptyROInternalTagsMapping, _EMPTY_INTERNAL_TAGS_MAPPING,
+)
+from ansible.template.jinja_common import VaultExceptionMarker, Marker
+from ansible.utils.datatag.tags import AnsibleSourcePosition, VaultedValue
 
 HAS_CRYPTOGRAPHY = False
 CRYPTOGRAPHY_BACKEND = None
@@ -55,7 +58,7 @@ try:
 except ImportError:
     pass
 
-from ansible.errors import AnsibleError, AnsibleAssertionError, get_chained_message
+from ansible.errors import AnsibleError, AnsibleAssertionError
 from ansible import constants as C
 from ansible.module_utils.six import binary_type
 from ansible.module_utils.common.text.converters import to_bytes, to_text, to_native
@@ -1287,33 +1290,248 @@ CIPHER_MAPPING = {
 }
 
 
-def _maybe_decrypt_ciphertext(ciphertext: str) -> str:
-    vaults = VaultSecretsContext.current().secrets
+class VaultSecretsContext:
+    """Provides context-style access to vault secrets."""
+    _current: t.ClassVar[t.Self | None] = None
 
-    # DTFIX-MERGE: bikeshed name and location
-    # always tag ciphertext so we can round-trip re-serialize
-    tags: list[AnsibleDatatagBase] = [VaultedValue(ciphertext=AnsibleTagHelper.as_untagged_type(ciphertext))]
+    def __init__(self, secrets: list[tuple[str, VaultSecret]]) -> None:
+        self.secrets = secrets
 
-    try:
-        # DTFIX-MERGE: vault-id support was never implemented for these, try all with secrets iteratively?
-        # DTFIX-MERGE: check the vault ID upfront?
-        vault = vaults['default']
-        value = to_text(vault.decrypt(ciphertext))
-    except Exception as ex:
-        value = ciphertext
-        # DTFIX-MERGE: consider combining VaultedValue and Undecryptable tags now that the latter is no longer a singleton
-        # DTFIX-FUTURE: provide a better error when the default vault isn't present?
-        # specially tag things we aren't able to decrypt (cheaper than a flag in VaultedValue)
-        tags.append(UndecryptableVaultedValue(
-            reason=get_chained_message(ex),
-            traceback=_traceback.maybe_extract_traceback(ex, _traceback.TracebackEvent.ERROR),
-        ))
+    @classmethod
+    def initialize(cls, value: t.Self) -> None:
+        """
+        Initialize VaultSecretsContext with the specified instance and secrets (since it's not a lazy or per-thread context).
+        This method will fail if called more than once.
+        """
+        if cls._current:
+            raise RuntimeError(f"The {cls.__name__} context is already initialized.")
 
-    return AnsibleTagHelper.tag(value, tags)
+        cls._current = value
+
+    @classmethod
+    def current(cls, optional: bool = False) -> t.Self:
+        """Access vault secrets, if initialized, ala `AmbientContextBase.current()`."""
+        if not cls._current and not optional:
+            raise ReferenceError(f"A required {cls.__name__} context is not active.")
+
+        return cls._current
 
 
-class VaultSecretsContext(_ambient_context.AmbientContextBase):
-    def __init__(self, secrets: list[tuple[str, VaultSecret]] | None = None) -> None:
-        self.secrets = dict(
-            default=VaultLib(secrets=secrets or []),
+@t.final
+class EncryptedString(AnsibleTaggedObject):
+    """
+    An encrypted string which supports tagging and on-demand decryption.
+    All methods provided by Python's built-in `str` are supported, all of which operate on the decrypted value.
+    Any attempt to use this value when it cannot be decrypted will raise an exception.
+    Despite supporting `str` methods, access to an instance of this type through templating is recommended over direct access.
+    """
+
+    # DTFIX-MERGE: DT allows templates in vaulted values; previously they were marked unsafe (why?) - if we want to preserve the old behavior,
+    #              just apply NotATemplate everywhere we create EncryptedString, since the tag will propagate to the output string upon decryption.
+    __slots__ = ('_ciphertext', '_plaintext', '_ansible_tags_mapping')
+
+    _subclasses_native_type: t.ClassVar[bool] = False
+    _empty_tags_as_native: t.ClassVar[bool] = False
+
+    _ciphertext: str
+    _plaintext: str | None
+    _ansible_tags_mapping: _AnsibleTagsMapping | _EmptyROInternalTagsMapping
+
+    def __init__(self, *, ciphertext: str) -> None:
+        if type(ciphertext) is not str:  # pylint: disable=unidiomatic-typecheck
+            raise TypeError(f'ciphertext must be {str} instead of {type(ciphertext)}')
+
+        object.__setattr__(self, '_ciphertext', ciphertext)
+        object.__setattr__(self, '_plaintext', None)
+        object.__setattr__(self, '_ansible_tags_mapping', _EMPTY_INTERNAL_TAGS_MAPPING)
+
+    @classmethod
+    def _instance_factory(cls, value: t.Any, tags_mapping: _AnsibleTagsMapping) -> EncryptedString:
+        instance = EncryptedString.__new__(EncryptedString)
+
+        object.__setattr__(instance, '_ciphertext', value._ciphertext)
+        object.__setattr__(instance, '_plaintext', value._plaintext)
+        object.__setattr__(instance, '_ansible_tags_mapping', tags_mapping)
+
+        return instance
+
+    def __setstate__(self, state: tuple[None, dict[str, t.Any]]) -> None:
+        for key, value in state[1].items():
+            object.__setattr__(self, key, value)
+
+    def __delattr__(self, item: str) -> t.NoReturn:
+        raise AttributeError(f'{self.__class__.__name__!r} object is read-only')
+
+    def __setattr__(self, key: str, value: object) -> t.NoReturn:
+        raise AttributeError(f'{self.__class__.__name__!r} object is read-only')
+
+    @classmethod
+    def _init_class(cls) -> None:
+        """
+        Add proxies for the specified `str` methods.
+        These proxies operate on the plaintext, which is decrypted on-demand.
+        """
+        cls._native_type = cls
+
+        operator_method_names = (
+            '__eq__',
+            '__ge__',
+            '__gt__',
+            '__le__',
+            '__lt__',
+            '__ne__',
         )
+
+        method_names = (
+            '__add__',
+            '__contains__',
+            '__format__',
+            '__getitem__',
+            '__hash__',
+            '__iter__',
+            '__len__',
+            '__mod__',
+            '__mul__',
+            '__rmod__',
+            '__rmul__',
+            'capitalize',
+            'casefold',
+            'center',
+            'count',
+            'encode',
+            'endswith',
+            'expandtabs',
+            'find',
+            'format',
+            'format_map',
+            'index',
+            'isalnum',
+            'isalpha',
+            'isascii',
+            'isdecimal',
+            'isdigit',
+            'isidentifier',
+            'islower',
+            'isnumeric',
+            'isprintable',
+            'isspace',
+            'istitle',
+            'isupper',
+            'join',
+            'ljust',
+            'lower',
+            'lstrip',
+            'maketrans',  # static, but implemented for simplicty/consistency
+            'partition',
+            'removeprefix',
+            'removesuffix',
+            'replace',
+            'rfind',
+            'rindex',
+            'rjust',
+            'rpartition',
+            'rsplit',
+            'rstrip',
+            'split',
+            'splitlines',
+            'startswith',
+            'strip',
+            'swapcase',
+            'title',
+            'translate',
+            'upper',
+            'zfill',
+        )
+
+        for method_name in operator_method_names:
+            setattr(cls, method_name, functools.partialmethod(cls._proxy_str_operator_method, getattr(str, method_name)))
+
+        for method_name in method_names:
+            setattr(cls, method_name, functools.partialmethod(cls._proxy_str_method, getattr(str, method_name)))
+
+    def _decrypt(self) -> str:
+        """
+        Attempt to decrypt the ciphertext and return the plaintext, which will be cached.
+        If decryption fails an exception will be raised and no result will be cached.
+        """
+        if self._plaintext is None:
+            vault = VaultLib(secrets=VaultSecretsContext.current().secrets)
+            # use the utility method to ensure that source position tags are available
+            plaintext = to_text(vault.decrypt(VaultHelper.get_ciphertext(self, preserve_tags=True)))  # raises if the ciphertext cannot be decrypted
+
+            # propagate source value tags plus VaultedValue for round-tripping ciphertext
+            plaintext = AnsibleTagHelper.tag(plaintext, AnsibleTagHelper.tags(self) | {VaultedValue(ciphertext=self._ciphertext)})
+
+            object.__setattr__(self, '_plaintext', plaintext)
+
+        return self._plaintext
+
+    def _as_dict(self) -> t.Dict[str, t.Any]:
+        return dict(
+            value=self._ciphertext,
+            tags=list(self._ansible_tags_mapping.values()),
+        )
+
+    def _native_copy(self) -> str:
+        return AnsibleTagHelper.as_untagged_type(self._decrypt())
+
+    def _proxy_str_operator_method(self, method: t.Callable, other) -> t.Any:
+        obj = self._decrypt()
+
+        if type(other) is EncryptedString:  # pylint: disable=unidiomatic-typecheck
+            other = other._decrypt()
+
+        return method(obj, other)
+
+    def _proxy_str_method(self, method: t.Callable, *args, **kwargs) -> t.Any:
+        obj = self._decrypt()
+        return method(obj, *args, **kwargs)
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}(ciphertext={self._ciphertext!r})'
+
+    def __str__(self) -> str:
+        return self._decrypt()
+
+    def __float__(self) -> float:
+        return float(self._decrypt())
+
+    def __int__(self) -> int:
+        return int(self._decrypt())
+
+    def __radd__(self, other: t.Any) -> str:
+        return other + self._decrypt()
+
+
+class VaultHelper:
+    """Vault specific utility methods."""
+
+    @staticmethod
+    def get_ciphertext(value: t.Any, *, preserve_tags: bool) -> str | None:
+        """
+        If the given value is an `EncryptedString`, `VaultExceptionMarker` or tagged with `VaultedValue`, return the ciphertext, otherwise return `None`.
+        Tags on the value other than `VaultedValue` will be included on the ciphertext if `preserve_tags` is `True`, otherwise it will be tagless.
+        """
+        value_type = type(value)
+        ciphertext: str | None
+        tags = AnsibleTagHelper.tags(value)
+
+        if value_type is VaultExceptionMarker:
+            ciphertext = value._marker_undecryptable_ciphertext
+            tags = AnsibleTagHelper.tags(ciphertext)  # ciphertext has tags but value does not
+        elif value_type is EncryptedString:
+            ciphertext = value._ciphertext
+        elif value_type in Marker.concrete_subclasses:  # avoid wasteful raise/except of Marker when calling get_tag below
+            ciphertext = None
+        elif vaulted_value := VaultedValue.get_tag(value):
+            ciphertext = vaulted_value.ciphertext
+        else:
+            ciphertext = None
+
+        if ciphertext:
+            if preserve_tags:
+                ciphertext = VaultedValue.untag(AnsibleTagHelper.tag(ciphertext, tags))
+            else:
+                ciphertext = AnsibleTagHelper.as_untagged_type(ciphertext)
+
+        return ciphertext

@@ -252,7 +252,6 @@ class PlayIterator:
             self.set_state_for_host(host.name, s)
 
         display.debug("done getting next task for host %s" % host.name)
-        display.debug(" ^ task is: %s" % task)
         display.debug(" ^ state is: %s" % s)
         return (s, task)
 

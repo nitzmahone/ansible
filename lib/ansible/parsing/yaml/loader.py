@@ -65,5 +65,5 @@ class AnsibleLoader(_YamlParser, AnsibleConstructor, Resolver):
 
         origin = AnsibleSourcePosition.get_or_create_tag(stream, file_name or self.name)
 
-        AnsibleConstructor.__init__(self, origin=origin, vault_secrets=vault_secrets, trusted_as_template=trusted_as_template)
+        AnsibleConstructor.__init__(self, origin=origin, trusted_as_template=trusted_as_template)
         Resolver.__init__(self)

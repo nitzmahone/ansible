@@ -15,6 +15,7 @@ from ansible.module_utils.datatag import (
     AnsibleTagHelper,
 )
 from ansible.template.lazy_containers import _AnsibleLazyTemplateDict, _AnsibleLazyTemplateList
+from ansible.parsing.vault import EncryptedString
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
 
 _T = t.TypeVar('_T')
@@ -63,12 +64,14 @@ class AnsibleVariableVisitor:
         trusted_as_template: bool = False,
         source_position: AnsibleSourcePosition | None = None,
         allow_mapping: bool = False,
+        allow_encrypted_string: bool = False,
     ):
         super().__init__()  # supports StateTrackingMixIn
 
         self.trusted_as_template = trusted_as_template
         self.source_position = source_position
         self.allow_mapping = allow_mapping
+        self.allow_encrypted_string = allow_encrypted_string
         # DTFIX-MERGE: do we need a allow_sequence option for compatibility scenarios other than JSON (it only supported mapping)?
 
         self._current: t.Any = None  # supports StateTrackingMixIn
@@ -122,6 +125,9 @@ class AnsibleVariableVisitor:
         elif value_type in _allowed_collection_types:
             with self:  # supports StateTrackingMixIn
                 result = AnsibleTagHelper.tag_copy(value, (self._visit(k, v) for k, v in enumerate(t.cast(t.Iterable, value))), value_type=value_type)
+        elif self.allow_encrypted_string and isinstance(value, EncryptedString):
+            # DTFIX-MERGE: the visitor is largely ignoring keys, except for debugging and schema-aware checking -- it should be doing type checks on keys
+            return value  # type: ignore[return-value]  # DTFIX-MERGE: this should probably only be allowed for values in dict, not keys (set, dict)
         else:
             if value_type not in _allowed_var_types:
                 raise AnsibleVariableTypeError(obj=value)

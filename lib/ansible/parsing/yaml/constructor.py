@@ -28,7 +28,7 @@ from ansible import constants as C
 from ansible.module_utils.common.text.converters import to_text
 from ansible.module_utils.datatag import AnsibleTagHelper
 from ...utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
-from ansible.parsing.vault import VaultSecret, _maybe_decrypt_ciphertext, VaultSecretsContext
+from ansible.parsing.vault import VaultSecret, EncryptedString
 from ansible.utils.display import Display
 
 from .errors import AnsibleConstructorError
@@ -45,11 +45,10 @@ class AnsibleConstructor(SafeConstructor):
     def __init__(
         self,
         origin: AnsibleSourcePosition,
-        vault_secrets: list[tuple[str, VaultSecret]] | None = None,
+        vault_secrets: list[tuple[str, VaultSecret]] | None = None,  # DTFIX-MERGE: can we remove/deprecate this?
         trusted_as_template: bool = False,
     ) -> None:
         self._origin = origin
-        self._vault_secrets = vault_secrets
         super(AnsibleConstructor, self).__init__()
         self._trusted_as_template = trusted_as_template
 
@@ -149,14 +148,15 @@ class AnsibleConstructor(SafeConstructor):
         value = self.construct_mapping(node)
         data.update(value)
 
-    def construct_vault_encrypted_unicode(self, node: Node) -> str:
+    def construct_yaml_vault(self, node: Node) -> EncryptedString:
         ciphertext = self._resolve_and_construct_object(node)
 
         if not isinstance(ciphertext, str):
             raise AnsibleConstructorError(problem=f"the {node.tag!r} tag requires a string value", problem_mark=node.start_mark)
 
-        with VaultSecretsContext(self._vault_secrets):
-            return _maybe_decrypt_ciphertext(ciphertext)
+        encrypted_string = AnsibleTagHelper.tag_copy(ciphertext, EncryptedString(ciphertext=AnsibleTagHelper.as_untagged_type(ciphertext)))
+
+        return encrypted_string
 
     def construct_yaml_seq(self, node):
         data = self._node_position_info(node).tag([])
@@ -243,9 +243,9 @@ AnsibleConstructor.add_constructor(
 
 AnsibleConstructor.add_constructor(
     u'!vault',
-    AnsibleConstructor.construct_vault_encrypted_unicode)  # type: ignore[type-var]
+    AnsibleConstructor.construct_yaml_vault)  # type: ignore[type-var]
 
 # FIXME: deprecate !vault-encrypted
 AnsibleConstructor.add_constructor(
     u'!vault-encrypted',
-    AnsibleConstructor.construct_vault_encrypted_unicode)  # type: ignore[type-var]
+    AnsibleConstructor.construct_yaml_vault)  # type: ignore[type-var]

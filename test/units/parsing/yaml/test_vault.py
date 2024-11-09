@@ -1,36 +1,60 @@
 from __future__ import annotations
 
 import json
+import textwrap
 
-from ansible.utils.datatag.tags import VaultedValue, UndecryptableVaultedValue
+import pytest
+
+from ansible.errors import AnsibleJSONParserError
+from ansible.parsing.vault import VaultHelper, EncryptedString
+from ansible.parsing.yaml.errors import AnsibleYAMLParserError
 from ansible.parsing.utils.yaml import from_yaml
-from ansible.parsing.vault import VaultSecret, VaultLib
+
+from ..vault.test_vault import make_vault_ciphertext
 
 
-def test_from_yaml() -> None:
-    secret = VaultSecret(b'my secret')
-    encrypted_value = VaultLib().encrypt('mom', secret)
-    vault_secrets: list[tuple[str, VaultSecret]] = [("default", secret)]
-    ciphertext = encrypted_value.decode()
-    data = dict(hi=dict(
+def test_from_yaml_json_only(_vault_secrets_context) -> None:
+    """Ensure that from_yaml properly yields an `EncryptedString` instance for legacy-profile JSON with encoded vaulted values."""
+    ciphertext = make_vault_ciphertext('mom')
+
+    data = json.dumps(dict(hi=dict(
         __ansible_vault=ciphertext,
-    ))
-    file_name = '/nope'
+    )))
 
-    result = from_yaml(data=json.dumps(data), file_name=file_name, vault_secrets=vault_secrets, json_only=True)
+    result = from_yaml(data=data, file_name='/nope.json', json_only=True)
+
+    assert isinstance(result['hi'], EncryptedString)
+    assert result == dict(hi='mom')
+    assert VaultHelper.get_ciphertext(result['hi'], preserve_tags=False) == ciphertext
+
+
+def test_from_yaml(_vault_secrets_context) -> None:
+    ciphertext = make_vault_ciphertext('mom')
+
+    data = f'hi: !vault |\n{textwrap.indent(ciphertext, "  ")}'
+
+    result = from_yaml(data=data, file_name='/nope.yml')
 
     assert result == dict(hi='mom')
-    assert (vv := VaultedValue.get_tag(result['hi']))
-    assert vv.ciphertext == ciphertext
+    assert VaultHelper.get_ciphertext(result['hi'], preserve_tags=False) == ciphertext
 
 
-def test_from_yaml_invalid_vaulted_value() -> None:
-    data = dict(hi=dict(
-        __ansible_vault='bogus, cannot decrypt, wrong format',
-    ))
+def test_from_yaml_invalid_json_vaulted_value() -> None:
+    data = json.dumps(dict(hi=dict(__ansible_vault=1)))
 
-    result = from_yaml(data=json.dumps(data), json_only=True)
+    with pytest.raises(AnsibleJSONParserError, match="__ansible_vault is <class 'int'> not <class 'str'>"):
+        from_yaml(data=data, json_only=True)
 
-    assert result == dict(hi='bogus, cannot decrypt, wrong format')
-    assert (uvv := UndecryptableVaultedValue.get_tag(result['hi']))
-    assert uvv.reason == 'Input is not vault encrypted data.'
+
+def test_from_yaml_invalid_yaml_vaulted_value() -> None:
+    data = 'hi: !vault 1'
+
+    with pytest.raises(AnsibleYAMLParserError, match="The '!vault' tag requires a string value."):
+        from_yaml(data=data)
+
+
+def test_from_yaml_does_not_recognize_json_vaulted_value() -> None:
+    value = dict(hi=dict(__ansible_vault=dict(value_does_not_matter=True)))
+    data = json.dumps(value)
+
+    assert from_yaml(data=data) == value

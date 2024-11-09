@@ -17,6 +17,7 @@ from functools import cache
 from ansible import constants as C
 from ansible import context
 from ansible.errors import AnsibleError, AnsibleParserError, AnsibleAssertionError, AnsibleValueOmittedError, AnsibleFieldAttributeError
+from ansible.module_utils.datatag import AnsibleTagHelper
 from ansible.utils.datatag.tags import AnsibleSourcePosition
 from ansible.module_utils.six import string_types
 from ansible.module_utils.parsing.convert_bool import boolean
@@ -476,11 +477,18 @@ class FieldAttributeBase:
             if attribute.listof is not None:
                 for item in value:
                     if not isinstance(item, attribute.listof):
-                        raise AnsibleParserError("the field '%s' should be a list of %s, "
-                                                 "but the item '%s' is a %s" % (name, attribute.listof, item, type(item)), obj=self.get_ds())
-                    elif attribute.required and attribute.listof == string_types:
+                        type_names = ' or '.join(f'{attribute_type.__name__!r}' for attribute_type in attribute.listof)
+
+                        raise AnsibleParserError(
+                            message=f"Keyword {name!r} items must be of type {type_names}, not {AnsibleTagHelper.base_type_name(item)!r}.",
+                            obj=AnsibleSourcePosition.first_tagged_on(item, value, self.get_ds()),
+                        )
+                    elif attribute.required and attribute.listof == (str,):
                         if item is None or item.strip() == "":
-                            raise AnsibleParserError("the field '%s' is required, and cannot have empty values" % (name,), obj=self.get_ds())
+                            raise AnsibleParserError(
+                                message=f"Keyword {name!r} is required, and cannot have empty values.",
+                                obj=AnsibleSourcePosition.first_tagged_on(item, value, self.get_ds()),
+                            )
         elif attribute.isa == 'dict':
             if value is None:
                 value = dict()
@@ -585,10 +593,6 @@ class FieldAttributeBase:
                 raise  # no useful information to contribute, raise the original exception
 
             raise AnsibleFieldAttributeError(f'Error processing keyword {name!r}.', obj=original_value) from ex
-
-    def _post_validate_name(self, _attr, value, _templar) -> str:
-        """Skip templating of name, it will be done later."""
-        return value
 
     def _load_vars(self, attr, ds):
         """
