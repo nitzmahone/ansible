@@ -150,17 +150,16 @@ class _AnsibleLazyTemplateMixin:
         """
         Ensure that the value is lazy-proxied or rendered, and if a key is provided, replace the original value with the result.
         """
-        if type(value) is _LazyValue:  # pylint: disable=unidiomatic-typecheck
-            new_value = AnsibleAccessContext.current().access(value := value.value)
-            new_value = self._templar.template(new_value, options=self._template_options)
+        if type(value) is not _LazyValue:  # pylint: disable=unidiomatic-typecheck
+            AnsibleAccessContext.current().access(value)
+            return value
 
-            if new_value is not value:
-                new_value = AnsibleAccessContext.current().access(new_value)
-        else:
-            new_value = AnsibleAccessContext.current().access(value)
+        original_value = value.value
+        AnsibleAccessContext.current().access(original_value)
+        new_value = self._templar.template(original_value, options=self._template_options)
 
-            if new_value is value:
-                return new_value  # bypass pointless __setitem__
+        if new_value is not original_value:
+            AnsibleAccessContext.current().access(new_value)
 
         if key is not NoKeySentinel:
             self._native_type.__setitem__(self, key, new_value)  # type: ignore  # pylint: disable=unnecessary-dunder-call

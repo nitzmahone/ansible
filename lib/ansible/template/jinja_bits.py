@@ -193,7 +193,9 @@ class AnsibleContext(Context):
         else:
             value = missing
 
-        return AnsibleAccessContext.current().access(value)
+        AnsibleAccessContext.current().access(value)
+
+        return value
 
     def get_all(self):
         """
@@ -632,13 +634,17 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             result = _JinjaConstTemplate().tag(const_template)
 
         # DTFIX-U: is this access correct?
-        return AnsibleAccessContext.current().access(result)
+        AnsibleAccessContext.current().access(result)
+        return result
 
     def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
         # DTFIX-U: do we actually need to managed-access both sides of templates/strings here?
         # example: "{{ some['thing'] }}" -- obj is the "some" dict, argument is "thing"
         # access on the result of super().getitem is necessary
-        return AnsibleAccessContext.current().access(super().getitem(obj, argument))
+        value = super().getitem(obj, argument)
+        AnsibleAccessContext.current().access(value)
+
+        return value
 
     def getattr(self, obj: t.Any, attribute: str) -> t.Any:
         """
@@ -666,7 +672,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
                 return self.undefined(obj=obj, name=attribute) if is_safe else self.unsafe_undefined(obj, attribute)
 
         # DTFIX-U: is this access correct?
-        return AnsibleAccessContext.current().access(value)
+        AnsibleAccessContext.current().access(value)
+        return value
 
     def call(
         self,
