@@ -705,7 +705,7 @@ def test_undefined_in_jinja_constant_container():
 
 @pytest.mark.parametrize("template_or_expression", (
     # "tuple_with_template()",
-    #"noop(something())",
+    # "noop(something())",
     "[] | something",
 ))
 def test_plugin_results_not_auto_templated(template_or_expression: str) -> None:
@@ -722,14 +722,13 @@ def test_plugin_results_not_auto_templated(template_or_expression: str) -> None:
     @pass_environment
     def something(env: AnsibleEnvironment, *args, **kwargs) -> t.Any:
         env.call_filter('noop', "value", kwargs=dict(rawlist=[TRUST.tag('{{ 1/0 }}')]))
-        #return (TRUST.tag('{{ 1 / 0 }}'),)
+        # return (TRUST.tag('{{ 1 / 0 }}'),)
 
     def noop(value: t.Any, *args, **kwargs) -> t.Any:
         return value
 
     templar.environment.filters['something'] = something
     templar.environment.filters['noop'] = noop
-
 
     templar.environment.globals.update(
         tuple_with_template=tuple_with_template,

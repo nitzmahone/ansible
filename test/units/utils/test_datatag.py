@@ -131,6 +131,7 @@ def test_tag_builtins():
         assert AnsibleSourcePosition.get_tag(multi_tagged_val) is somedata_tag
 
 
+# pylint: disable=unnecessary-lambda
 @pytest.mark.parametrize("copy_expr", (
     lambda es: copy.copy(es),
     lambda es: copy.deepcopy(es),
