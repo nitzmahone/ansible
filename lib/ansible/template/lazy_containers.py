@@ -7,6 +7,8 @@ import typing as t
 
 from collections import abc as c
 
+from jinja2.environment import TemplateModule
+
 from ansible.module_utils.datatag import (
     AnsibleTaggedObject,
     _AnsibleTaggedDict,
@@ -53,6 +55,7 @@ class _AnsibleLazyTemplateMixin:
             functools.partial,  # triggered by TaskExecutor lookup partial injection as a template local
             type,  # DTFIX-MERGE: this is a broad ignore for looking up `range` via `resolve_or_missing`; is there a better way?
             type(''.startswith),  # DTFIX-MERGE: builtin_function_or_method - is there a better way to include callables so we're not playing whack-a-mole?
+            TemplateModule,  # the result of a Jinja `import` directive, just pass it through
         }
     )
     _ignore_types_tuple: t.ClassVar[tuple[type, ...]] = tuple(_ignore_types)

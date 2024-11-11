@@ -9,12 +9,14 @@ import pytest_mock
 
 from ansible.errors import AnsibleTemplatePluginRuntimeError, AnsibleUndefinedVariable, AnsibleTemplateError
 from ansible.module_utils.datatag import AnsibleTaggedObject
-from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError, Marker
+from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError, Marker, UndefinedMarker
 from ansible.template.utils import TemplateContext
 from ansible.utils.datatag.tags import TrustedAsTemplate
 from ansible.template.jinja_bits import AnsibleEnvironment, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, defer_template_error
 from ansible.template.templar import Templar, TemplateOptions
 from jinja2.loaders import DictLoader
+
+from ansible.utils.display import _DeferredWarningContext
 
 TRUST = TrustedAsTemplate()
 
@@ -56,6 +58,20 @@ def test_escape_backslashes(template: t.Any, expected: t.Any, variables: dict[st
     templar.environment.loader = DictLoader(sources or {})
 
     assert templar.template(template, options=options) == expected
+
+def test_templatemodule_ignore(template_context):
+    """Ensure that `TemplateModule` silently passes through try_create()."""
+    template = TRUST.tag('{% import "foo" as foo %}{{ foo }}')
+
+    templar = Templar()
+    templar.environment.loader = DictLoader(dict(foo=TRUST.tag('{{ undefined_in_import }}')))
+
+    with _DeferredWarningContext(variables=templar.available_variables) as warnings:
+        result = templar.template(template)
+
+    # DTFIX-U: ensure this is actually working once we get the error as warning stuff cleaned up
+    assert not warnings.get_warnings()
+    assert isinstance(result, UndefinedMarker)
 
 
 @pytest.mark.xfail(reason="template local propagation to nested templar calls is not implemented")

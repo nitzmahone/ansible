@@ -214,7 +214,12 @@ class SourceContext:
             annotated_source_lines = []
         else:
             # DTFIX-FUTURE: cleanup/share width
-            truncated_value = textwrap.shorten(str(value), width=120)
+            try:
+                value = str(value)
+            except Exception as ex:
+                value = f'<< context unavailable: {ex} >>'
+
+            truncated_value = textwrap.shorten(value, width=120)
             annotated_source_lines = [truncated_value]
 
         return SourceContext(

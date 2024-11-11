@@ -777,6 +777,11 @@ class Display(metaclass=Singleton):
         if msg:
             warning.errors.insert(0, ErrorMessage(msg=msg))
 
+        # DTFIX-U: restore this once we fix the shape of warnings/errors
+        # if warning_ctx := _DeferredWarningContext.current(optional=True):
+        #     warning_ctx.capture(warning)
+        #     return
+
         self._warning(warning, wrap_text=False)
 
     def error(self, msg: str | BaseException, wrap_text: bool = True, stderr: bool = True) -> None:
