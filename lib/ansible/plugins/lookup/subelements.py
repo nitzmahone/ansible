@@ -93,7 +93,7 @@ FLAGS = ('skip_missing',)
 
 class LookupModule(LookupBase):
 
-    def run(self, terms, variables, **kwargs):
+    def run(self, terms, variables=None, **kwargs):
 
         def _raise_terms_error(msg=""):
             raise AnsibleError(

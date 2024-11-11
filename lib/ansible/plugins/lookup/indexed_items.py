@@ -37,6 +37,6 @@ from ansible.plugins.lookup import LookupBase
 
 
 class LookupModule(LookupBase):
-    def run(self, terms, variables, **kwargs):
+    def run(self, terms, variables=None, **kwargs):
         items = self._flatten(terms)
         return list(zip(range(len(items)), items))

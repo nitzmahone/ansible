@@ -207,7 +207,7 @@ class LookupModule(LookupBase):
                     "problem formatting %r with %r" % (i, self.format)
                 )
 
-    def run(self, terms, variables, **kwargs):
+    def run(self, terms, variables=None, **kwargs):
         results = []
 
         for term in terms:
