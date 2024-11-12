@@ -1174,7 +1174,8 @@ def format_message(summary: SummaryBase) -> str:
     details: t.Sequence[Detail]
 
     if isinstance(summary, DeprecationSummary):
-        details = [detail if idx else dataclasses.replace(detail,
+        details = [detail if idx else dataclasses.replace(
+            detail,
             msg=_display._get_deprecation_message(
                 msg=detail.msg,
                 version=summary.version,
