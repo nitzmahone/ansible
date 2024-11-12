@@ -244,8 +244,8 @@ class CallbackModule(CallbackBase):
 
         if host_data.status == 'failed':
             if 'exception' in res:
-                # DTFIX-U: shouldn't this be as_simple_str or ?
-                message = res['exception'].errors[0].msg
+                # DTFIX-U: shouldn't this be as_simple_str or - also, can we validate that this is in fact an ErrorSummary?
+                message = res['exception'].details[0].msg
                 output = res['exception'].formatted_traceback
                 test_case.errors.append(TestError(message=message, output=output))
             elif 'msg' in res:

@@ -11,8 +11,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ansible.module_utils.common.messages import Detail, WarningSummary
-from ansible.utils.display import _LIBC, _MAX_INT, Display, get_text_width
+from ansible.module_utils.common.messages import Detail, WarningSummary, DeprecationSummary
+from ansible.utils.display import _LIBC, _MAX_INT, Display, get_text_width, format_message
 from ansible.utils.multiprocessing import context as multiprocessing_context
 
 
@@ -140,3 +140,31 @@ def test_Display_display_lock_fork(monkeypatch, display_resource):
     monkeypatch.setattr(display, '_final_q', MagicMock())
     display.display('foo')
     lock.__enter__.assert_not_called()
+
+
+def test_format_message_deprecation_with_multiple_details() -> None:
+    """
+    Verify that a DeprecationSummary with multiple Detail entries can be formatted.
+    No existing code generates deprecations with multiple details, but a future deprecation exception type would need to make use of this.
+    """
+    result = format_message(DeprecationSummary(
+        details=(
+            Detail(msg='Ignoring ExceptionX.', help_text='Plugins must handle it internally.'),
+            Detail(msg='Something went wrong.', formatted_source_context='Origin: /some/path\n\n...'),
+        ),
+    ))
+
+    assert result == '''Ignoring ExceptionX. This feature will be removed in a future release: Something went wrong.
+
+Ignoring ExceptionX. This feature will be removed in a future release.
+
+Plugins must handle it internally.
+
+<<< caused by >>>
+
+Something went wrong.
+Origin: /some/path
+
+...
+
+'''

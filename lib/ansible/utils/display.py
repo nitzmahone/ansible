@@ -556,6 +556,31 @@ class Display(metaclass=Singleton):
         date: str | datetime.date | None = None,
         collection_name: str | None = None,
     ) -> str:
+        """Return a deprecation message and help text for non-display purposes (e.g., exception messages)."""
+        # DTFIX-RELEASE: don't call this from loader, we want to deprecate it
+        msg = Display._get_deprecation_message(
+            msg=msg,
+            version=version,
+            removed=removed,
+            date=date,
+            collection_name=collection_name,
+        )
+
+        if removed:
+            msg = f'[DEPRECATED]: {msg}'
+        else:
+            msg = f'[DEPRECATION WARNING]: {msg}'
+
+        return msg
+
+    @staticmethod
+    def _get_deprecation_message(
+            msg: str,
+            version: str | None = None,
+            removed: bool = False,
+            date: str | datetime.date | None = None,
+            collection_name: str | None = None,
+    ) -> str:
         """Return a deprecation message and help text for display."""
         msg = msg.strip()
 
@@ -566,11 +591,9 @@ class Display(metaclass=Singleton):
             collection_name = 'ansible-core'
 
         if removed:
-            header = '[DEPRECATED]: {0}'.format(msg)
             removal_fragment = 'This feature was removed'
             help_text = 'Please update your playbooks.'
         else:
-            header = '[DEPRECATION WARNING]: {0}'.format(msg)
             removal_fragment = 'This feature will be removed'
             help_text = ''
 
@@ -586,7 +609,7 @@ class Display(metaclass=Singleton):
         else:
             when = 'in a future release.'
 
-        message_text = ' '.join(f for f in [header, removal_fragment, from_fragment, when, help_text] if f)
+        message_text = ' '.join(f for f in [msg, removal_fragment, from_fragment, when, help_text] if f)
 
         return message_text
 
@@ -666,7 +689,8 @@ class Display(metaclass=Singleton):
         # This is the post-proxy half of the `deprecated` implementation.
         # Any logic that must occur in the primary controller process needs to be implemented here.
 
-        msg = format_message(warning)  # we're not prefixing `[DEPRECATION...` since get_deprecation_message does
+        msg = format_message(warning)
+        msg = f'[DEPRECATION WARNING]: {msg}'
 
         # DTFIX-MERGE: ?
         msg = self._wrap_message(msg=msg, wrap_text=True)
@@ -1150,12 +1174,14 @@ def format_message(summary: SummaryBase) -> str:
     details: t.Sequence[Detail]
 
     if isinstance(summary, DeprecationSummary):
-        details = [Detail(msg=_display.get_deprecation_message(
-            msg=summary._as_simple_str(),
-            version=summary.version,
-            date=summary.date,
-            collection_name=summary.collection_name,
-        ))]
+        details = [detail if idx else dataclasses.replace(detail,
+            msg=_display._get_deprecation_message(
+                msg=detail.msg,
+                version=summary.version,
+                date=summary.date,
+                collection_name=summary.collection_name,
+            ),
+        ) for idx, detail in enumerate(summary.details)]
     else:
         details = summary.details
 

@@ -53,6 +53,7 @@ class WarningSummary(SummaryBase):
 
     def _as_simple_str(self) -> str:
         """Returns a string representation of the warning details."""
+        # DTFIX-RELEASE: should this borrow some of the message squashing features we use in get_chained_message?
         return ': '.join(detail.msg for detail in self.details)
 
 
@@ -68,6 +69,6 @@ class DeprecationSummary(WarningSummary):
         """Returns a dictionary representation of the deprecation object in the format exposed to playbooks."""
         result = self._as_dict()
         result.pop('details')
-        result.update(msg=': '.join(detail.msg for detail in self.details))
+        result.update(msg=self._as_simple_str())
 
         return result
