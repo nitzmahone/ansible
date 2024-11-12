@@ -342,7 +342,7 @@ class AnsibleSerializableDataclass(AnsibleSerializable, metaclass=abc.ABCMeta):
 
         for field in dataclasses.fields(cls):
             if t.get_origin(type_hints[field.name]) is tuple:  # NOTE: only supports bare tuples, not optional or inside a union
-                if type(field_value := d.get(field.name)) is list:
+                if type(field_value := d.get(field.name)) is list:  # pylint: disable=unidiomatic-typecheck
                     if mutated_dict is None:
                         mutated_dict = d.copy()
 

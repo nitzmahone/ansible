@@ -819,6 +819,6 @@ def test_serializable_dataclass_with_tuple():
     """Validate that dataclass deserialization converts inbound lists for tuple-typed fields."""
     @dataclasses.dataclass(**_tag_dataclass_kwargs)
     class HasTuple(AnsibleSerializableDataclass):
-        data: tuple[str, ...]
+        data: t.Tuple[str, ...]
 
     assert HasTuple._from_dict(dict(data=["abc", "def"])) == HasTuple(data=("abc", "def"))

@@ -22,6 +22,8 @@ import json
 import re
 import sys
 import textwrap
+import typing as t
+
 from typing import TYPE_CHECKING
 
 from collections.abc import MutableMapping
@@ -279,8 +281,8 @@ class CallbackBase(AnsiblePlugin):
         for warning in res.pop('deprecations', []):
             self._display._deprecated(warning)
 
-    def _handle_exception(self, result, use_stderr=False):
-        error_summary: ErrorSummary
+    def _handle_exception(self, result: dict[str, t.Any], use_stderr: bool = False) -> None:
+        error_summary: ErrorSummary | None
 
         if error_summary := result.pop('exception', None):
             self._display._error(error_summary, wrap_text=False, stderr=use_stderr)

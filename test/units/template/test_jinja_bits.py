@@ -59,6 +59,7 @@ def test_escape_backslashes(template: t.Any, expected: t.Any, variables: dict[st
 
     assert templar.template(template, options=options) == expected
 
+
 def test_templatemodule_ignore(template_context):
     """Ensure that `TemplateModule` silently passes through try_create()."""
     template = TRUST.tag('{% import "foo" as foo %}{{ foo }}')

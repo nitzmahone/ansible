@@ -1150,12 +1150,12 @@ def format_message(summary: SummaryBase) -> str:
     details: t.Sequence[Detail]
 
     if isinstance(summary, DeprecationSummary):
-       details = [Detail(msg=_display.get_deprecation_message(
-           msg=summary._as_simple_str(),
-           version=summary.version,
-           date=summary.date,
-           collection_name=summary.collection_name,
-       ))]
+        details = [Detail(msg=_display.get_deprecation_message(
+            msg=summary._as_simple_str(),
+            version=summary.version,
+            date=summary.date,
+            collection_name=summary.collection_name,
+        ))]
     else:
         details = summary.details
 
