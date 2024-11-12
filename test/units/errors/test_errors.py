@@ -55,7 +55,7 @@ def test_suppress_extended_error_deprecation() -> None:
         AnsibleError(suppress_extended_error=True)  # pylint: disable=pointless-exception-statement
 
     assert len(ctx.get_deprecation_warnings()) == 1
-    assert (ctx.get_deprecation_warnings()[0]._as_simple_str() ==
+    assert (ctx.get_deprecation_warnings()[0].format() ==
             'The `suppress_extended_error` argument to `AnsibleError` is deprecated. Use `show_content=False` instead.')
 
 
