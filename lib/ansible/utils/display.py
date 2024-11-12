@@ -17,8 +17,8 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
-
 
 try:
     import curses
@@ -51,11 +51,11 @@ from struct import unpack, pack
 
 from ansible import constants as C
 from ansible.errors import AnsibleAssertionError, AnsiblePromptInterrupt, AnsiblePromptNoninteractive
-from ansible.errors.utils import SourceContext, _collapse_error_chain, _create_error_detail, _dedupe_and_concat_message_chain
+from ansible.errors.utils import SourceContext, _collapse_error_details, _create_error_summary, _dedupe_and_concat_message_chain
 from ansible.module_utils._internal import _ambient_context
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.utils.datatag.tags import TrustedAsTemplate, NotATemplate
-from ansible.module_utils.common.messages import DeprecationMessageDetail, WarningMessageDetail, ErrorDetail, MessageBase, ErrorMessage
+from ansible.module_utils.common.messages import ErrorSummary, WarningSummary, DeprecationSummary, Detail, SummaryBase
 from ansible.module_utils.six import text_type
 from ansible.module_utils._internal import _traceback
 from ansible.utils.color import stringc
@@ -639,13 +639,17 @@ class Display(metaclass=Singleton):
         else:
             formatted_source_context = None
 
-        deprecation = DeprecationMessageDetail(
-            msg=msg,
-            help_text=help_text,
+        deprecation = DeprecationSummary(
+            details=(
+                Detail(
+                    msg=msg,
+                    formatted_source_context=formatted_source_context,
+                    help_text=help_text,
+                ),
+            ),
             version=version,
             date=str(date) if isinstance(date, datetime.date) else date,
             collection_name=collection_name,
-            formatted_source_context=formatted_source_context,
             formatted_traceback=_traceback.maybe_capture_traceback(_traceback.TracebackEvent.DEPRECATED),
         )
 
@@ -656,7 +660,7 @@ class Display(metaclass=Singleton):
         self._deprecated(deprecation)
 
     @_proxy
-    def _deprecated(self, warning: DeprecationMessageDetail) -> None:
+    def _deprecated(self, warning: DeprecationSummary) -> None:
         """Internal implementation detail, use `deprecated` instead."""
 
         # This is the post-proxy half of the `deprecated` implementation.
@@ -690,10 +694,14 @@ class Display(metaclass=Singleton):
         else:
             formatted_source_context = None
 
-        warning = WarningMessageDetail(
-            msg=msg,
-            help_text=help_text,
-            formatted_source_context=formatted_source_context,
+        warning = WarningSummary(
+            details=(
+                Detail(
+                    msg=msg,
+                    help_text=help_text,
+                    formatted_source_context=formatted_source_context,
+                ),
+            ),
             formatted_traceback=_traceback.maybe_capture_traceback(_traceback.TracebackEvent.WARNING),
         )
 
@@ -705,7 +713,7 @@ class Display(metaclass=Singleton):
         self._warning(warning, wrap_text=not formatted)
 
     @_proxy
-    def _warning(self, warning: WarningMessageDetail | ErrorDetail, wrap_text: bool) -> None:
+    def _warning(self, warning: WarningSummary, wrap_text: bool) -> None:
         """Internal implementation detail, use `warning` instead."""
 
         # This is the post-proxy half of the `warning` implementation.
@@ -772,15 +780,19 @@ class Display(metaclass=Singleton):
     def error_as_warning(self, msg: str | None, exception: BaseException) -> None:
         """Display an exception as a warning."""
 
-        warning = _create_error_detail(exception, _traceback.TracebackEvent.WARNING)
+        error = _create_error_summary(exception, _traceback.TracebackEvent.WARNING)
 
         if msg:
-            warning.errors.insert(0, ErrorMessage(msg=msg))
+            error = dataclasses.replace(error, details=(Detail(msg=msg),) + error.details)
 
-        # DTFIX-U: restore this once we fix the shape of warnings/errors
-        # if warning_ctx := _DeferredWarningContext.current(optional=True):
-        #     warning_ctx.capture(warning)
-        #     return
+        warning = WarningSummary(
+            details=error.details,
+            formatted_traceback=error.formatted_traceback,
+        )
+
+        if warning_ctx := _DeferredWarningContext.current(optional=True):
+            warning_ctx.capture(warning)
+            return
 
         self._warning(warning, wrap_text=False)
 
@@ -791,15 +803,15 @@ class Display(metaclass=Singleton):
         # Any logic that must occur on workers needs to be implemented here.
 
         if isinstance(msg, BaseException):
-            error = _create_error_detail(msg, _traceback.TracebackEvent.ERROR)
+            error = _create_error_summary(msg, _traceback.TracebackEvent.ERROR)
             wrap_text = False
         else:
-            error = ErrorDetail(errors=[ErrorMessage(msg=msg)], formatted_traceback=_traceback.maybe_capture_traceback(_traceback.TracebackEvent.ERROR))
+            error = ErrorSummary(details=(Detail(msg=msg),), formatted_traceback=_traceback.maybe_capture_traceback(_traceback.TracebackEvent.ERROR))
 
         self._error(error, wrap_text=wrap_text, stderr=stderr)
 
     @_proxy
-    def _error(self, error: ErrorDetail, wrap_text: bool, stderr: bool) -> None:
+    def _error(self, error: ErrorSummary, wrap_text: bool, stderr: bool) -> None:
         """Internal implementation detail, use `error` instead."""
 
         # This is the post-proxy half of the `error` implementation.
@@ -1042,9 +1054,9 @@ class _DeferredWarningContext(_ambient_context.AmbientContextBase):
 
     def __init__(self, *, variables: dict[str, object]) -> None:
         self._variables = variables  # DTFIX-FUTURE: move this to an AmbientContext-derived TaskContext (once it exists)
-        self._deprecation_warnings: list[DeprecationMessageDetail] = []
-        self._warnings: list[WarningMessageDetail] = []
-        self._seen: set[WarningMessageDetail] = set()
+        self._deprecation_warnings: list[DeprecationSummary] = []
+        self._warnings: list[WarningSummary] = []
+        self._seen: set[WarningSummary] = set()
 
     @classmethod
     def deprecation_warnings_enabled(cls) -> bool:
@@ -1057,40 +1069,39 @@ class _DeferredWarningContext(_ambient_context.AmbientContextBase):
 
         return C.config.get_config_value('DEPRECATION_WARNINGS', variables=variables)
 
-    def capture(self, warning_detail: WarningMessageDetail):
+    def capture(self, warning: WarningSummary) -> None:
         """Add the warning/deprecation to the context if it has not already been seen by this context."""
-        if warning_detail in self._seen:
+        if warning in self._seen:
             return
 
-        self._seen.add(warning_detail)
+        self._seen.add(warning)
 
-        if isinstance(warning_detail, DeprecationMessageDetail):
-            self._deprecation_warnings.append(warning_detail)
+        if isinstance(warning, DeprecationSummary):
+            self._deprecation_warnings.append(warning)
         else:
-            self._warnings.append(warning_detail)
+            self._warnings.append(warning)
 
-    def get_warnings(self) -> list[WarningMessageDetail]:
+    def get_warnings(self) -> list[WarningSummary]:
         """Return a list of the captured non-deprecation warnings."""
         # DTFIX-FUTURE: return a read-only list proxy instead
         return self._warnings
 
-    def get_deprecation_warnings(self) -> list[DeprecationMessageDetail]:
+    def get_deprecation_warnings(self) -> list[DeprecationSummary]:
         """Return a list of the captured deprecation warnings."""
         # DTFIX-FUTURE: return a read-only list proxy instead
         return self._deprecation_warnings
 
 
-def _format_error_chain(error_chain: t.Sequence[MessageBase], formatted_tb: str | None = None) -> str:
-
-    error_chain = _collapse_error_chain(error_chain)
+def _format_error_details(details: t.Sequence[Detail], formatted_tb: str | None = None) -> str:
+    details = _collapse_error_details(details)
 
     message_lines: list[str] = []
 
-    if len(error_chain) > 1:
-        message_lines.append(_dedupe_and_concat_message_chain([md.msg for md in error_chain]))
+    if len(details) > 1:
+        message_lines.append(_dedupe_and_concat_message_chain([md.msg for md in details]))
         message_lines.append('')
 
-    for idx, edc in enumerate(error_chain):
+    for idx, edc in enumerate(details):
         if idx:
             message_lines.extend((
                 '',
@@ -1135,31 +1146,17 @@ def _get_message_lines(message: str, help_text: str | None, formatted_source_con
     return message_lines
 
 
-def format_message(message_detail: WarningMessageDetail | DeprecationMessageDetail | ErrorDetail) -> str:
-    details: t.Sequence[MessageBase]
-    formatted_traceback: str
+def format_message(summary: SummaryBase) -> str:
+    details: t.Sequence[Detail]
 
-    match message_detail:
-        case DeprecationMessageDetail():
-            message_detail = WarningMessageDetail(
-                msg=_display.get_deprecation_message(
-                    msg=message_detail.msg,
-                    version=message_detail.version,
-                    date=message_detail.date,
-                    collection_name=message_detail.collection_name),
-                formatted_source_context=message_detail.formatted_source_context,
-                help_text=message_detail.help_text,
-                formatted_traceback=message_detail.formatted_traceback,
-            )
+    if isinstance(summary, DeprecationSummary):
+       details = [Detail(msg=_display.get_deprecation_message(
+           msg=summary._as_simple_str(),
+           version=summary.version,
+           date=summary.date,
+           collection_name=summary.collection_name,
+       ))]
+    else:
+        details = summary.details
 
-    match message_detail:
-        case WarningMessageDetail():
-            details = [message_detail]
-            formatted_traceback = message_detail.formatted_traceback
-        case ErrorDetail():
-            details = message_detail.errors
-            formatted_traceback = message_detail.formatted_traceback
-        case _:
-            raise TypeError(f"Unsupported message detail type {type(message_detail)}.")
-
-    return _format_error_chain(details, formatted_traceback)
+    return _format_error_details(details, summary.formatted_traceback)

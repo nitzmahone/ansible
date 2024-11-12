@@ -4,7 +4,7 @@ import dataclasses
 import typing as t
 
 from ansible.errors import AnsibleRuntimeError
-from ansible.module_utils.common.messages import ErrorDetail, ErrorMessage, _dataclass_kwargs
+from ansible.module_utils.common.messages import ErrorSummary, Detail, _dataclass_kwargs
 
 
 class AnsibleCapturedError(AnsibleRuntimeError):
@@ -16,32 +16,32 @@ class AnsibleCapturedError(AnsibleRuntimeError):
         self,
         *,
         obj: t.Any = None,
-        error_detail: ErrorDetail,
+        error_summary: ErrorSummary,
     ) -> None:
         super().__init__(
             obj=obj,
         )
 
-        self._error_detail = error_detail
+        self._error_summary = error_summary
 
     @property
-    def additional_error_detail(self) -> ErrorDetail:
-        return self._error_detail
+    def error_summary(self) -> ErrorSummary:
+        return self._error_summary
 
 
 class AnsibleResultCapturedError(AnsibleCapturedError):
     """An exception representing error detail captured in a foreign context where an action/module result dictionary is involved."""
 
-    def __init__(self, error_detail: ErrorDetail, result: dict[str, t.Any]) -> None:
-        super().__init__(error_detail=error_detail)
+    def __init__(self, error_summary: ErrorSummary, result: dict[str, t.Any]) -> None:
+        super().__init__(error_summary=error_summary)
 
         self._result = result
 
     @classmethod
     def maybe_raise_on_result(cls, result: dict[str, t.Any]) -> None:
         """Normalize the result and raise an exception if the result indicated failure."""
-        if error_detail := cls.normalize_result_exception(result):
-            raise error_detail.error_type(error_detail, result)
+        if error_summary := cls.normalize_result_exception(result):
+            raise error_summary.error_type(error_summary, result)
 
     @classmethod
     def find_first_remoted_error(cls, exception: BaseException) -> t.Self | None:
@@ -55,7 +55,7 @@ class AnsibleResultCapturedError(AnsibleCapturedError):
         return None
 
     @classmethod
-    def normalize_result_exception(cls, result: dict[str, t.Any]) -> CapturedErrorDetail | None:
+    def normalize_result_exception(cls, result: dict[str, t.Any]) -> CapturedErrorSummary | None:
         """
         Normalize the result `exception`, if any, to be a `CapturedErrorDetail` instance.
         If a new `CapturedErrorDetail` was created, the `error_type` will be `cls`.
@@ -74,25 +74,25 @@ class AnsibleResultCapturedError(AnsibleCapturedError):
         if not failed and not exception:
             return None
 
-        if isinstance(exception, CapturedErrorDetail):
-            error_detail = exception
-        elif isinstance(exception, ErrorDetail):
-            error_detail = CapturedErrorDetail(
-                errors=exception.errors,
+        if isinstance(exception, CapturedErrorSummary):
+            error_summary = exception
+        elif isinstance(exception, ErrorSummary):
+            error_summary = CapturedErrorSummary(
+                details=exception.details,
                 formatted_traceback=cls._normalize_traceback(exception.formatted_traceback),
                 error_type=cls,
             )
         else:
             # translate non-ErrorDetail errors
-            error_detail = CapturedErrorDetail(
-                errors=[ErrorMessage(msg=str(result.get('msg', 'Unknown error.')))],
+            error_summary = CapturedErrorSummary(
+                details=(Detail(msg=str(result.get('msg', 'Unknown error.'))),),
                 formatted_traceback=cls._normalize_traceback(exception),
                 error_type=cls,
             )
 
-        result.update(exception=error_detail)
+        result.update(exception=error_summary)
 
-        return error_detail if failed else None  # even though error detail was normalized, only return it if the result indicated failure
+        return error_summary if failed else None  # even though error detail was normalized, only return it if the result indicated failure
 
     @classmethod
     def _normalize_traceback(cls, value: object | None) -> str | None:
@@ -123,6 +123,6 @@ class AnsibleModuleCapturedError(AnsibleResultCapturedError):
 
 
 @dataclasses.dataclass(**_dataclass_kwargs)
-class CapturedErrorDetail(ErrorDetail):
+class CapturedErrorSummary(ErrorSummary):
     # DTFIX-MERGE: where to put this, name, etc. since it shows up in results, it's not exactly private (and contains a type ref to an internal type)
     error_type: type[AnsibleResultCapturedError] | None = None

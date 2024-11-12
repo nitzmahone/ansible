@@ -92,6 +92,24 @@ def inject_post_init_validation(cls: type, allow_subclasses=False) -> None:
         else:
             local_ref = target_ref
 
+        if tuple in allowed_types:
+            tuple_type = _extract_type(target_type, tuple)
+
+            idx_ref = f'{local_ref}_idx'
+            item_ref = f'{local_ref}_item'
+            item_name = f'{target_name}[{{{idx_ref}!r}}]'
+            item_type, _ellipsis = t.get_args(tuple_type)
+
+            if _ellipsis is not ...:
+                raise ValueError(f"{cls} tuple fields must be a tuple of a single element type")
+
+            append_line(f"""if isinstance({target_ref}, {known_types[tuple]}):""")
+            append_line(f"""    for {idx_ref}, {item_ref} in enumerate({target_ref}):""")
+
+            indent += 2
+            validate_value(target_name=item_name, target_ref=item_ref, target_type=item_type)
+            indent -= 2
+
         if list in allowed_types:
             list_type = _extract_type(target_type, list)
 

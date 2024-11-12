@@ -21,7 +21,7 @@ from ansible.errors import (
     AnsibleValueOmittedError,
 )
 from ansible.executor.task_result import TaskResult
-from ansible.module_utils.common.messages import WarningMessageDetail, DeprecationMessageDetail
+from ansible.module_utils.common.messages import Detail, WarningSummary, DeprecationSummary
 from ansible.utils.datatag.tags import TrustedAsTemplate
 from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.module_utils.common.text.converters import to_text, to_native
@@ -820,9 +820,13 @@ class TaskExecutor:
         if warnings := result.get('warnings'):
             if isinstance(warnings, list):
                 for warning in warnings:
-                    if not isinstance(warning, WarningMessageDetail):
+                    if not isinstance(warning, WarningSummary):
                         # translate non-WarningMessageDetail messages
-                        warning = WarningMessageDetail(msg=str(warning))
+                        warning = WarningSummary(
+                            details=(
+                                Detail(msg=str(warning)),
+                            ),
+                        )
 
                     warning_ctx.capture(warning)
             else:
@@ -831,10 +835,15 @@ class TaskExecutor:
         if deprecations := result.get('deprecations'):
             if isinstance(deprecations, list):
                 for deprecation in deprecations:
-                    if not isinstance(deprecation, DeprecationMessageDetail):
+                    if not isinstance(deprecation, DeprecationSummary):
                         # translate non-DeprecationMessageDetail message dicts
                         try:
-                            deprecation = DeprecationMessageDetail(**deprecation)
+                            deprecation = DeprecationSummary(
+                                details=(
+                                    Detail(msg=deprecation.pop('msg')),
+                                ),
+                                **deprecation,
+                            )
                         except Exception as ex:
                             display.error_as_warning("Task result `deprecations` contained an invalid item.", exception=ex)
 

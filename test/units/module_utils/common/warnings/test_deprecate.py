@@ -11,7 +11,7 @@ import typing as t
 
 from ansible.module_utils._internal import _traceback
 from ansible.module_utils.common import warnings
-from ansible.module_utils.common.messages import DeprecationMessageDetail
+from ansible.module_utils.common.messages import Detail, DeprecationSummary
 from ansible.module_utils.common.warnings import deprecate
 from units.mock.module import ModuleEnvMocker
 
@@ -29,7 +29,7 @@ pytestmark = pytest.mark.usefixtures("module_env_mocker")
 def test_deprecate(deprecate_kwargs: dict[str, t.Any]):
     deprecate(**deprecate_kwargs)
     assert warnings.get_deprecation_messages() == (deprecate_kwargs,)
-    assert warnings.get_deprecations() == [DeprecationMessageDetail(**deprecate_kwargs)]
+    assert warnings.get_deprecations() == [DeprecationSummary._from_details(Detail(msg=deprecate_kwargs.pop('msg')), **deprecate_kwargs)]
 
 
 def test_multiple_deprecations():
@@ -45,8 +45,10 @@ def test_multiple_deprecations():
     for d in messages:
         deprecate(**d)
 
-    assert warnings.get_deprecation_messages() == tuple(DeprecationMessageDetail(**d)._as_dict() for d in messages)
-    assert warnings.get_deprecations() == [DeprecationMessageDetail(**d) for d in messages]
+    expected_deprecations = [DeprecationSummary._from_details(Detail(msg=d.pop('msg')), **d) for d in messages]
+
+    assert warnings.get_deprecation_messages() == tuple(expected_deprecation._as_simple_dict() for expected_deprecation in expected_deprecations)
+    assert warnings.get_deprecations() == expected_deprecations
 
 
 def test_dedupe_with_traceback(module_env_mocker: ModuleEnvMocker) -> None:

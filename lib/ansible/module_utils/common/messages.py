@@ -15,8 +15,8 @@ else:
 
 
 @dataclasses.dataclass(**_dataclass_kwargs)
-class MessageBase(AnsibleSerializableDataclass):
-    """Base class representing a warning or error message with optional source context and help text."""
+class Detail(AnsibleSerializableDataclass):
+    """Message detail with optional source context and help text."""
 
     msg: str
     formatted_source_context: t.Optional[str] = None
@@ -24,29 +24,48 @@ class MessageBase(AnsibleSerializableDataclass):
 
 
 @dataclasses.dataclass(**_dataclass_kwargs)
-class ErrorMessage(MessageBase):
-    """An error message. Usually derived from an exception, but can also be created in non-exception scenarios."""
+class SummaryBase(AnsibleSerializableDataclass):
+    """Base class for an error/warning/deprecation summary with details (possibly derived from an exception __cause__ chain) and an optional traceback."""
 
-
-@dataclasses.dataclass(**_dataclass_kwargs)
-class WarningMessageDetail(MessageBase):
-    """A warning message, with optional traceback."""
-
+    details: t.Tuple[Detail, ...]
     formatted_traceback: t.Optional[str] = None
 
+    def _post_validate(self) -> None:
+        if not self.details:
+            raise ValueError(f'{type(self).__name__}.details cannot be empty')
+
+    @classmethod
+    def _from_details(cls, *details: Detail, formatted_traceback: t.Optional[str] = None, **kwargs) -> t.Self:
+        """Utility factory method to avoid inline tuples."""
+        return cls(details=details, formatted_traceback=formatted_traceback, **kwargs)
+
 
 @dataclasses.dataclass(**_dataclass_kwargs)
-class DeprecationMessageDetail(WarningMessageDetail):
-    """A deprecation variant of a warning message."""
+class ErrorSummary(SummaryBase):
+    """Error summary with details (possibly derived from an exception __cause__ chain) and an optional traceback."""
+
+
+@dataclasses.dataclass(**_dataclass_kwargs)
+class WarningSummary(SummaryBase):
+    """Warning summary with details (possibly derived from an exception __cause__ chain) and an optional traceback."""
+
+    def _as_simple_str(self) -> str:
+        """Returns a string representation of the warning details."""
+        return ': '.join(detail.msg for detail in self.details)
+
+
+@dataclasses.dataclass(**_dataclass_kwargs)
+class DeprecationSummary(WarningSummary):
+    """Deprecation summary with details (possibly derived from an exception __cause__ chain) and an optional traceback."""
 
     version: t.Optional[str] = None
     date: t.Optional[str] = None
     collection_name: t.Optional[str] = None
 
+    def _as_simple_dict(self) -> t.Dict[str, t.Any]:
+        """Returns a dictionary representation of the deprecation object in the format exposed to playbooks."""
+        result = self._as_dict()
+        result.pop('details')
+        result.update(msg=': '.join(detail.msg for detail in self.details))
 
-@dataclasses.dataclass(**_dataclass_kwargs)
-class ErrorDetail(AnsibleSerializableDataclass):
-    """A chain of errors (possibly derived from an exception __cause__ chain) and an optional traceback."""
-
-    errors: t.List[ErrorMessage]
-    formatted_traceback: t.Optional[str] = None
+        return result

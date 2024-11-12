@@ -23,7 +23,7 @@ from collections.abc import Sequence
 from ansible import constants as C
 from ansible.template._chain_templar import ChainTemplar
 from ansible.errors import AnsibleError, AnsibleConnectionFailure, AnsibleActionSkip, AnsibleActionFail, AnsibleAuthenticationFailure
-from ansible.errors.utils import _create_error_detail, _dedupe_and_concat_message_chain
+from ansible.errors.utils import _create_error_summary, _dedupe_and_concat_message_chain
 from ansible.executor.module_common import modify_module, _BuiltModule
 from ansible.executor.interpreter_discovery import discover_interpreter, InterpreterDiscoveryRequiredError
 from ansible.module_utils._internal import _traceback
@@ -1474,15 +1474,15 @@ class ActionBase(ABC):
         else:
             result = {}
 
-        error_detail = _create_error_detail(exception, _traceback.TracebackEvent.ERROR)
+        error_summary = _create_error_summary(exception, _traceback.TracebackEvent.ERROR)
 
         result.update(
             failed=True,
-            exception=error_detail,
+            exception=error_summary,
         )
 
         if 'msg' not in result:
-            result.update(msg=NotATemplate().tag(_dedupe_and_concat_message_chain([md.msg for md in error_detail.errors])))
+            result.update(msg=NotATemplate().tag(_dedupe_and_concat_message_chain([md.msg for md in error_summary.details])))
 
         return result
 

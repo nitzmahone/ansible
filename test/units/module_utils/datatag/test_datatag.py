@@ -23,7 +23,7 @@ from ansible.module_utils.common.json import (
     _JSONSerializationProfile,
 )
 
-from ansible.module_utils.common.messages import ErrorMessage, ErrorDetail, WarningMessageDetail, DeprecationMessageDetail
+from ansible.module_utils.common.messages import ErrorSummary, WarningSummary, DeprecationSummary, Detail
 
 from ansible.module_utils.datatag import (
     AnsibleSerializable,
@@ -43,15 +43,6 @@ from ansible.module_utils.datatag import (
     AnsibleTagHelper,
 )
 from ansible.module_utils.datatag.tags import Deprecated
-
-try:
-    if sys.version_info >= (3, 11):  # avoid confusing mypy, as it will try to import this and trigger syntax errors on target-only Python versions
-        from ansible._internal._errors import CapturedErrorDetail
-    else:
-        raise ImportError()
-except ImportError:
-    class CapturedErrorDetail:  # type: ignore[no-redef]
-        pass
 
 
 if sys.version_info >= (3, 9):
@@ -82,10 +73,10 @@ class CopyProtocol(t.Protocol):
 
 
 message_instances = [
-    ErrorMessage(msg="bla", formatted_source_context="sc"),
-    ErrorDetail(errors=[ErrorMessage(msg="bla")], formatted_traceback="tb"),
-    WarningMessageDetail(msg="bla", formatted_source_context="sc", formatted_traceback="tb"),
-    DeprecationMessageDetail(msg="bla", formatted_source_context="sc", formatted_traceback="tb", version="1.2.3"),
+    Detail(msg="bla", formatted_source_context="sc"),
+    ErrorSummary._from_details(Detail(msg="bla"), formatted_traceback="tb"),
+    WarningSummary._from_details(Detail(msg="bla", formatted_source_context="sc"), formatted_traceback="tb"),
+    DeprecationSummary._from_details(Detail(msg="bla", formatted_source_context="sc"), formatted_traceback="tb", version="1.2.3"),
 ]
 
 
@@ -515,17 +506,21 @@ class TestDatatagTarget(AutoParamSupport):
     def test_serializable_instances_cover_all_concrete_impls(self):
         tested_types = {type(instance_type) for instance_type in self.serializable_instances}
 
+        excluded_type_names = {
+            AnsibleTaggedObject.__name__,  # base class, cannot be abstract
+            AnsibleSerializableDataclass.__name__,  # base class, cannot be abstract
+            # these types are all controller-only, so it's easier to have static type names instead of importing them
+            'JinjaConstTemplate',  # serialization not required
+            '_EncryptedSource',  # serialization not required
+            'CapturedErrorSummary',  # serialization not required
+        }
+
         # don't require instances for types marked abstract or types that are clearly intended to be so (but can't be marked as such)
         required_types = {instance_type for instance_type in self.serializable_types if (
             not inspect.isabstract(instance_type) and
             not instance_type.__name__.endswith('Base') and
             'Lazy' not in instance_type.__name__ and  # lazy types use the same input data
-            'VaultBomb' not in instance_type.__name__ and
-            'JinjaConstTemplate' not in instance_type.__name__ and
-            '_EncryptedSource' not in instance_type.__name__ and
-            instance_type is not AnsibleTaggedObject and
-            instance_type is not AnsibleSerializableDataclass and
-            instance_type is not CapturedErrorDetail and  # this type is intentionally not JSON serializable, it's for controller-only usage
+            instance_type.__name__ not in excluded_type_names and
             not issubclass(instance_type, AnsibleSerializableWrapper)
         )}
 
@@ -818,3 +813,12 @@ def test_helper_untag():
     untagged_empty_tags_ok_value = AnsibleTagHelper.untag(tagged_empty_tags_ok_value)
     assert type(untagged_empty_tags_ok_value) is NonNativeTaggedType  # pylint: disable=unidiomatic-typecheck
     assert not AnsibleTagHelper.tags(untagged_empty_tags_ok_value)
+
+
+def test_serializable_dataclass_with_tuple():
+    """Validate that dataclass deserialization converts inbound lists for tuple-typed fields."""
+    @dataclasses.dataclass(**_tag_dataclass_kwargs)
+    class HasTuple(AnsibleSerializableDataclass):
+        data: tuple[str, ...]
+
+    assert HasTuple._from_dict(dict(data=["abc", "def"])) == HasTuple(data=("abc", "def"))

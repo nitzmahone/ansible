@@ -84,10 +84,10 @@ For controller-to-module, type behavior is profile dependent.
 """
 
 _common_module_response_types: frozenset[type[AnsibleSerializable]] = frozenset({
-    _messages.WarningMessageDetail,
-    _messages.ErrorMessage,
-    _messages.DeprecationMessageDetail,
-    _messages.ErrorDetail,
+    _messages.Detail,
+    _messages.ErrorSummary,
+    _messages.WarningSummary,
+    _messages.DeprecationSummary,
     _Deprecated,
 })
 """Types that must be supported for all Ansible module-to-controller serialization profiles."""

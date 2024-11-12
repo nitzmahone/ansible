@@ -336,7 +336,19 @@ class AnsibleSerializableDataclass(AnsibleSerializable, metaclass=abc.ABCMeta):
 
     @classmethod
     def _from_dict(cls, d: t.Dict[str, t.Any]) -> t.Self:
-        return cls(**d)
+        # DTFIX-MERGE: optimize this to avoid the dataclasses fields metadata and get_origin stuff at runtime
+        type_hints = t.get_type_hints(cls)
+        mutated_dict: dict[str, t.Any] | None = None
+
+        for field in dataclasses.fields(cls):
+            if t.get_origin(type_hints[field.name]) is tuple:  # NOTE: only supports bare tuples, not optional or inside a union
+                if type(field_value := d.get(field.name)) is list:
+                    if mutated_dict is None:
+                        mutated_dict = d.copy()
+
+                    mutated_dict[field.name] = tuple(field_value)
+
+        return cls(**(mutated_dict or d))
 
     def __init_subclass__(cls, **kwargs) -> None:
         super(AnsibleSerializableDataclass, cls).__init_subclass__(**kwargs)  # cannot use super() without arguments when using slots
@@ -499,8 +511,7 @@ class CollectionWithMro(c.Collection, t.Protocol):
 # DTFIX-MERGE: This should probably reside elsewhere.
 def is_non_scalar_collection_type(value: type) -> t.TypeGuard[type[CollectionWithMro]]:
     """Returns True if the value is a non-scalar collection type, otherwise returns False."""
-    # DTFIX-FUTURE: find a better way to exclude _AnsibleTaggedVaultBomb
-    return issubclass(value, c.Collection) and not issubclass(value, str) and not issubclass(value, bytes) and value.__name__ != '_AnsibleTaggedVaultBomb'
+    return issubclass(value, c.Collection) and not issubclass(value, str) and not issubclass(value, bytes)
 
 
 def _try_get_internal_tags_mapping(value: t.Any) -> _AnsibleTagsMapping:

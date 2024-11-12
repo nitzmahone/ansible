@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from ansible.errors import get_chained_message, AnsibleError
-from ansible.errors.utils import _create_error_detail
-from ansible.module_utils.common.messages import ErrorDetail
+from ansible.errors.utils import _create_error_summary
+from ansible.module_utils.common.messages import ErrorSummary
 from ansible.utils.datatag.tags import AnsibleSourcePosition
 from ansible.utils.display import format_message
 
@@ -196,10 +196,10 @@ def test_error_messages(exceptions: list[BaseException], expected_message_chain:
     with pytest.raises(Exception) as error:
         raise_exceptions(exceptions)
 
-    error_chain = _create_error_detail(error.value).errors
+    error_details = _create_error_summary(error.value).details
 
     message_chain = get_chained_message(error.value)
-    formatted_message = format_message(ErrorDetail(errors=error_chain))
+    formatted_message = format_message(ErrorSummary(details=error_details))
 
     assert message_chain == expected_message_chain
     assert formatted_message.strip() == (expected_formatted_message or expected_message_chain)

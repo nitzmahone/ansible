@@ -28,6 +28,7 @@ if sys.version_info < _PY_MIN:
 
 import __main__
 import atexit
+import dataclasses as _dataclasses
 import errno
 import grp
 import fcntl
@@ -1485,10 +1486,10 @@ class AnsibleModule(object):
             # Include a `_messages.ErrorDetail` in the result.
             # The `msg` is included in the list of errors to ensure it is not lost when looking only at `exception` from the result.
 
-            error_detail = _errors.create_error_detail(exception)
-            error_detail.errors.insert(0, _messages.ErrorMessage(msg=msg))
+            error_summary = _errors.create_error_summary(exception)
+            error_summary = _dataclasses.replace(error_summary, details=(_messages.Detail(msg=msg),) + error_summary.details)
 
-            kwargs.update(exception=error_detail)
+            kwargs.update(exception=error_summary)
         elif _traceback.is_traceback_enabled(_traceback.TracebackEvent.ERROR):
             # Include only a formatted traceback string in the result.
             # The controller will combine this with `msg` to create an `_messages.ErrorDetail`.

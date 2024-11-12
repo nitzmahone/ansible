@@ -10,7 +10,7 @@ from jinja2 import UndefinedError, StrictUndefined, TemplateRuntimeError
 from jinja2.utils import missing
 
 from ansible._internal import _errors
-from ansible.module_utils.common.messages import ErrorDetail, ErrorMessage
+from ansible.module_utils.common.messages import ErrorSummary, Detail
 from ansible.constants import config
 from ansible.module_utils.datatag import Tripwire, AnsibleTagHelper, _untaggable_types
 
@@ -273,8 +273,12 @@ class VaultExceptionMarker(ExceptionMarker):
     def _as_exception(self) -> Exception:
         return UndecryptableVaultError(
             obj=self._marker_undecryptable_ciphertext,
-            error_detail=ErrorDetail(
-                errors=[ErrorMessage(msg=self._marker_undecryptable_reason)],
+            error_summary=ErrorSummary(
+                details=(
+                    Detail(
+                        msg=self._marker_undecryptable_reason,
+                    ),
+                ),
                 formatted_traceback=self._marker_undecryptable_traceback,
             ),
         )

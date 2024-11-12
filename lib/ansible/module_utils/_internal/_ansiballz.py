@@ -75,7 +75,7 @@ def _handle_exception(exception: BaseException) -> t.NoReturn:
     """Handle the given exception."""
     result = dict(
         failed=True,
-        exception=_errors.create_error_detail(exception),
+        exception=_errors.create_error_summary(exception),
     )
 
     print(json.dumps(result, cls=AnsibleJSONEncoder, preserve_datatags=True))  # pylint: disable=ansible-bad-function

@@ -9,8 +9,8 @@ import json
 
 import pytest
 
-from ansible.module_utils.common.json import AnsibleJSONDecoder
-from ansible.module_utils.common.messages import DeprecationMessageDetail, WarningMessageDetail
+from ansible.module_utils.serialization import get_module_decoder, Direction
+from ansible.module_utils.common.messages import Detail, DeprecationSummary, WarningSummary
 
 pytestmark = pytest.mark.usefixtures("module_env_mocker")
 
@@ -23,7 +23,9 @@ def test_warn(am, capfd):
     with pytest.raises(SystemExit):
         am.exit_json(warnings=['warning2'])
     out, err = capfd.readouterr()
-    assert json.loads(out, cls=AnsibleJSONDecoder)['warnings'] == [WarningMessageDetail(msg=msg) for msg in ['warning1', 'warning2']]
+    actual = json.loads(out, cls=get_module_decoder('legacy', Direction.MODULE_TO_CONTROLLER))['warnings']
+    expected = [WarningSummary._from_details(Detail(msg=msg)) for msg in ['warning1', 'warning2']]
+    assert actual == expected
 
 
 @pytest.mark.parametrize('stdin', [{}], indirect=['stdin'])
@@ -41,20 +43,20 @@ def test_deprecate(am, capfd):
         am.exit_json(deprecations=['deprecation9', ('deprecation10', '2.4')])
 
     out, err = capfd.readouterr()
-    output = json.loads(out, cls=AnsibleJSONDecoder)
+    output = json.loads(out, cls=get_module_decoder('legacy', Direction.MODULE_TO_CONTROLLER))
     assert ('warnings' not in output or output['warnings'] == [])
-    assert output['deprecations'] == [DeprecationMessageDetail(**item) for item in [
-        {u'msg': u'deprecation1', u'version': None, u'collection_name': None},
-        {u'msg': u'deprecation2', u'version': '2.3', u'collection_name': None},
-        {u'msg': u'deprecation3', u'version': '2.4', u'collection_name': None},
-        {u'msg': u'deprecation4', u'date': '2020-03-10', u'collection_name': None},
-        {u'msg': u'deprecation5', u'version': None, u'collection_name': 'ansible.builtin'},
-        {u'msg': u'deprecation6', u'version': '2.3', u'collection_name': 'ansible.builtin'},
-        {u'msg': u'deprecation7', u'version': '2.4', u'collection_name': 'ansible.builtin'},
-        {u'msg': u'deprecation8', u'date': '2020-03-10', u'collection_name': 'ansible.builtin'},
-        {u'msg': u'deprecation9', u'version': None, u'collection_name': None},
-        {u'msg': u'deprecation10', u'version': '2.4', u'collection_name': None},
-    ]]
+    assert output['deprecations'] == [
+        DeprecationSummary._from_details(Detail(msg='deprecation1'), version=None, collection_name=None),
+        DeprecationSummary._from_details(Detail(msg='deprecation2'), version='2.3', collection_name=None),
+        DeprecationSummary._from_details(Detail(msg='deprecation3'), version='2.4', collection_name=None),
+        DeprecationSummary._from_details(Detail(msg='deprecation4'), date='2020-03-10', collection_name=None),
+        DeprecationSummary._from_details(Detail(msg='deprecation5'), version=None, collection_name='ansible.builtin'),
+        DeprecationSummary._from_details(Detail(msg='deprecation6'), version='2.3', collection_name='ansible.builtin'),
+        DeprecationSummary._from_details(Detail(msg='deprecation7'), version='2.4', collection_name='ansible.builtin'),
+        DeprecationSummary._from_details(Detail(msg='deprecation8'), date='2020-03-10', collection_name='ansible.builtin'),
+        DeprecationSummary._from_details(Detail(msg='deprecation9'), version=None, collection_name=None),
+        DeprecationSummary._from_details(Detail(msg='deprecation10'), version='2.4', collection_name=None),
+    ]
 
 
 @pytest.mark.parametrize('stdin', [{}], indirect=['stdin'])
@@ -63,11 +65,11 @@ def test_deprecate_without_list(am, capfd):
         am.exit_json(deprecations='Simple deprecation warning')
 
     out, err = capfd.readouterr()
-    output = json.loads(out, cls=AnsibleJSONDecoder)
+    output = json.loads(out, cls=get_module_decoder('legacy', Direction.MODULE_TO_CONTROLLER))
     assert ('warnings' not in output or output['warnings'] == [])
-    assert output['deprecations'] == [DeprecationMessageDetail(**item) for item in [
-        {u'msg': u'Simple deprecation warning', u'version': None, u'collection_name': None},
-    ]]
+    assert output['deprecations'] == [
+        DeprecationSummary._from_details(Detail(msg='Simple deprecation warning'), version=None, collection_name=None),
+    ]
 
 
 @pytest.mark.parametrize('stdin', [{}], indirect=['stdin'])

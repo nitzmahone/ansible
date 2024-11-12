@@ -28,6 +28,7 @@ from collections.abc import MutableMapping
 from copy import deepcopy
 
 from ansible import constants as C
+from ansible.module_utils.common.messages import ErrorSummary
 from ansible.parsing.yaml.dumper import AnsibleDumper
 from ansible.plugins import AnsiblePlugin
 from ansible.utils.color import stringc
@@ -46,7 +47,7 @@ global_display = Display()
 __all__ = ["CallbackBase"]
 
 
-_DEBUG_ALLOWED_KEYS = frozenset(('msg', 'exception', 'warnings', 'deprecations', 'task_error_detail'))
+_DEBUG_ALLOWED_KEYS = frozenset(('msg', 'exception', 'warnings', 'deprecations'))
 # Characters that libyaml/pyyaml consider breaks
 _YAML_BREAK_CHARS = '\n\x85\u2028\u2029'  # NL, NEL, LS, PS
 # regex representation of libyaml/pyyaml of a space followed by a break character
@@ -232,7 +233,6 @@ class CallbackBase(AnsiblePlugin):
 
         # remove error/warning values; the stdout callback should have already handled them
         abridged_result.pop('exception', None)
-        abridged_result.pop('error_detail', None)
         abridged_result.pop('warnings', None)
         abridged_result.pop('deprecations', None)
 
@@ -280,8 +280,10 @@ class CallbackBase(AnsiblePlugin):
             self._display._deprecated(warning)
 
     def _handle_exception(self, result, use_stderr=False):
-        if error_detail := result.pop('exception', None):
-            self._display._error(error_detail, wrap_text=False, stderr=use_stderr)
+        error_summary: ErrorSummary
+
+        if error_summary := result.pop('exception', None):
+            self._display._error(error_summary, wrap_text=False, stderr=use_stderr)
 
     def _serialize_diff(self, diff):
         try:

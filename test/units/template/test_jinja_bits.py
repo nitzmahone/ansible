@@ -69,7 +69,6 @@ def test_templatemodule_ignore(template_context):
     with _DeferredWarningContext(variables=templar.available_variables) as warnings:
         result = templar.template(template)
 
-    # DTFIX-U: ensure this is actually working once we get the error as warning stuff cleaned up
     assert not warnings.get_warnings()
     assert isinstance(result, UndefinedMarker)
 
