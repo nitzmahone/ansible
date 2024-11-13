@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib as _contextlib
 import dataclasses
 import typing as t
 
@@ -30,6 +31,14 @@ class TrippedDeprecationInfo:
 class DeprecatedAccessAuditContext(NotifiableAccessContextBase):
     """When active, captures metadata about managed accesses to `Deprecated` tagged objects."""
     _type_interest = frozenset([Deprecated])
+
+    @classmethod
+    def when(cls, condition: bool, /) -> t.Self | _contextlib.nullcontext:
+        """Returns a new instance if `condition` is True (usually `TemplateContext.is_top_level`), otherwise a `nullcontext` instance."""
+        if condition:
+            return cls()
+
+        return _contextlib.nullcontext()
 
     def __init__(self) -> None:
         self._tripped_deprecation_info: list[TrippedDeprecationInfo] = []

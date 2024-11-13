@@ -145,6 +145,7 @@ deprecated_features:
     Using ``suppress_extended_error=True`` has the same effect as ``show_content=False``.
   - config - The ``ACTION_WARNINGS`` config has no effect. It previously disabled command warnings, which have since been removed.
   - templating - Support for enabling Jinja2 extensions (not plugins) has been deprecated.
+  - playbook variables - The ``play_hosts`` variable has been deprecated, use ``ansible_play_batch`` instead.
 
 removed_features:
   - modules - Modules returning non-UTF8 strings now result in an error.

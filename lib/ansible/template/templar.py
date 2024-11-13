@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import enum
 import os
@@ -26,6 +27,7 @@ from ansible.module_utils.datatag import (
     AnsibleTaggedObject, NotTaggableError, AnsibleTagHelper
 )
 from ..errors.handler import Skippable
+from ..module_utils.datatag.tags import Deprecated
 from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 
 from ansible.utils.display import Display
@@ -311,13 +313,13 @@ class Templar:
                 stop_on_template = True
 
             with (
-                DeprecatedAccessAuditContext(),
-                TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template) as template_ctx,
+                TemplateContext(template_value=variable, templar=self, options=options, stop_on_template=stop_on_template) as ctx,
+                DeprecatedAccessAuditContext.when(ctx.is_top_level),
             ):
                 try:
                     if transform := _type_transform_mapping.get(value_type):
                         if stop_on_template:
-                            raise TemplateEncountered()  # DTFIX-U: should transforms count as a "template" for stop_on_template?
+                            raise TemplateEncountered()  # DTFIX-MERGE: should transforms count as a "template" for stop_on_template?
 
                         # DTFIX-U: this is probably the wrong way to handle the context, but hacked up this way to test out the early transform approach
                         unmask_type_names = TemplateContext.current().options.unmask_type_names
@@ -344,7 +346,7 @@ class Templar:
                 except Exception as ex:
                     template_result = defer_template_error(ex, variable, is_expression=False)
 
-                if template_ctx.is_top_level:
+                if ctx.is_top_level:
                     template_result = self._finalize_top_level_template_result(variable, options, template_result,
                                                                                stop_on_container=mode is TemplateMode.STOP_ON_CONTAINER)
 
@@ -469,6 +471,13 @@ class Templar:
             except NotTaggableError:
                 pass  # best effort- if we can't, oh well
 
+        # Avoid propagating a Deprecated tag from a template to the template result.
+        # The template will have already been accessed and triggered a deprecation warning.
+        # Leaving the tag on the result will would result in similar (but not identical) warnings for indirect access to deprecated values.
+        # DTFIX-MERGE: this may not be the correct place to untag -- perhaps this should be done after invoking access on a value, before or after templating it
+        #              as it stands, passing a deprecated value directly to top-level templating will not be accessed, but the deprecated tag will be lost
+        result = Deprecated.untag(result)
+
         return result
 
     def is_template(self, data: t.Any) -> bool:
@@ -505,11 +514,11 @@ class Templar:
         if not isinstance(expression, str):
             raise TypeError(f"Expressions must be {str!r}, got {type(expression)!r}.")
 
-        options = TemplateOptions(escape_backslashes=escape_backslashes)
+        options = TemplateOptions(escape_backslashes=escape_backslashes, preserve_trailing_newlines=False)
 
         with (
-            DeprecatedAccessAuditContext(),
-            TemplateContext(template_value=expression, templar=self, options=options, _render_jinja_const_template=_render_jinja_const_template),
+            TemplateContext(template_value=expression, templar=self, options=options, _render_jinja_const_template=_render_jinja_const_template) as ctx,
+            DeprecatedAccessAuditContext.when(ctx.is_top_level),
         ):
             try:
                 if not TrustedAsTemplate.is_tagged_on(expression):

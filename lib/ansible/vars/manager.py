@@ -483,12 +483,13 @@ class VariableManager:
         if self._inventory is not None:
             variables['groups'] = self._inventory.get_groups_dict()
             if play:
-                if not play.finalized and Templar().is_template(play.hosts):
-                    pattern = 'all'
-                else:
-                    pattern = play.hosts or 'all'
                 # add the list of hosts in the play, as adjusted for limit/filters
                 if not _hosts_all:
+                    if not play.finalized and Templar().is_template(play.hosts):
+                        pattern = 'all'
+                    else:
+                        pattern = play.hosts or 'all'
+
                     _hosts_all = [h.name for h in self._inventory.get_hosts(pattern=pattern, ignore_restrictions=True)]
                 if not _hosts:
                     _hosts = [h.name for h in self._inventory.get_hosts()]
@@ -497,9 +498,10 @@ class VariableManager:
                 variables['ansible_play_hosts'] = [x for x in variables['ansible_play_hosts_all'] if x not in play._removed_hosts]
                 variables['ansible_play_batch'] = [x for x in _hosts if x not in play._removed_hosts]
 
-                # DEPRECATED: play_hosts should be deprecated in favor of ansible_play_batch,
-                # however this would take work in the templating engine, so for now we'll add both
-                variables['play_hosts'] = variables['ansible_play_batch']
+                variables['play_hosts'] = Deprecated(
+                    msg='Use `ansible_play_batch` instead of `play_hosts`.',
+                    removal_version='2.21',
+                ).tag(variables['ansible_play_batch'])
 
         # Set options vars
         for option, option_value in self._options_vars.items():
