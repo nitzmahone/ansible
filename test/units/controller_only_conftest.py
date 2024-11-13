@@ -6,7 +6,8 @@ import pytest
 
 from ansible.parsing.vault import VaultSecretsContext, VaultSecret
 
-# DTFIX-U: it'd be nice not to need this, but sunder values are excluded from `import *`- if we don't sunder the fixtures, they'll be unused args in most cases
+# DTFIX-MERGE: it'd be nice not to need to sync all controller-only fixtures here, but sunder values are excluded from `import *`,
+#  and if we don't sunder the fixtures, they'll be unused args. Could also be handled with a managed import, module getattr, or others.
 __all__ = ['_zap_vault_secrets_context', '_empty_vault_secrets_context', '_vault_secrets_context']
 
 
