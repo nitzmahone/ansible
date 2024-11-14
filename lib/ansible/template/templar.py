@@ -316,16 +316,9 @@ class Templar:
                 DeprecatedAccessAuditContext.when(ctx.is_top_level),
             ):
                 try:
-                    if transform := _type_transform_mapping.get(value_type):
-                        if stop_on_template:
-                            raise TemplateEncountered()  # DTFIX-MERGE: should transforms count as a "template" for stop_on_template?
-
-                        # DTFIX-U: this is probably the wrong way to handle the context, but hacked up this way to test out the early transform approach
-                        unmask_type_names = TemplateContext.current().options.unmask_type_names
-
-                        if value_type.__name__ not in unmask_type_names:
-                            variable = transform(variable)
-                            continue
+                    if transform := _type_transform_mapping.get(value_type) and value_type.__name__ not in ctx.options.unmask_type_names:
+                        variable = transform(variable)
+                        continue
 
                     if not value_is_str:
                         template_result = _AnsibleLazyTemplateMixin._try_create(variable)
@@ -482,6 +475,8 @@ class Templar:
     def is_template(self, data: t.Any) -> bool:
         """
         Evaluate the input data to determine if it contains a template. Containers will be recursively searched.
+        Objects subject to template-time transforms that do not yield a template are not considered templates by this method.
+        Gating a conditional call to `Templar.template()` with this method is redundant and inefficient -- request templating unconditionally instead.
         """
         try:
             self.template(data, mode=TemplateMode.STOP_ON_TEMPLATE)
