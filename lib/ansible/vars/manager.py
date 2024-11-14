@@ -365,11 +365,11 @@ class VariableManager:
                         try:
                             play_search_stack = play.get_search_path()
                             found_file = self._loader.path_dwim_relative_stack(play_search_stack, 'vars', vars_file)
-                            display.vvv(f"Read `vars_file` {found_file!r}.")
                             data = preprocess_vars(self._loader.load_from_file(found_file, unsafe=True, cache='vaulted', trusted_as_template=True))
                             if data is not None:
                                 for item in data:
                                     all_vars = _combine_and_track(all_vars, item, "play vars_files from '%s'" % vars_file)
+                            display.vvv(f"Read `vars_file` {found_file!r}.")
                             break
                         except AnsibleFileNotFound:
                             # we continue on loader failures
@@ -382,9 +382,6 @@ class VariableManager:
                             raise AnsibleParserError(f"Error reading `vars_files` file {vars_file!r}.", obj=vars_file) from ex
 
                 except AnsibleUndefinedVariable as ex:
-                    # DTFIX-U: this appears to be unreachable, and the skip logic seems faulty...
-                    #          at least in DT, due to the Exception caught above, which devel doesn't have
-                    #          to fix the unreachable part, we now re-raise AnsibleUndefinedVariable, but this still seems wrong
                     if host is not None and self._fact_cache.get(host.name, dict()).get('module_setup') and task is not None:
                         raise AnsibleUndefinedVariable("an undefined variable was found when attempting to template the vars_files item '%s'"
                                                        % vars_file_item, obj=vars_file_item) from ex
