@@ -68,7 +68,7 @@ def do_unvault(vault, secret, vault_id='filter_default', vaultid=None):
     vs = VaultSecret(to_bytes(secret))
     vl = VaultLib([(vault_id, vs)])
 
-    if ciphertext := VaultHelper.get_ciphertext(vault, preserve_tags=True):
+    if ciphertext := VaultHelper.get_ciphertext(vault, with_tags=True):
         vault = ciphertext
 
     if is_encrypted(vault):

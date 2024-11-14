@@ -32,7 +32,7 @@ if HAS_LIBYAML:
 
     class _YamlParser(CParser):
         def __init__(self, stream: str | bytes | t.TextIO | t.BinaryIO) -> None:
-            stream = AnsibleTagHelper.as_untagged_type(stream)  # PyYAML + libyaml barfs on str subclasses
+            stream = AnsibleTagHelper.untag(stream)  # PyYAML + libyaml barfs on str subclasses
 
             CParser.__init__(self, stream)
 

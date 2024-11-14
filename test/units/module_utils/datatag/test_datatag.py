@@ -483,7 +483,7 @@ class TestDatatagTarget(AutoParamSupport):
 
         assert tagged_instance is not value
         assert ([name for name in dir(tagged_instance) if not name.startswith('_')] ==
-                [name for name in dir(AnsibleTagHelper.as_untagged_type(tagged_instance)) if not name.startswith('_')])
+                [name for name in dir(AnsibleTagHelper.as_native_type(tagged_instance)) if not name.startswith('_')])
 
     @pytest.mark.autoparam(later.taggable_instances)
     @pytest.mark.allow_delazify  # this test requires a working templar on lazies
@@ -631,10 +631,10 @@ class TestDatatagTarget(AutoParamSupport):
         that tagged inputs are returned as their original native types.
         """
         tagged_instance = ExampleSingletonTag().tag(value)
-        roundtripped_instance = AnsibleTagHelper.as_untagged_type(tagged_instance)
+        roundtripped_instance = AnsibleTagHelper.as_native_type(tagged_instance)
 
         if not isinstance(value, AnsibleTaggedObject):  # lazies are always a tagged type, so as_untagged_type will be a copy
-            assert AnsibleTagHelper.as_untagged_type(value) is value
+            assert AnsibleTagHelper.as_native_type(value) is value
             assert type(roundtripped_instance) is type(value)
 
         assert roundtripped_instance == value

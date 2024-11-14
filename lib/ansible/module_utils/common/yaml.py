@@ -41,7 +41,7 @@ if HAS_YAML:
         pass
 
     def _represent_ansible_tagged_object(self, data: _datatag.AnsibleTaggedObject) -> _t.Any:
-        return self.represent_data(_datatag.AnsibleTagHelper.as_untagged_type(data))
+        return self.represent_data(_datatag.AnsibleTagHelper.as_native_type(data))
 
     def _represent_tripwire(self, data: _datatag.Tripwire) -> _t.NoReturn:
         data.trip()

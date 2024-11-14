@@ -901,7 +901,7 @@ def test_encrypted_string_unmanaged_access(_vault_secrets_context) -> None:
     encrypted_string = make_encrypted_string(plaintext)
 
     source_pos_tag = AnsibleSourcePosition.get_required_tag(encrypted_string)
-    vaulted_value_tag = VaultedValue(ciphertext=VaultHelper.get_ciphertext(encrypted_string, preserve_tags=False))
+    vaulted_value_tag = VaultedValue(ciphertext=VaultHelper.get_ciphertext(encrypted_string, with_tags=False))
 
     res1 = str(encrypted_string)
     res2 = str(encrypted_string)
@@ -962,8 +962,8 @@ def test_vaulthelper_get_ciphertext(value: t.Any, expected_ciphertext: str | Non
     """Validate `get_ciphertext` helper reponses and tag preservation behavior."""
     expected_tags = {src_pos} if expected_ciphertext is not None else set()
 
-    tagged_ciphertext = VaultHelper.get_ciphertext(value, preserve_tags=True)
-    untagged_ciphertext = VaultHelper.get_ciphertext(value, preserve_tags=False)
+    tagged_ciphertext = VaultHelper.get_ciphertext(value, with_tags=True)
+    untagged_ciphertext = VaultHelper.get_ciphertext(value, with_tags=False)
 
     assert untagged_ciphertext == expected_ciphertext
     assert tagged_ciphertext == expected_ciphertext

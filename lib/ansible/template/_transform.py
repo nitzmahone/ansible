@@ -35,7 +35,7 @@ def encrypted_string(value: EncryptedString) -> str | VaultExceptionMarker:
         return value._decrypt()
     except Exception as ex:
         return VaultExceptionMarker(
-            ciphertext=VaultHelper.get_ciphertext(value, preserve_tags=True),
+            ciphertext=VaultHelper.get_ciphertext(value, with_tags=True),
             reason=get_chained_message(ex),
             traceback=_traceback.maybe_extract_traceback(ex, _traceback.TracebackEvent.ERROR),
         )

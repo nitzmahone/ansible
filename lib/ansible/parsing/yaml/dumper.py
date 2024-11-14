@@ -37,7 +37,7 @@ class AnsibleDumper(SafeDumper):
 
 
 def represent_ansible_tagged_object(self, data):
-    if self._dump_vault_tags is not False and (ciphertext := VaultHelper.get_ciphertext(data, preserve_tags=False)):
+    if self._dump_vault_tags is not False and (ciphertext := VaultHelper.get_ciphertext(data, with_tags=False)):
         # deprecated: description='enable the deprecation warning below' core_version='2.21'
         # if self._dump_vault_tags is None:
         #     Display().deprecated(
@@ -47,7 +47,7 @@ def represent_ansible_tagged_object(self, data):
 
         return self.represent_scalar('!vault', ciphertext, style='|')
 
-    return self.represent_data(AnsibleTagHelper.as_untagged_type(data))  # automatically decrypts encrypted strings
+    return self.represent_data(AnsibleTagHelper.as_native_type(data))  # automatically decrypts encrypted strings
 
 
 def represent_tripwire(self, data: Tripwire) -> t.NoReturn:

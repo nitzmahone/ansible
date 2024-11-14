@@ -82,17 +82,17 @@ class _Profile(_json._JSONSerializationProfile["Encoder", "Decoder"]):
     @classmethod
     def serialize_untrusted(cls, value: _Untrusted) -> dict[str, str] | str:
         return dict(
-            __ansible_unsafe=_datatag.AnsibleTagHelper.as_untagged_type(value.value),
+            __ansible_unsafe=_datatag.AnsibleTagHelper.untag(value.value),
         )
 
     @classmethod
     def serialize_tagged_str(cls, value: _datatag.AnsibleTaggedObject) -> _t.Any:
-        if ciphertext := _vault.VaultHelper.get_ciphertext(value, preserve_tags=False):
+        if ciphertext := _vault.VaultHelper.get_ciphertext(value, with_tags=False):
             return dict(
                 __ansible_vault=ciphertext,
             )
 
-        return _datatag.AnsibleTagHelper.as_untagged_type(value)
+        return _datatag.AnsibleTagHelper.untag(value)
 
     @classmethod
     def deserialize_unsafe(cls, value: dict[str, _t.Any]) -> _Untrusted:
@@ -122,7 +122,7 @@ class _Profile(_json._JSONSerializationProfile["Encoder", "Decoder"]):
     @classmethod
     def serialize_encrypted_string(cls, value: _vault.EncryptedString) -> dict[str, str]:
         return dict(
-            __ansible_vault=_vault.VaultHelper.get_ciphertext(value, preserve_tags=False),
+            __ansible_vault=_vault.VaultHelper.get_ciphertext(value, with_tags=False),
         )
 
     @classmethod

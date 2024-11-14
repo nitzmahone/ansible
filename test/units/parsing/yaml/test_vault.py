@@ -25,7 +25,7 @@ def test_from_yaml_json_only(_vault_secrets_context) -> None:
 
     assert isinstance(result['hi'], EncryptedString)
     assert result == dict(hi='mom')
-    assert VaultHelper.get_ciphertext(result['hi'], preserve_tags=False) == ciphertext
+    assert VaultHelper.get_ciphertext(result['hi'], with_tags=False) == ciphertext
 
 
 def test_from_yaml(_vault_secrets_context) -> None:
@@ -36,7 +36,7 @@ def test_from_yaml(_vault_secrets_context) -> None:
     result = from_yaml(data=data, file_name='/nope.yml')
 
     assert result == dict(hi='mom')
-    assert VaultHelper.get_ciphertext(result['hi'], preserve_tags=False) == ciphertext
+    assert VaultHelper.get_ciphertext(result['hi'], with_tags=False) == ciphertext
 
 
 def test_from_yaml_invalid_json_vaulted_value() -> None:

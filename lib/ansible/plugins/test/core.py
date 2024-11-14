@@ -152,7 +152,7 @@ def vault_encrypted(value: object) -> bool:
 
     .. versionadded:: 2.10
     """
-    if ciphertext := VaultHelper.get_ciphertext(value, preserve_tags=False):
+    if ciphertext := VaultHelper.get_ciphertext(value, with_tags=False):
         return VaultLib.is_encrypted(ciphertext)
 
     if isinstance(value, Marker):

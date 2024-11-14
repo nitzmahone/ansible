@@ -1457,7 +1457,7 @@ class EncryptedString(AnsibleTaggedObject):
         if self._plaintext is None:
             vault = VaultLib(secrets=VaultSecretsContext.current().secrets)
             # use the utility method to ensure that source position tags are available
-            plaintext = to_text(vault.decrypt(VaultHelper.get_ciphertext(self, preserve_tags=True)))  # raises if the ciphertext cannot be decrypted
+            plaintext = to_text(vault.decrypt(VaultHelper.get_ciphertext(self, with_tags=True)))  # raises if the ciphertext cannot be decrypted
 
             # propagate source value tags plus VaultedValue for round-tripping ciphertext
             plaintext = AnsibleTagHelper.tag(plaintext, AnsibleTagHelper.tags(self) | {VaultedValue(ciphertext=self._ciphertext)})
@@ -1473,7 +1473,7 @@ class EncryptedString(AnsibleTaggedObject):
         )
 
     def _native_copy(self) -> str:
-        return AnsibleTagHelper.as_untagged_type(self._decrypt())
+        return AnsibleTagHelper.untag(self._decrypt())
 
     def _proxy_str_operator_method(self, method: t.Callable, other) -> t.Any:
         obj = self._decrypt()
@@ -1507,10 +1507,10 @@ class VaultHelper:
     """Vault specific utility methods."""
 
     @staticmethod
-    def get_ciphertext(value: t.Any, *, preserve_tags: bool) -> str | None:
+    def get_ciphertext(value: t.Any, *, with_tags: bool) -> str | None:
         """
         If the given value is an `EncryptedString`, `VaultExceptionMarker` or tagged with `VaultedValue`, return the ciphertext, otherwise return `None`.
-        Tags on the value other than `VaultedValue` will be included on the ciphertext if `preserve_tags` is `True`, otherwise it will be tagless.
+        Tags on the value other than `VaultedValue` will be included on the ciphertext if `with_tags` is `True`, otherwise it will be tagless.
         """
         value_type = type(value)
         ciphertext: str | None
@@ -1529,9 +1529,9 @@ class VaultHelper:
             ciphertext = None
 
         if ciphertext:
-            if preserve_tags:
+            if with_tags:
                 ciphertext = VaultedValue.untag(AnsibleTagHelper.tag(ciphertext, tags))
             else:
-                ciphertext = AnsibleTagHelper.as_untagged_type(ciphertext)
+                ciphertext = AnsibleTagHelper.untag(ciphertext)
 
         return ciphertext

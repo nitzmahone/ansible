@@ -53,7 +53,6 @@ class AnsibleTagHelper:
         If no `tag_types` are specified and the object has tags, return a copy with all tags removed.
         Otherwise, the original `value` is returned.
         """
-        # DTFIX-U: this can probably replace as_untagged_type?
         tag_set = AnsibleTagHelper.tags(value)
 
         if not tag_set:
@@ -112,7 +111,7 @@ class AnsibleTagHelper:
         return the_type
 
     @staticmethod
-    def as_untagged_type(value: _T) -> _T:
+    def as_native_type(value: _T) -> _T:
         """
         Returns an untagged native data type matching the input value, or the original input if the value was not a tagged type.
         Containers are not recursively processed.

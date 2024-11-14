@@ -154,7 +154,7 @@ class AnsibleConstructor(SafeConstructor):
         if not isinstance(ciphertext, str):
             raise AnsibleConstructorError(problem=f"the {node.tag!r} tag requires a string value", problem_mark=node.start_mark)
 
-        encrypted_string = AnsibleTagHelper.tag_copy(ciphertext, EncryptedString(ciphertext=AnsibleTagHelper.as_untagged_type(ciphertext)))
+        encrypted_string = AnsibleTagHelper.tag_copy(ciphertext, EncryptedString(ciphertext=AnsibleTagHelper.untag(ciphertext)))
 
         return encrypted_string
 

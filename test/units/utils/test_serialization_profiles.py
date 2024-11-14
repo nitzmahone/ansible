@@ -130,7 +130,7 @@ class _TestParameters:
 
             return _TestOutput(
                 payload=payload,
-                round_trip=AnsibleTagHelper.as_untagged_type(round_trip),
+                round_trip=AnsibleTagHelper.as_native_type(round_trip),
                 tags=tuple(AnsibleTagHelper.tags(round_trip)),
             )
 
