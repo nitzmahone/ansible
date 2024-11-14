@@ -1502,6 +1502,8 @@ class EncryptedString(AnsibleTaggedObject):
     def __radd__(self, other: t.Any) -> str:
         return other + self._decrypt()
 
+    def __fspath__(self) -> str:
+        return self._decrypt()
 
 class VaultHelper:
     """Vault specific utility methods."""

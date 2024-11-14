@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import os
+import pathlib
 import tempfile
 import typing as t
 
@@ -40,6 +41,7 @@ from ansible.template.jinja_common import VaultExceptionMarker, TruncationMarker
 from ansible.template.templar import Templar, TemplateOptions
 from ansible.template.utils import TemplateContext
 from ansible.utils.datatag.tags import VaultedValue, AnsibleSourcePosition
+from ansible.utils.collection_loader import _EncryptedStringProtocol
 
 from units.mock.loader import DictDataLoader
 from units.mock.vault_helper import TextVaultSecret
@@ -969,3 +971,39 @@ def test_vaulthelper_get_ciphertext(value: t.Any, expected_ciphertext: str | Non
     assert tagged_ciphertext == expected_ciphertext
     assert AnsibleTagHelper.tags(tagged_ciphertext) == expected_tags
     assert not AnsibleTagHelper.tags(untagged_ciphertext)
+
+
+@pytest.mark.parametrize("expression, expected_expression", (
+    ("os.path.join(ed, efn)", "str(temp_file)"),
+    ("os.path.exists(ef)", "True"),
+    ("os.path.dirname(ef)", "str(temp_dir)"),
+    ("os.path.isdir(ed)", "True"),
+    ("os.path.basename(ef)", "temp_file.name"),
+    ("os.listdir(ed)", "[temp_file.name]"),
+    ("open(ef).read()", "'Ansible'"),
+))
+def test_encrypted_string_path_fspath(_vault_secrets_context, expression: str, expected_expression: str) -> None:
+    """Ensure that `EncryptedString` works with `PathLike` duck-typing consumers."""
+    with tempfile.TemporaryDirectory() as temp_dir_path:
+        temp_dir = pathlib.Path(temp_dir_path)
+        temp_file = (pathlib.Path(temp_dir) / 'temp_file')
+        temp_file.write_text('Ansible')
+
+        expression_locals = dict(
+            temp_file=temp_file,
+            temp_dir=temp_dir,
+            ed=make_encrypted_string(str(temp_dir)),
+            edn=make_encrypted_string(temp_dir.name),
+            ef=make_encrypted_string(str(temp_file)),
+            efn=make_encrypted_string(temp_file.name),
+        )
+
+        expected = eval(expected_expression, globals(), expression_locals)
+        result = eval(expression, globals(), expression_locals)
+
+    assert result == expected
+
+
+def test_protocol_conformance(_vault_secrets_context) -> None:
+    """Verify that the `_EncryptedStringProtocol` defined by the collection loader is implemented."""
+    assert isinstance(make_encrypted_string("hey"), _EncryptedStringProtocol)

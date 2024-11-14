@@ -9,14 +9,17 @@ from __future__ import annotations
 import typing as t
 
 
-class EncryptedStringProtocol(t.Protocol):
-    """Protocol representing an EncryptedString, which cannot be imported here."""
+@t.runtime_checkable
+class _EncryptedStringProtocol(t.Protocol):
+    """Protocol representing an `EncryptedString`, since it cannot be imported here."""
     def _decrypt(self) -> str:
         ...
 
 
-def _to_text(value: str | bytes | EncryptedStringProtocol | None, strict: bool = False) -> str | None:
+def _to_text(value: str | bytes | _EncryptedStringProtocol | None, strict: bool = False) -> str | None:
     """Internal implementation to keep collection loader standalone."""
+    # FUTURE: remove this method when _to_bytes is removed
+
     if value is None:
         return None
 
@@ -26,12 +29,16 @@ def _to_text(value: str | bytes | EncryptedStringProtocol | None, strict: bool =
     if isinstance(value, bytes):
         return value.decode(errors='strict' if strict else 'surrogateescape')
 
-    # DTFIX-U: ensure we have unit test coverage for this case
-    return value._decrypt()
+    if isinstance(value, _EncryptedStringProtocol):
+        return value._decrypt()
+
+    raise TypeError(f'unsupported type {type(value)}')
 
 
-def _to_bytes(value: str | bytes | EncryptedStringProtocol | None, strict: bool = False) -> bytes | None:
+def _to_bytes(value: str | bytes | _EncryptedStringProtocol | None, strict: bool = False) -> bytes | None:
     """Internal implementation to keep collection loader standalone."""
+    # FUTURE: remove this method and rely on automatic str -> bytes conversions of filesystem methods instead
+
     if value is None:
         return None
 
@@ -41,8 +48,10 @@ def _to_bytes(value: str | bytes | EncryptedStringProtocol | None, strict: bool 
     if isinstance(value, str):
         return value.encode(errors='strict' if strict else 'surrogateescape')
 
-    # DTFIX-U: ensure we have unit test coverage for this case
-    return value._decrypt().encode(errors='strict' if strict else 'surrogateescape')
+    if isinstance(value, _EncryptedStringProtocol):
+        return value._decrypt().encode(errors='strict' if strict else 'surrogateescape')
+
+    raise TypeError(f'unsupported type {type(value)}')
 
 
 def resource_from_fqcr(ref):
