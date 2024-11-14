@@ -21,6 +21,7 @@ from ansible.errors import (
     AnsibleTemplateError,
     AnsibleTemplateSyntaxError,
     AnsibleBrokenConditionalError,
+    AnsibleTemplateTransformLimitError,
 )
 from ansible.module_utils.datatag import (
     AnsibleTaggedObject, NotTaggableError, AnsibleTagHelper
@@ -50,7 +51,7 @@ def as_non_templatable_text(value: t.Any) -> str:
 
 
 class TemplateTrustCheckFailedError(AnsibleTemplateError):
-    default_prefix = 'Encountered untrusted template or expression.'
+    default_message = 'Encountered untrusted template or expression.'
     default_help_text = 'Templates and expressions must be defined by trusted sources such as playbooks or roles, not untrusted sources such as module results.'
 
 
@@ -290,7 +291,9 @@ class Templar:
         mode: TemplateMode = TemplateMode.DEFAULT,
     ) -> t.Any:
         """Templates (possibly recursively) any given data as input."""
-        for _attempt in range(10):
+        original_variable = variable
+
+        for _attempt in range(10):  # arbitrary limit for chained transforms to prevent cycles; an exception will be raised if exceeded
             if variable is None or (value_type := type(variable)) in IGNORE_SCALAR_VAR_TYPES:
                 return variable  # quickly ignore supported scalar types which are not be templated
 
@@ -316,7 +319,7 @@ class Templar:
                 DeprecatedAccessAuditContext.when(ctx.is_top_level),
             ):
                 try:
-                    if transform := _type_transform_mapping.get(value_type) and value_type.__name__ not in ctx.options.unmask_type_names:
+                    if (transform := _type_transform_mapping.get(value_type)) and value_type.__name__ not in ctx.options.unmask_type_names:
                         variable = transform(variable)
                         continue
 
@@ -344,7 +347,7 @@ class Templar:
 
             return template_result
 
-        raise RuntimeError('oops')  # DTFIX-U: better error, explanation at the top of the loop
+        raise AnsibleTemplateTransformLimitError(obj=original_variable)
 
     @staticmethod
     def _finalize_top_level_template_result(

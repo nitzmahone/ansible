@@ -48,7 +48,7 @@ class AnsibleError(Exception):
 
     # DTFIX-MERGE: this is part of the new DT changes, the API needs additional cleanup before releasing
     exit_code = ExitCode.GENERIC_ERROR
-    default_prefix = ''
+    default_message = ''
     default_help_text: str | None = None
     include_cause_message = True
     """
@@ -71,10 +71,10 @@ class AnsibleError(Exception):
         elif not isinstance(message, str):
             message = str(message)
 
-        if self.default_prefix and message:
-            message = concat_message(self.default_prefix, message)
-        elif self.default_prefix:
-            message = self.default_prefix
+        if self.default_message and message:
+            message = concat_message(self.default_message, message)
+        elif self.default_message:
+            message = self.default_message
         elif not message:
             message = f'Unexpected {type(self).__name__} error.'
 
@@ -172,7 +172,7 @@ class AnsibleUndefinedConfigEntry(AnsibleError):
 class AnsibleTaskError(AnsibleError):
     """Task execution failed; provides contextual information about the task."""
 
-    default_prefix = 'Task failed.'
+    default_message = 'Task failed.'
 
 
 class AnsiblePromptInterrupt(AnsibleError):
@@ -212,7 +212,7 @@ class AnsibleFieldAttributeError(AnsibleParserError):
 class AnsibleJSONParserError(AnsibleParserError):
     """JSON-specific parsing failure wrapping an exception raised by the JSON parser."""
 
-    default_prefix = 'JSON parsing failed.'
+    default_message = 'JSON parsing failed.'
     include_cause_message = False  # hide the underlying cause message, it's included by `handle_exception` as needed
 
     @classmethod
@@ -244,8 +244,9 @@ class AnsibleConnectionFailure(AnsibleRuntimeError):
 
 
 class AnsibleAuthenticationFailure(AnsibleConnectionFailure):
-    default_prefix = "Failed to authenticate."
     """Invalid username/password/key."""
+
+    default_message = "Failed to authenticate."
 
 
 class AnsibleCallbackError(AnsibleRuntimeError):
@@ -254,6 +255,12 @@ class AnsibleCallbackError(AnsibleRuntimeError):
 
 class AnsibleTemplateError(AnsibleRuntimeError):
     """A template related error."""
+
+
+class AnsibleTemplateTransformLimitError(AnsibleTemplateError):
+    """The internal template transform limit was exceeded."""
+
+    default_message = "Template transform limit exceeded."
 
 
 class AnsibleTemplateSyntaxError(AnsibleTemplateError):

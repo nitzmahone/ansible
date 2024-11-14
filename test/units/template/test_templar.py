@@ -32,10 +32,11 @@ import unittest
 
 from ansible.errors import (
     AnsibleError, AnsibleUndefinedVariable, AnsibleTemplateSyntaxError, AnsibleTemplatePluginNotFoundError,
-    AnsibleBrokenConditionalError, AnsibleTemplatePluginLoadError, AnsibleTemplatePluginRuntimeError, AnsibleTemplateError,
+    AnsibleBrokenConditionalError, AnsibleTemplatePluginLoadError, AnsibleTemplatePluginRuntimeError, AnsibleTemplateError, AnsibleTemplateTransformLimitError,
 )
 from ansible.errors.handler import ErrorAction, ErrorHandler
 from ansible.module_utils.datatag import AnsibleTagHelper, AnsibleDatatagBase
+from ansible.template import _transform
 from ansible.utils.collection_loader._collection_finder import _AnsibleCollectionFinder
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 from ansible.plugins.loader import init_plugin_loader
@@ -964,3 +965,22 @@ def test_error_invalid_non_string_template():
 def nuke_module_prefix(prefix):
     for module_to_nuke in [m for m in sys.modules if m.startswith(prefix)]:
         sys.modules.pop(module_to_nuke)
+
+
+def test_template_transform_limit_exceeded(mocker: pytest_mock.MockerFixture) -> None:
+    """
+    Verify that template transforms cannot trigger an infinite loop.
+    This currently requires injecting bogus transforms to trigger the condition, but the logic is present to catch future coding errors.
+    """
+    class One:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class Two:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    mocker.patch.dict(_transform._type_transform_mapping, {One: Two, Two: One})
+
+    with pytest.raises(AnsibleTemplateTransformLimitError):
+        Templar(variables=dict(limit=One())).template(TRUST.tag("{{ limit }}"))
