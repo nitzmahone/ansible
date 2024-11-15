@@ -40,7 +40,7 @@ class ActionModule(ActionBase):
 
         if self._task.args:
             for (k, v) in self._task.args.items():
-                k = self._templar.template(k)
+                k = self._templar.template(k)  # a rare case where key templating is allowed; backward-compatibility for dynamic storage
 
                 validate_variable_name(k)
 

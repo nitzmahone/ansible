@@ -2,6 +2,8 @@
 
 set -eux
 
+ansible-playbook -i inventory set_fact.yml "$@"
+
 MYTMPDIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 trap 'rm -rf "${MYTMPDIR}"' EXIT
 

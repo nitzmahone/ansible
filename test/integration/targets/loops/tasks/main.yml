@@ -376,39 +376,6 @@
     that:
       - loop_out['results'][1]['ansible_remote_tmp'] == '/tmp/test1'
 
-# https://github.com/ansible/ansible/issues/64169
-- include_vars: 64169.yml
-
-# DTFIX-MERGE: these pass in devel because of multi-pass templating; to make them work properly, hostvarsvars needs to pick
-#  up task/play vars dynamically from a context
-#- set_fact:
-#    '{{ item.key }}': '{{ hostvars[inventory_hostname][item.value] }}'
-#  with_dict:
-#    foo: __foo
-#
-#- debug:
-#    var: foo
-#
-#- assert:
-#    that:
-#      # yes, this is correct- just because the value used as the indexer is not trusted doesn't mean the template
-#      # operation should fail
-#      - foo[0] == 'foo1.0'
-#
-#- set_fact:
-#    '{{ item.key }}': '{{ hostvars[inventory_hostname][item.value] }}'
-#  loop: "{{ dicty_dict|dict2items }}"
-#  vars:
-#    dicty_dict:
-#      foo: __foo
-#
-#- debug:
-#    var: foo
-#
-#- assert:
-#    that:
-#      - foo[0] == 'foo1.0'
-
 # https://github.com/ansible/ansible/issues/83619
 - command: "echo {{ item }}"
   register: r
