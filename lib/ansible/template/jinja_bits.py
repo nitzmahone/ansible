@@ -564,8 +564,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     ) -> t.Any:
         """
         Ensure that filters directly invoked by plugins will see non-templating lazy containers.
-        This ensures item accesses from containers are properly managed.
-        It also enables distinguishing between Jinja constant containers (which can auto-template) and containers from plugins (which do not auto-template).
+        Without this, `_wrap_filter` will wrap `args` and `kwargs` in templating lazy containers.
+        This provides consistency with plugin output handling by preventing auto-templating of trusted templates passed in native containers.
         """
         args = _AnsibleLazyTemplateMixin._try_create(args, auto_template=False)
         kwargs = _AnsibleLazyTemplateMixin._try_create(kwargs, auto_template=False)
@@ -583,8 +583,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     ) -> t.Any:
         """
         Ensure that tests directly invoked by plugins will see non-templating lazy containers.
-        This ensures item accesses from containers are properly managed.
-        It also enables distinguishing between Jinja constant containers (which can auto-template) and containers from plugins (which do not auto-template).
+        Without this, `_wrap_test` will wrap `args` and `kwargs` in templating lazy containers.
+        This provides consistency with plugin output handling by preventing auto-templating of trusted templates passed in native containers.
         """
         args = _AnsibleLazyTemplateMixin._try_create(args, auto_template=False)
         kwargs = _AnsibleLazyTemplateMixin._try_create(kwargs, auto_template=False)

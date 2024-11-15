@@ -717,7 +717,8 @@ def test_undefined_in_jinja_constant_container():
     ("{'k': bogusvar} | pass_through is first_item_trips", True, None),
     ("(bogusvar,) | pass_through is first_item_trips", False, "Variables of type 'tuple' are not supported."),
     # verify that plugins directly invoking tests and filters do not trigger auto-templating
-    # DTFIX-U: add tests to verify call_filter and call_test using map/select/whatever get non-templating lazy behavior for args
+    ('call_filter_with_native_args_kwargs()', True, None),  # `call_filter` invocations with plain list/dict should be lazy non-templating
+    ('call_test_with_native_args_kwargs()', True, None),  # `call_test` invocations with plain list/dict should be lazy non-templating
 ))
 def test_plugin_result_wrapping(expression: str, expected_result: t.Any, expected_warning: str | None, _ignore_untrusted_template) -> None:
     """
@@ -760,20 +761,39 @@ def test_plugin_result_wrapping(expression: str, expected_result: t.Any, expecte
     def first_item_unrendered(value: c.Sequence) -> bool:
         return isinstance(value[0], str) and is_possibly_template(value[0])
 
+    def call_filter_with_native_args_kwargs() -> t.Any:
+        return templar.environment.call_filter('args_and_kwargs_are_non_templating_lazy', value=42, args=[[1]], kwargs=dict(kwarg=[2]))
+
+    def call_test_with_native_args_kwargs() -> t.Any:
+        return templar.environment.call_test('args_and_kwargs_are_non_templating_lazy', value=42, args=[[1]], kwargs=dict(kwarg=[2]))
+
+    def args_and_kwargs_are_non_templating_lazy(value: t.Any, arg, *, kwarg) -> bool:
+        return (
+            value == 42 and
+            isinstance(arg, _AnsibleLazyTemplateList) and
+            arg._templar is None and
+            isinstance(kwarg, _AnsibleLazyTemplateList) and
+            kwarg._templar is None
+        )
+
     templar.environment.globals.update(
         list_with_bad_template=list_with_bad_template,
         list_with_undefined=list_with_undefined,
         tuple_with_bad_template=tuple_with_bad_template,
         tuple_with_undefined=tuple_with_undefined,
+        call_filter_with_native_args_kwargs=call_filter_with_native_args_kwargs,
+        call_test_with_native_args_kwargs=call_test_with_native_args_kwargs,
     )
 
     templar.environment.filters.update(
         pass_through=pass_through,
+        args_and_kwargs_are_non_templating_lazy=args_and_kwargs_are_non_templating_lazy,
     )
 
     templar.environment.tests.update(
         first_item_unrendered=first_item_unrendered,
         first_item_trips=first_item_trips,
+        args_and_kwargs_are_non_templating_lazy=args_and_kwargs_are_non_templating_lazy,
     )
 
     expression = TRUST.tag(expression)

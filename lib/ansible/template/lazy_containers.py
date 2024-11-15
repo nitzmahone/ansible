@@ -107,6 +107,13 @@ class _AnsibleLazyTemplateMixin:
 
     @staticmethod
     def _try_create(item: t.Any, auto_template: bool = True) -> t.Any:
+        """
+        If `item` is a container type which supports lazy access and/or templating, return a lazy wrapped version -- otherwise return it as-is.
+        When returning as-is, a warning or error may be generated for unknown types.
+        The `auto_template` argument should be set to `False` when `item` is sourced from a plugin instead of Ansible variable storage.
+        This provides backwards compatibility and reduces lazy overhead, as plugins do not normally introduce templates.
+        If a plugin needs to introduce templates, the plugin is responsible for invoking the templar and returning the result.
+        """
         item_type = type(item)
 
         # Try to use exact type match first to determine which wrapper (if any) to apply; isinstance checks
@@ -507,8 +514,10 @@ def lazify_container(value: t.Any) -> t.Any:
     """
     If the given value is a supported container type, return its lazy version, otherwise return the value as-is.
     This is used to ensure that managed access and templating occur on args and kwargs to a callable, even if they were sourced from Jinja constants.
+
     Since both variable access and plugin output are already lazified, this mostly affects Jinja constant containers.
     However, plugins that directly invoke other plugins (e.g., `Environment.call_filter`) are another potential source of non-lazy containers.
+    In these cases, templating will occur for trusted templates automatically upon access.
 
     Sets, tuples, and dictionary keys cannot be lazy, since their correct operation requires hashability and equality.
     These properties are mutually exclusive with the following lazy features:
