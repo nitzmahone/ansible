@@ -118,7 +118,7 @@ class _AnsibleLazyTemplateMixin:
             lazy_values = dispatcher._lazy_values(item)
 
             if not auto_template:
-               lazy_values = _LazyIterator(lazy_values, None)
+                lazy_values = t.cast(c.Iterable, _LazyIterator(lazy_values, None))
 
             tags_mapping = _try_get_internal_tags_mapping(item)
             value = t.cast(AnsibleTaggedObject, dispatcher)._instance_factory(lazy_values, tags_mapping)

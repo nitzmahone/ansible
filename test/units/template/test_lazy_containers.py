@@ -796,6 +796,7 @@ def test_plugin_result_wrapping(expression: str, expected_result: t.Any, expecte
 def test_empty_templar_propagation(template_context):
     """Ensure that lazy collections with templating disabled (`_templar` not set) propagate that behavior to child lazies."""
     src_template = "{{ 1 / 0 }}"
+
     def nested_container_with_template() -> t.Any:
         return [[TRUST.tag(src_template)]]
 

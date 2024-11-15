@@ -559,7 +559,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         value: t.Any,
         args: c.Sequence[t.Any] | None = None,
         kwargs: c.Mapping[str, t.Any] | None = None,
-        **kw_args,
+        context: Context | None = None,
+        eval_ctx: EvalContext | None = None,
     ) -> t.Any:
         """
         Ensure that filters directly invoked by plugins will see non-templating lazy containers.
@@ -569,7 +570,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         args = _AnsibleLazyTemplateMixin._try_create(args, auto_template=False)
         kwargs = _AnsibleLazyTemplateMixin._try_create(kwargs, auto_template=False)
 
-        return super().call_filter(name, value, args, kwargs, **kw_args)
+        return super().call_filter(name, value, args, kwargs, context, eval_ctx)
 
     def call_test(
         self,
@@ -577,7 +578,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         value: t.Any,
         args: c.Sequence[t.Any] | None = None,
         kwargs: c.Mapping[str, t.Any] | None = None,
-        **kw_args,
+        context: Context | None = None,
+        eval_ctx: EvalContext | None = None,
     ) -> t.Any:
         """
         Ensure that tests directly invoked by plugins will see non-templating lazy containers.
@@ -587,7 +589,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         args = _AnsibleLazyTemplateMixin._try_create(args, auto_template=False)
         kwargs = _AnsibleLazyTemplateMixin._try_create(kwargs, auto_template=False)
 
-        return super().call_test(name, value, args, kwargs, **kw_args)
+        return super().call_test(name, value, args, kwargs, context, eval_ctx)
 
     def from_string(self, *args, **kwargs):
         with _CompileStateSmugglingCtx.when(self._DEBUGGABLE_TEMPLATE_SOURCE) as ctx:

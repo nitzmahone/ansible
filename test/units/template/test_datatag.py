@@ -95,7 +95,8 @@ class TestDatatagTemplar(_TestDatatagTarget):
 
         if isinstance(value, _AnsibleLazyTemplateMixin) and not allow_delazify:
             assert value._templar
-            value._templar = object()  # supply a non-functional, but non-None templar, forcing an error if lazy behavior is triggered during tagging
+            # supply a non-functional, but non-None templar, forcing an error if lazy behavior is triggered during tagging
+            value._templar = object()  # type: ignore[assignment]
 
         yield value  # yield to the test; we'll validate later
 
