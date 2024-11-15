@@ -129,6 +129,7 @@ class TestActionBase(unittest.TestCase):
 
         # create a mock connection, so we don't actually try and connect to things
         mock_connection = MagicMock()
+        mock_connection.become = False
 
         # create a mock shared loader object
         def mock_find_plugin_with_context(name, options, collection_list=None):
@@ -775,6 +776,7 @@ class TestActionBase(unittest.TestCase):
         action_base._connection._shell = shell = MagicMock(append_command=MagicMock(return_value=('JOINED CMD')))
 
         action_base._connection.become = become = MagicMock()
+        action_base._connection.transport = ''
         become.build_become_command.return_value = 'foo'
 
         action_base._low_level_execute_command('ECHO', sudoable=True)

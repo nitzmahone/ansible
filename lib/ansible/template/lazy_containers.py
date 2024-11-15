@@ -96,7 +96,7 @@ class _AnsibleLazyTemplateMixin:
             self._template_options = None
 
         if isinstance(contents, _LazyIterator):
-            self._templar = contents.lazy._templar
+            self._templar = contents.templar
         elif isinstance(contents, _AnsibleLazyTemplateMixin):
             self._templar = contents._templar
         else:
@@ -115,7 +115,11 @@ class _AnsibleLazyTemplateMixin:
             # Create a generator that yields the elements of `item` wrapped in a `_LazyValue` wrapper.
             # The wrapper is used to signal to the lazy container that the value must be processed before being returned.
             # Values added to the lazy container later through other means will be returned as-is, without any special processing.
-            lazy_values = dispatcher._lazy_values(item) if auto_template else item
+            lazy_values = dispatcher._lazy_values(item)
+
+            if not auto_template:
+               lazy_values = _LazyIterator(lazy_values, None)
+
             tags_mapping = _try_get_internal_tags_mapping(item)
             value = t.cast(AnsibleTaggedObject, dispatcher)._instance_factory(lazy_values, tags_mapping)
 
@@ -159,7 +163,11 @@ class _AnsibleLazyTemplateMixin:
 
         original_value = value.value
         AnsibleAccessContext.current().access(original_value)
-        new_value = self._templar.template(original_value, options=self._template_options)
+
+        if self._templar:
+            new_value = self._templar.template(original_value, options=self._template_options)
+        else:
+            new_value = _AnsibleLazyTemplateMixin._try_create(original_value, auto_template=False)
 
         if new_value is not original_value:
             AnsibleAccessContext.current().access(new_value)
@@ -270,7 +278,7 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
     @staticmethod
     def _item_source(value: dict) -> dict | _LazyIterator:
         if isinstance(value, _AnsibleLazyTemplateDict):
-            return _LazyIterator(dict.items(value), value)
+            return _LazyIterator(dict.items(value), value._templar)
 
         return value
 
@@ -327,9 +335,9 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
 
 class _LazyIterator:
     # DTFIX-MERGE: better way to smuggle this state around without this wrapper?
-    def __init__(self, iterator: t.Iterable, lazy: _AnsibleLazyTemplateMixin) -> None:
+    def __init__(self, iterator: t.Iterable, templar: Templar | None) -> None:
         self.iterator = iterator
-        self.lazy = lazy
+        self.templar = templar
 
 
 @t.final  # consumers of lazy collections rely heavily on the concrete types being final
@@ -350,7 +358,7 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
 
     def __getitem__(self, key: t.SupportsIndex | slice, /) -> t.Any:
         if type(key) is slice:  # pylint: disable=unidiomatic-typecheck
-            return _AnsibleLazyTemplateList(_LazyIterator(super().__getitem__(key), self))
+            return _AnsibleLazyTemplateList(_LazyIterator(super().__getitem__(key), self._templar))
 
         return self._proxy_or_render_lazy_value(key, super().__getitem__(key))
 
@@ -382,7 +390,7 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
     @staticmethod
     def _item_source(value: list) -> list | _LazyIterator:
         if isinstance(value, _AnsibleLazyTemplateList):
-            return _LazyIterator(list.__iter__(value), value)
+            return _LazyIterator(list.__iter__(value), value._templar)
 
         return value
 
@@ -464,19 +472,19 @@ class _AnsibleLazyTemplateList(_AnsibleTaggedList, _AnsibleLazyTemplateMixin):
 
         # For all other cases, the new list inherits our templar and all values stay lazy.
         # We use list.__add__ to avoid implementing all its error behavior.
-        return _AnsibleLazyTemplateList(_LazyIterator(super().__add__(other), self))
+        return _AnsibleLazyTemplateList(_LazyIterator(super().__add__(other), self._templar))
 
     def __radd__(self, other):
         if not (other_add := getattr(other, '__add__', None)):
             raise TypeError(f'unsupported operand type(s) for +: {type(other).__name__!r} and {type(self).__name__!r}') from None
 
-        return _AnsibleLazyTemplateList(_LazyIterator(other_add(self), self))
+        return _AnsibleLazyTemplateList(_LazyIterator(other_add(self), self._templar))
 
     def __mul__(self, other):
-        return _AnsibleLazyTemplateList(_LazyIterator(super().__mul__(other), self))
+        return _AnsibleLazyTemplateList(_LazyIterator(super().__mul__(other), self._templar))
 
     def __rmul__(self, other):
-        return _AnsibleLazyTemplateList(_LazyIterator(super().__rmul__(other), self))
+        return _AnsibleLazyTemplateList(_LazyIterator(super().__rmul__(other), self._templar))
 
     def index(self, *args, **kwargs) -> int:
         self._proxy_or_render_lazy_values()

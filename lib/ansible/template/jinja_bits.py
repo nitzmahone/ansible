@@ -553,6 +553,42 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
     _DEBUGGABLE_TEMPLATE_SOURCE = False  # DTFIX-FUTURE: bikeshed a name/mechanism to control template debugging
 
+    def call_filter(
+        self,
+        name: str,
+        value: t.Any,
+        args: c.Sequence[t.Any] | None = None,
+        kwargs: c.Mapping[str, t.Any] | None = None,
+        **kw_args,
+    ) -> t.Any:
+        """
+        Ensure that filters directly invoked by plugins will see non-templating lazy containers.
+        This ensures item accesses from containers are properly managed.
+        It also enables distinguishing between Jinja constant containers (which can auto-template) and containers from plugins (which do not auto-template).
+        """
+        args = _AnsibleLazyTemplateMixin._try_create(args, auto_template=False)
+        kwargs = _AnsibleLazyTemplateMixin._try_create(kwargs, auto_template=False)
+
+        return super().call_filter(name, value, args, kwargs, **kw_args)
+
+    def call_test(
+        self,
+        name: str,
+        value: t.Any,
+        args: c.Sequence[t.Any] | None = None,
+        kwargs: c.Mapping[str, t.Any] | None = None,
+        **kw_args,
+    ) -> t.Any:
+        """
+        Ensure that tests directly invoked by plugins will see non-templating lazy containers.
+        This ensures item accesses from containers are properly managed.
+        It also enables distinguishing between Jinja constant containers (which can auto-template) and containers from plugins (which do not auto-template).
+        """
+        args = _AnsibleLazyTemplateMixin._try_create(args, auto_template=False)
+        kwargs = _AnsibleLazyTemplateMixin._try_create(kwargs, auto_template=False)
+
+        return super().call_test(name, value, args, kwargs, **kw_args)
+
     def from_string(self, *args, **kwargs):
         with _CompileStateSmugglingCtx.when(self._DEBUGGABLE_TEMPLATE_SOURCE) as ctx:
             template_obj = super().from_string(*args, **kwargs)

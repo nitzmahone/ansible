@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
+import collections.abc as c
 import copy
 import re
 import typing as t
 
 import pytest
-from jinja2 import pass_environment
 
 from ansible.errors import AnsibleTemplateError, AnsibleUndefinedVariable
-from ansible.template.jinja_bits import is_possibly_all_template, AnsibleEnvironment
-from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError, JinjaCallContext
+from ansible.template.jinja_bits import is_possibly_template
+from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError, JinjaCallContext, Marker
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate
 from ansible.template.utils import TemplateContext
 from ansible.template.templar import Templar, TemplateOptions
 from ansible.template.lazy_containers import _AnsibleLazyTemplateMixin, _AnsibleLazyTemplateList, _AnsibleLazyTemplateDict, _LazyValue
+from ansible.utils.display import _DeferredWarningContext
 
 from ..module_utils.datatag.test_datatag import ExampleSingletonTag
 
@@ -703,42 +704,107 @@ def test_undefined_in_jinja_constant_container():
     assert not plugin_retrieved_the_value
 
 
-@pytest.mark.parametrize("template_or_expression", (
-    # "tuple_with_template()",
-    # "noop(something())",
-    "[] | something",
+@pytest.mark.parametrize("expression, expected_result, expected_warning", (
+    # verify templates sourced by plugins are not auto-templated
+    ("list_with_bad_template() | pass_through is first_item_unrendered", True, None),  # plain list return values are lazy wrapped, but not templated
+    ("tuple_with_bad_template() | pass_through is first_item_unrendered", True, "Variables of type 'tuple' are not supported."),  # tuples are not lazified
+    # verify markers are tripped on managed access, but not unmanaged access (they will still trip on use, which is not tested here)
+    ("list_with_undefined() | pass_through is first_item_trips", True, None),  # managed access trips
+    ("tuple_with_undefined() | pass_through is first_item_trips", False, "Variables of type 'tuple' are not supported."),  # unmanaged access doesn't trip
+    # # verify that Jinja constant containers are wrapped where possible
+    ("['{{ 1 }}'] | pass_through is first_item_unrendered", True, "Jinja constant strings should not contain embedded templates."),
+    ("[bogusvar] | pass_through is first_item_trips", True, None),
+    ("{'k': bogusvar} | pass_through is first_item_trips", True, None),
+    ("(bogusvar,) | pass_through is first_item_trips", False, "Variables of type 'tuple' are not supported."),
+    # verify that plugins directly invoking tests and filters do not trigger auto-templating
+    # DTFIX-U: add tests to verify call_filter and call_test using map/select/whatever get non-templating lazy behavior for args
 ))
-def test_plugin_results_not_auto_templated(template_or_expression: str) -> None:
-    # DTFIX-U: test scenarios:
-    #  * plugin returns set/tuple with embedded markers, which are passed to a plugin that does not accept them
-    #  * Jinja constant list/dict/tuple with embedded undefineds/markers is passed to a plugin that does not accept them
-    #  * TBD - how to reflect expected templating behavior in these tests?
-    #  * TBD - override call_filter/call_template to lazify args the same way we do for plugin output (e.g., no templating)?
+def test_plugin_result_wrapping(expression: str, expected_result: t.Any, expected_warning: str | None, _ignore_untrusted_template) -> None:
+    """
+    Validate various intra-plugin container behaviors:
+     * A plain list/dict returned by a Jinja call/plugin gets lazified, but with templating disabled (feature parity with pre-2.19).
+     * Tuple/set returned by a Jinja call/plugin receives no special behavior.
+     * Jinja plugins that do not accept markers should raise when accessing one from a lazy container.
+    The default test "untrusted template as error" behavior is disabled, since some test cases involve accessing untrusted templates.
+    """
     templar = Templar()
 
-    def tuple_with_template() -> tuple[str]:
+    def list_with_bad_template() -> list[str]:
+        return [TRUST.tag('{{ 1 / 0 }}')]
+
+    def list_with_undefined() -> list[Marker]:
+        return [Templar().template(TRUST.tag('{{ bogusvar }}'))]
+
+    def tuple_with_bad_template() -> tuple[str, ...]:
         return (TRUST.tag('{{ 1 / 0 }}'),)
 
-    @pass_environment
-    def something(env: AnsibleEnvironment, *args, **kwargs) -> t.Any:
-        env.call_filter('noop', "value", kwargs=dict(rawlist=[TRUST.tag('{{ 1/0 }}')]))
-        # return (TRUST.tag('{{ 1 / 0 }}'),)
+    def tuple_with_undefined() -> tuple[Marker, ...]:
+        return (Templar().template(TRUST.tag('{{ bogusvar }}')),)
 
-    def noop(value: t.Any, *args, **kwargs) -> t.Any:
+    def pass_through(value: t.Any) -> t.Any:
         return value
 
-    templar.environment.filters['something'] = something
-    templar.environment.filters['noop'] = noop
+    def first_item_trips(value: c.Sequence | c.Mapping) -> bool:
+        if isinstance(value, c.Mapping):
+            key_or_idx = list(value.keys())[0]
+        else:
+            key_or_idx = 0
+
+        try:
+            value[key_or_idx]
+        except MarkerError:
+            return True
+
+        return False
+
+    def first_item_unrendered(value: c.Sequence) -> bool:
+        return isinstance(value[0], str) and is_possibly_template(value[0])
 
     templar.environment.globals.update(
-        tuple_with_template=tuple_with_template,
-        noop=noop,
-        something=something,
+        list_with_bad_template=list_with_bad_template,
+        list_with_undefined=list_with_undefined,
+        tuple_with_bad_template=tuple_with_bad_template,
+        tuple_with_undefined=tuple_with_undefined,
     )
 
-    template_or_expression = TRUST.tag(template_or_expression)
+    templar.environment.filters.update(
+        pass_through=pass_through,
+    )
 
-    if is_possibly_all_template(template_or_expression):
-        templar.template(template_or_expression)
+    templar.environment.tests.update(
+        first_item_unrendered=first_item_unrendered,
+        first_item_trips=first_item_trips,
+    )
+
+    expression = TRUST.tag(expression)
+
+    with _DeferredWarningContext(variables=dict(ansible_deprecation_warnings=True)) as warning_ctx:
+        result = templar.evaluate_expression(expression)
+
+    warnings = warning_ctx.get_warnings() + warning_ctx.get_deprecation_warnings()
+    warnings = [warning for warning in warnings if 'Deprecation warnings can be disabled' not in warning.format()]
+
+    if expected_warning:
+        assert len(warnings) == 1
+        assert expected_warning in warnings[0].format()
     else:
-        templar.evaluate_expression(template_or_expression)
+        assert not warnings
+
+    assert result == expected_result
+
+
+def test_empty_templar_propagation(template_context):
+    """Ensure that lazy collections with templating disabled (`_templar` not set) propagate that behavior to child lazies."""
+    src_template = "{{ 1 / 0 }}"
+    def nested_container_with_template() -> t.Any:
+        return [[TRUST.tag(src_template)]]
+
+    templar = Templar()
+    templar.environment.globals.update(nested_container_with_template=nested_container_with_template)
+
+    res = templar.template(TRUST.tag('{{ nested_container_with_template() }}'))
+    assert isinstance(res, _AnsibleLazyTemplateList)
+    assert res._templar is None
+    assert isinstance(res[0], _AnsibleLazyTemplateList)
+    assert res[0]._templar is None
+    assert res[0][0] == src_template

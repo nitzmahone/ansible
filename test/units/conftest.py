@@ -18,6 +18,8 @@ else:
     assert _internal
     assert is_controller
 
+    # Ensure unit tests fail when encountering untrusted templates to reduce mistakes in tests.
+    # Tests that need to ignore or warn on untrusted templates will need to override this setting.
     _TemplateConfig.untrusted_template_handler = ErrorHandler(ErrorAction.FAIL)
 
     from .controller_only_conftest import *  # pylint: disable=wildcard-import,unused-wildcard-import
