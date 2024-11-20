@@ -466,13 +466,6 @@ class Templar:
             except NotTaggableError:
                 pass  # best effort- if we can't, oh well
 
-        # Avoid propagating a Deprecated tag from a template to the template result.
-        # The template will have already been accessed and triggered a deprecation warning.
-        # Leaving the tag on the result will would result in similar (but not identical) warnings for indirect access to deprecated values.
-        # DTFIX-MERGE: this may not be the correct place to untag -- perhaps this should be done after invoking access on a value, before or after templating it
-        #              as it stands, passing a deprecated value directly to top-level templating will not be accessed, but the deprecated tag will be lost
-        result = Deprecated.untag(result)
-
         return result
 
     def is_template(self, data: t.Any) -> bool:

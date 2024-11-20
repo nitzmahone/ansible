@@ -36,6 +36,7 @@ from ansible.errors import (
 )
 from ansible.errors.handler import ErrorAction, ErrorHandler
 from ansible.module_utils.datatag import AnsibleTagHelper, AnsibleDatatagBase
+from ansible.module_utils.datatag.tags import Deprecated
 from ansible.template import _transform
 from ansible.utils.collection_loader._collection_finder import _AnsibleCollectionFinder
 from ansible.utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
@@ -46,7 +47,7 @@ from ansible.template.templar import Templar, TemplateOptions, TemplateTrustChec
 from ansible.template.jinja_bits import AnsibleEnvironment, AnsibleContext, is_possibly_template, is_possibly_all_template
 from ansible.template.marker_behaviors import ReplacingMarkerBehavior
 from ansible.template.utils import TemplateContext
-from ansible.utils.display import Display
+from ansible.utils.display import Display, _DeferredWarningContext
 from units.mock.loader import DictDataLoader
 
 import pytest
@@ -984,3 +985,41 @@ def test_template_transform_limit_exceeded(mocker: pytest_mock.MockerFixture) ->
 
     with pytest.raises(AnsibleTemplateTransformLimitError):
         Templar(variables=dict(limit=One())).template(TRUST.tag("{{ limit }}"))
+
+
+def test_deprecated_dedupe_and_source():
+    """Validate dedupe and source context behavior for deprecated item access and associated warning behavior."""
+    # unique tag instances that share the same contents (can be tracked independently by the audit context)
+    deprecated_string = Deprecated(msg="deprecated").tag("deprecated string")
+    deprecated_list = Deprecated(msg="deprecated").tag([42])
+    deprecated_dict = Deprecated(msg="deprecated").tag(dict(key="value"))
+
+    # a shared tag instance (cannot be tracked independently by the audit context)
+    shared_tag_instance = Deprecated(msg="shared tag")
+    d1 = shared_tag_instance.tag("d1")
+    d2 = shared_tag_instance.tag("d2")
+
+    variables = dict(
+        indirect1=TRUST.tag('{{ indirect2 }}'),
+        indirect2=TRUST.tag('{{ deprecated_string }}'),
+        deprecated_string=deprecated_string,
+        deprecated_list=deprecated_list,
+        deprecated_dict=deprecated_dict,
+        d1=d1,
+        d2=d2,
+    )
+
+    templar = Templar(variables=variables)
+
+    with _DeferredWarningContext(variables={}) as dwc:
+        # The indirect access summary occurs first.
+        # The two following direct access summaries get deduped to a single one by the warning context (but unique template value keeps distinct from indirect).
+        # The accesses with the shared tag instance values are internally deduped by the audit context.
+        templar.template_literal_expression("indirect1 and deprecated_list and deprecated_dict and d1 and d2")
+
+    dep_warnings = dwc.get_deprecation_warnings()
+
+    assert len(dep_warnings) == 3
+    assert 'deprecated_string' in dep_warnings[0].format()
+    assert 'indirect1 and deprecated_list and deprecated_dict' in dep_warnings[1].format()
+    assert 'd1 and d2' in dep_warnings[2].format()

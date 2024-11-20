@@ -50,9 +50,17 @@ if t.TYPE_CHECKING:
 
 display = Display()
 
-# Share a single instance of this tag to avoid having an excessively large number of instances (hosts * top-level facts),
-# as well as avoiding "bulk" warnings when accessing `vars` (95+ instances) that would not be de-duped if unique.
-_TOP_LEVEL_FACTS_DEPRECATED = Deprecated(msg='Top-level facts are deprecated, use `ansible_facts` instead.', removal_version='2.22')
+_DEPRECATE_TOP_LEVEL_FACT_MSG = sys.intern('Top-level facts are deprecated, use `ansible_facts` instead.')
+_DEPRECATE_TOP_LEVEL_FACT_REMOVAL_VERSION = sys.intern('2.22')
+
+
+def _deprecate_top_level_fact(value: t.Any) -> t.Any:
+    """
+    Deprecate the given top-level fact value.
+    The inner values are shared to aid in message de-duplication across hosts/values, and reduce intra-process memory usage.
+    Unique tag instances are required to achieve the correct de-duplication within a top-level templating operation.
+    """
+    return Deprecated(msg=_DEPRECATE_TOP_LEVEL_FACT_MSG, removal_version=_DEPRECATE_TOP_LEVEL_FACT_REMOVAL_VERSION).tag(value)
 
 
 def preprocess_vars(a):
@@ -320,7 +328,8 @@ class VariableManager:
 
                 # push facts to main namespace
                 if C.INJECT_FACTS_AS_VARS:
-                    deprecated_facts_vars = {k: _TOP_LEVEL_FACTS_DEPRECATED.tag(v) for k, v in clean_facts(facts).items()}
+                    # DTFIX-U: why do we need _deprecate_top_level_fact here, isn't the one in _execute_internal enough?
+                    deprecated_facts_vars = {k: _deprecate_top_level_fact(v) for k, v in clean_facts(facts).items()}
                     all_vars = _combine_and_track(all_vars, deprecated_facts_vars, "facts")
                 else:
                     # always 'promote' ansible_local
