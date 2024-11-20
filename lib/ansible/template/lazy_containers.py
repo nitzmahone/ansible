@@ -248,7 +248,7 @@ class _AnsibleLazyTemplateDict(_AnsibleTaggedDict, _AnsibleLazyTemplateMixin):
 
     def items(self):
         for key, value in super().items():
-            yield [key, self._proxy_or_render_lazy_value(key, value)]
+            yield key, self._proxy_or_render_lazy_value(key, value)
 
     def values(self):
         for _key, value in self.items():

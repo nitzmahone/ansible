@@ -264,7 +264,7 @@ def test_dict_items_and_values() -> None:
     with TemplateContext(template_value=None, templar=templar, options=TemplateOptions(), stop_on_template=False):
         lazy: dict = _AnsibleLazyTemplateMixin._try_create(value)
 
-        assert list(lazy.items()) == list(list(item) for item in rendered.items())
+        assert list(lazy.items()) == list(rendered.items())
         assert list(lazy.values()) == list(rendered.values())
 
 
@@ -313,7 +313,7 @@ def test_lazy_list_adapter_operators(template, variables, expected) -> None:
     ('l1[0]', 1, int),  # __getitem__
     ('d1.pop("a")', 1, int),  # dict.pop (check returned value)
     ('d1.pop("a");', dict(d1=dict(c=_LazyValue(1))), _AnsibleLazyTemplateDict),  # dict.pop (check mutated source)
-    ('list(d1.items())', [['a', 1], ['c', 1]], list),  # items
+    ('list(d1.items())', [('a', 1), ('c', 1)], list),  # items
     ('d1.popitem()', ('c', 1), tuple),  # dict.popitem (check returned value)
     ('d1.popitem();', dict(d1=dict(a=_LazyValue(1))), _AnsibleLazyTemplateDict),  # dict.popitem (check mutated source)
     ('d1.clear(); d1["d"] = 4', dict(d1=dict(d=4), mutated=True), _AnsibleLazyTemplateDict),  # dict.clear (clear + mutate)
