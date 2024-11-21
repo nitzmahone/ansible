@@ -183,29 +183,6 @@ class AnsibleContext(Context):
 
     __repr__ = object.__repr__  # prevent Jinja from dumping vars in case this gets repr'd
 
-    def resolve_or_missing(self, key):
-        # DTFIX-U: determine if we're double-accessing here and if we can fix it
-        #          if self.vars is never lazy and self.parent is always lazy we may need to implement resolve_or_missing directly
-        #          this also impacts if we need access on getattr/getitem or not
-        # value = super(AnsibleContext, self).resolve_or_missing(key)
-
-        if key in self.vars:
-            value = self.vars[key]  # native dict
-        elif key in self.parent:
-            value = self.parent[key]  # ChainMap of lazy dicts
-        else:
-            value = missing
-
-        # DTFIX-U: this access can likely be left out:
-        # * it's probably safe to assume that vars access above is rare enough to not worry about accesses for now-
-        #     everything else going through parent should be lazy, but we need tests to verify and prevent regression
-        # * JinjaCallContext accept_marker stuff needs to be masked on new template calls, and possibly in other places?
-        # * review and clean up remaining access calls
-
-        # AnsibleAccessContext.current().access(value)
-
-        return value
-
     def get_all(self):
         """
         Override Jinja's default get_all to return all vars in the context as a ChainMap with a mutable layer at the bottom.
@@ -711,11 +688,10 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         if ctx._render_jinja_const_template:
             result = ctx.templar.template(TrustedAsTemplate().tag(const_template))
+            AnsibleAccessContext.current().access(result)
         else:
             result = _JinjaConstTemplate().tag(const_template)
 
-        # DTFIX-U: is this access correct?
-        AnsibleAccessContext.current().access(result)
         return result
 
     def getitem(self, obj: t.Any, argument: t.Any) -> t.Any:
@@ -723,6 +699,7 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
         # example: "{{ some['thing'] }}" -- obj is the "some" dict, argument is "thing"
         # access on the result of super().getitem is necessary
         value = super().getitem(obj, argument)
+
         AnsibleAccessContext.current().access(value)
 
         return value
@@ -752,8 +729,8 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             except (TypeError, LookupError):
                 return self.undefined(obj=obj, name=attribute) if is_safe else self.unsafe_undefined(obj, attribute)
 
-        # DTFIX-U: is this access correct?
         AnsibleAccessContext.current().access(value)
+
         return value
 
     def call(
