@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pathlib
+import sys
 import typing as t
 
 from contextlib import nullcontext
@@ -12,11 +14,14 @@ from ansible.module_utils.datatag import AnsibleTaggedObject
 from ansible.template.jinja_common import CapturedExceptionMarker, MarkerError, Marker, UndefinedMarker
 from ansible.template.utils import TemplateContext
 from ansible.utils.datatag.tags import TrustedAsTemplate
-from ansible.template.jinja_bits import AnsibleEnvironment, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, defer_template_error
+from ansible.template.jinja_bits import AnsibleEnvironment, TemplateOverrides, _TEMPLATE_OVERRIDE_FIELD_NAMES, defer_template_error, AnsibleTemplate
 from ansible.template.templar import Templar, TemplateOptions
 from jinja2.loaders import DictLoader
 
 from ansible.utils.display import _DeferredWarningContext
+
+if t.TYPE_CHECKING:
+    import unittest.mock
 
 TRUST = TrustedAsTemplate()
 
@@ -293,3 +298,47 @@ def test_defer_template_requires_traceback(template_context: TemplateContext):
     with pytest.raises(AssertionError, match='ex must be a previously raised exception'):
         # an exception without a traceback should be rejected with an AssertionError
         defer_template_error(AnsibleTemplateError(), None, is_expression=False)
+
+
+@pytest.fixture
+def mock_breakpointhook(mocker: pytest_mock.MockerFixture) -> t.Iterator[unittest.mock.Mock]:
+    """Yields a Mock object patched on `sys.breakpointhook` (causes explicit `breakpoint()` calls to no-op)."""
+    breakpointhook = mocker.Mock()
+
+    mocker.patch.object(sys, 'breakpointhook', breakpointhook)
+
+    yield breakpointhook
+
+
+@pytest.fixture(params=(True, False))
+def debuggable_templar(request: pytest.FixtureRequest, tmp_path: pathlib.Path) -> Templar:
+    """Multiplying parameterized fixture that yields a Templar with template source debugging force-enabled and force-disabled."""
+    templar = Templar()
+
+    env = templar.environment
+    env._debuggable_template_source = request.param
+    env._debuggable_template_source_path = tmp_path
+
+    return templar
+
+
+@pytest.mark.parametrize("expression", (
+    'templar.environment.get_template("importme")',
+    'templar.environment.from_string("{{ 42 }}")',
+    'templar.environment.compile_expression("42")._template',
+))
+def test_template_source_debug(expression: str, debuggable_templar: Templar, mock_breakpointhook: unittest.mock.Mock):
+    """Ensures that template source debug support creates source files and sets debugger support attributes correctly."""
+    debuggable_templar.environment.loader = DictLoader(dict(importme=TRUST.tag('{{ 42 }}')))
+
+    template: AnsibleTemplate = eval(expression, globals(), dict(templar=debuggable_templar))
+
+    debug_enabled = debuggable_templar.environment._debuggable_template_source
+
+    if debug_enabled:
+        assert template.root_render_func.__code__.co_filename == template.filename
+        assert pathlib.Path(template.filename).exists()
+    else:
+        assert template.filename == '<template>'
+
+    assert mock_breakpointhook.called == debug_enabled

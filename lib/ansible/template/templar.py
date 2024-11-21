@@ -27,7 +27,6 @@ from ansible.module_utils.datatag import (
     AnsibleTaggedObject, NotTaggableError, AnsibleTagHelper
 )
 from ..errors.handler import Skippable
-from ..module_utils.datatag.tags import Deprecated
 from ..utils.datatag.tags import AnsibleSourcePosition, TrustedAsTemplate, NotATemplate
 
 from ansible.utils.display import Display

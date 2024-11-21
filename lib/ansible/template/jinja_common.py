@@ -25,9 +25,9 @@ _patch_jinja()  # apply Jinja2 patches before types are declared that are depend
 
 
 class _TemplateConfig:
-    allow_embedded_templates = config.get_config_value("ALLOW_EMBEDDED_TEMPLATES")
-    allow_broken_conditionals = config.get_config_value('ALLOW_BROKEN_CONDITIONALS')
-    jinja_extensions = config.get_config_value('DEFAULT_JINJA2_EXTENSIONS')
+    allow_embedded_templates: bool = config.get_config_value("ALLOW_EMBEDDED_TEMPLATES")
+    allow_broken_conditionals: bool = config.get_config_value('ALLOW_BROKEN_CONDITIONALS')
+    jinja_extensions: list[str] = config.get_config_value('DEFAULT_JINJA2_EXTENSIONS')
 
     unsupported_variable_type_handler = ErrorHandler.from_config('_TEMPLAR_UNSUPPORTED_VARIABLE_TYPE_BEHAVIOR')
     untrusted_template_handler = ErrorHandler.from_config('_TEMPLAR_UNTRUSTED_TEMPLATE_BEHAVIOR')

@@ -1007,11 +1007,12 @@ def test_deprecated_dedupe_and_source():
         deprecated_dict=deprecated_dict,
         d1=d1,
         d2=d2,
+        ansible_deprecation_warnings=True,
     )
 
     templar = Templar(variables=variables)
 
-    with _DeferredWarningContext(variables={}) as dwc:
+    with _DeferredWarningContext(variables=variables) as dwc:
         # The indirect access summary occurs first.
         # The two following direct access summaries get deduped to a single one by the warning context (but unique template value keeps distinct from indirect).
         # The accesses with the shared tag instance values are internally deduped by the audit context.

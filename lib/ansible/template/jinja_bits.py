@@ -4,11 +4,14 @@ import ast
 import collections.abc as c
 import dataclasses
 import enum
-import os
+import pathlib
 import tempfile
+import types
 import typing as t
 
 from collections import ChainMap
+
+import jinja2.nodes
 
 from jinja2 import pass_context, defaults, TemplateSyntaxError, FileSystemLoader
 from jinja2.environment import Environment, Template, TemplateModule, TemplateExpression
@@ -193,7 +196,13 @@ class AnsibleContext(Context):
         else:
             value = missing
 
-        AnsibleAccessContext.current().access(value)
+        # DTFIX-U: this access can likely be left out:
+        # * it's probably safe to assume that vars access above is rare enough to not worry about accesses for now-
+        #     everything else going through parent should be lazy, but we need tests to verify and prevent regression
+        # * JinjaCallContext accept_marker stuff needs to be masked on new template calls, and possibly in other places?
+        # * review and clean up remaining access calls
+
+        # AnsibleAccessContext.current().access(value)
 
         return value
 
@@ -288,12 +297,12 @@ class AnsibleTemplate(Template):
     A helper class, which prevents Jinja2 from running lazy containers through dict().
     """
 
-    _source_tempfile = None
+    _python_source_temp_path: pathlib.Path | None = None
 
     def __del__(self):
         # DTFIX-MERGE: this still isn't working reliably; something else must be keeping the template object alive
-        if self._source_tempfile:
-            os.unlink(self._source_tempfile.name)
+        if self._python_source_temp_path:
+            self._python_source_temp_path.unlink(missing_ok=True)
 
     def __call__(self, jinja_vars: c.Mapping[str, t.Any]) -> t.Any:
         return self.render(ArgSmuggler.package_jinja_vars(jinja_vars))
@@ -383,8 +392,7 @@ class _TemplateCompileContext(_ambient_context.AmbientContextBase):
 class _CompileStateSmugglingCtx(_ambient_context.AmbientContextBase):
     template_source: str | None = None
     python_source: str | None = None
-    filename: str | None = None
-    tempfile: t.Any = None  # DTFIX-MERGE: what should this type hint be?
+    python_source_temp_path: pathlib.Path | None = None
 
 
 class AnsibleLexer(Lexer):
@@ -499,6 +507,10 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
     intercepted_binops = frozenset({'eq', })
     _lexer_cache = LRUCache(50)
 
+    # DTFIX-FUTURE: bikeshed a name/mechanism to control template debugging
+    _debuggable_template_source = False
+    _debuggable_template_source_path: pathlib.Path = pathlib.Path(__file__).parent.parent.parent.parent / '.template_debug_source'
+
     def __init__(self, *args, ansible_basedir: str | None = None, **kwargs) -> None:
         if ansible_basedir:
             kwargs.update(loader=FileSystemLoader(ansible_basedir))
@@ -538,6 +550,21 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         self.template_class.environment_class = AnsibleEnvironment  # DTFIX-MERGE: why is this here? it was moved from Templar.__init__ (environment creation)
 
+    def get_template(
+        self,
+        name: str | Template,
+        parent: str | None = None,
+        globals: c.MutableMapping[str, t.Any] | None = None,
+    ) -> Template:
+        """Ensures that templates built via `get_template` are also source debuggable."""
+        with _CompileStateSmugglingCtx.when(self._debuggable_template_source) as ctx:
+            template_obj = t.cast(AnsibleTemplate, super().get_template(name, parent, globals))
+
+            if isinstance(ctx, _CompileStateSmugglingCtx):  # only present if debugging is enabled
+                template_obj._python_source_temp_path = ctx.python_source_temp_path  # facilitate deletion of the temp file when template_obj is deleted
+
+            return template_obj
+
     @property
     def lexer(self):
         """Return/cache an AnsibleLexer with settings from the current AnsibleEnvironment"""
@@ -550,8 +577,6 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
             self._lexer_cache[key] = lex = AnsibleLexer(self)
 
         return lex
-
-    _DEBUGGABLE_TEMPLATE_SOURCE = False  # DTFIX-FUTURE: bikeshed a name/mechanism to control template debugging
 
     def call_filter(
         self,
@@ -591,21 +616,33 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
 
         return super().call_test(name, value, args, kwargs, context, eval_ctx)
 
-    def from_string(self, *args, **kwargs):
-        with _CompileStateSmugglingCtx.when(self._DEBUGGABLE_TEMPLATE_SOURCE) as ctx:
-            template_obj = super().from_string(*args, **kwargs)
+    def compile_expression(self, source: str, *args, **kwargs) -> TemplateExpression:
+        # compile_expression parses and passes the tree to from_string; for debug support, activate the context here to capture the intermediate results
+        with _CompileStateSmugglingCtx.when(self._debuggable_template_source) as ctx:
+            if isinstance(ctx, _CompileStateSmugglingCtx):  # only present if debugging is enabled
+                ctx.template_source = source
 
-            if isinstance(ctx, _CompileStateSmugglingCtx):
-                template_obj._source_tempfile = ctx.tempfile
+            return super().compile_expression(source, *args, **kwargs)
+
+    def from_string(self, source: str | jinja2.nodes.Template, *args, **kwargs) -> AnsibleTemplate:
+        # if debugging is enabled, use existing context when present (e.g., from compile_expression)
+        current_ctx = _CompileStateSmugglingCtx.current(optional=True) if self._debuggable_template_source else None
+
+        with _CompileStateSmugglingCtx.when(self._debuggable_template_source and not current_ctx) as new_ctx:
+            template_obj = t.cast(AnsibleTemplate, super().from_string(source, *args, **kwargs))
+
+            if isinstance(ctx := current_ctx or new_ctx, _CompileStateSmugglingCtx):  # only present if debugging is enabled
+                template_obj._python_source_temp_path = ctx.python_source_temp_path  # facilitate deletion of the temp file when template_obj is deleted
 
         return template_obj
 
-    def _parse(self, source, *args, **kwargs):
+    def _parse(self, source: str, *args, **kwargs) -> jinja2.nodes.Template:
         if csc := _CompileStateSmugglingCtx.current(optional=True):
             csc.template_source = source
+
         return super()._parse(source, *args, **kwargs)
 
-    def _compile(self, source, filename):
+    def _compile(self, source: str, filename: str) -> types.CodeType:
         if csc := _CompileStateSmugglingCtx.current(optional=True):
             origin = AnsibleSourcePosition.get_tag(csc.template_source) or AnsibleSourcePosition.UNKNOWN
 
@@ -616,14 +653,20 @@ class AnsibleEnvironment(ImmutableSandboxedEnvironment):
                 source
             ))
 
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', prefix='j2_src_', delete=False) as source_file:
+            source_temp_dir = self._debuggable_template_source_path
+            source_temp_dir.mkdir(parents=True, exist_ok=True)
+
+            with tempfile.NamedTemporaryFile(dir=source_temp_dir, mode='w', suffix='.py', prefix='j2_src_', delete=False) as source_file:
                 filename = source_file.name
+
                 source_file.write(source)
+                source_file.flush()
 
             csc.python_source = source
-            csc.filename = filename
-            csc.tempfile = source_file
+            csc.python_source_temp_path = pathlib.Path(filename)
+
         res = super()._compile(source, filename)
+
         return res
 
     @staticmethod

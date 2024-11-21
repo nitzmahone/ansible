@@ -20,14 +20,11 @@
 from __future__ import annotations
 
 import abc
-
 import types
 import typing as t
 
 from ansible import constants as C
 from ansible.errors import AnsibleError
-from ansible.module_utils.common.text.converters import to_native
-from ansible.module_utils.six import string_types
 from ansible.utils.display import Display
 
 display = Display()
@@ -42,7 +39,7 @@ PLUGIN_PATH_CACHE = {}  # type: dict[str, dict[str, dict[str, PluginPathContext]
 
 
 def get_plugin_class(obj):
-    if isinstance(obj, string_types):
+    if isinstance(obj, str):
         return obj.lower().replace('module', '')
     else:
         return obj.__class__.__name__.lower().replace('module', '')
@@ -81,7 +78,7 @@ class AnsiblePlugin(metaclass=abc.ABCMeta):
         try:
             option_value, origin = C.config.get_config_value_and_origin(option, plugin_type=self.plugin_type, plugin_name=self._load_name, variables=hostvars)
         except AnsibleError as e:
-            raise KeyError(to_native(e))
+            raise KeyError(str(e))
         return option_value, origin
 
     def get_option(self, option, hostvars=None):
