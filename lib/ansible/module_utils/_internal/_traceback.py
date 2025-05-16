@@ -28,7 +28,7 @@ def is_traceback_enabled(event: TracebackEvent) -> bool:
     return _is_traceback_enabled(event)
 
 
-def maybe_capture_traceback(event: TracebackEvent) -> str | None:
+def maybe_capture_traceback(event: TracebackEvent, ignore_frame_count: int = 2) -> str | None:
     """
     Optionally capture a traceback for the current call stack, formatted as a string, if the specified traceback event is enabled.
     The current and previous frames are omitted to mask the expected call pattern from error/warning handlers.
@@ -41,7 +41,6 @@ def maybe_capture_traceback(event: TracebackEvent) -> str | None:
     if current_frame := inspect.currentframe():
         # DTFIX-FUTURE: rewrite target-side tracebacks to point at controller-side paths?
         frames = inspect.getouterframes(current_frame)
-        ignore_frame_count = 2  # ignore this function and its caller
         tb_lines.append('Traceback (most recent call last):\n')
         tb_lines.extend(traceback.format_stack(frames[ignore_frame_count].frame))
     else:

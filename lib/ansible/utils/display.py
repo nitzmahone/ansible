@@ -51,7 +51,7 @@ from struct import unpack, pack
 from ansible import constants as C
 from ansible.constants import config
 from ansible.errors import AnsibleAssertionError, AnsiblePromptInterrupt, AnsiblePromptNoninteractive, AnsibleError
-from ansible._internal._errors import _utils
+from ansible._internal._errors import _utils, _multi
 from ansible.module_utils._internal import _ambient_context, _deprecator
 from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible._internal._datatag._tags import TrustedAsTemplate
@@ -1184,7 +1184,7 @@ class _DeferredWarningContext(_ambient_context.AmbientContextBase):
         return self._deprecation_warnings
 
 
-def _format_error_details(details: t.Sequence[Detail], formatted_tb: str | None = None) -> str:
+def _get_message_lines_from_details(details: t.Sequence[Detail]) -> list[str]:
     details = _utils._collapse_error_details(details)
 
     message_lines: list[str] = []
@@ -1204,6 +1204,26 @@ def _format_error_details(details: t.Sequence[Detail], formatted_tb: str | None 
         message_lines.extend(_get_message_lines(edc.msg, edc.help_text, edc.formatted_source_context))
 
     message_lines = [f'{line}\n' for line in message_lines]
+
+    return message_lines
+
+
+def _format_error_details(details: t.Sequence[Detail], formatted_tb: str | None = None) -> str:
+    separated = _multi.separate(details)
+    first = separated[0]
+    aggregated = separated[1:]
+    message_lines = _get_message_lines_from_details(first)
+
+    if aggregated:
+        message_lines.extend([
+            '\n',
+        ])
+
+        for idx, items in enumerate(aggregated):
+            message_lines.append(f'+--[ Aggregated Event {idx + 1} of {len(aggregated)} ]---\n')
+            message_lines.extend(textwrap.indent('\n' + "".join(_get_message_lines_from_details(items)) + '\n', '|  ', lambda value: True))
+
+        message_lines.append('+--[ End Aggregated Events ]---\n')
 
     if formatted_tb:
         message_lines.append('\n')

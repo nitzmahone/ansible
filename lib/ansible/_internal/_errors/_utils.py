@@ -15,6 +15,9 @@ from ansible import errors
 if t.TYPE_CHECKING:
     from ansible.utils.display import Display
 
+SEPARATOR: t.Final[Detail] = Detail(msg='__multi_separator__')
+"""Separator to indicate a new chain of details."""
+
 
 class RedactAnnotatedSourceContext(_ambient_context.AmbientContextBase):
     """
@@ -165,7 +168,7 @@ def get_chained_message(exception: BaseException) -> str:
     Return the full chain of exception messages by concatenating the cause(s) until all are exhausted.
     """
     error_summary = _create_error_summary(exception)
-    message_parts = [edc.msg for edc in error_summary.details]
+    message_parts = [edc.msg for edc in error_summary.details if edc != SEPARATOR]
 
     return _dedupe_and_concat_message_chain(message_parts)
 
