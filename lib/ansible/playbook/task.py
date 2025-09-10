@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import typing as t
 
+from collections import ChainMap
+
 from ansible import constants as C
 from ansible.module_utils.common.sentinel import Sentinel
 from ansible.errors import AnsibleError, AnsibleParserError, AnsibleUndefinedVariable, AnsibleAssertionError, AnsibleValueOmittedError
@@ -88,7 +90,7 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
     loop = NonInheritableFieldAttribute(isa='list')
     loop_control = NonInheritableFieldAttribute(isa='class', class_type=LoopControl, default=LoopControl)
     poll = NonInheritableFieldAttribute(isa='int', default=C.DEFAULT_POLL_INTERVAL)
-    register = NonInheritableFieldAttribute(isa='string', static=True)
+    register = NonInheritableFieldAttribute(static=True)  # can be str or dict, manual validation required
     retries = NonInheritableFieldAttribute(isa='int')  # default is set in TaskExecutor
     until = NonInheritableFieldAttribute(isa='list', default=list)
 
@@ -336,11 +338,17 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
             setattr(self, name, [value])
 
     def _validate_register(self, attr, name, value):
-        if value is not None:
-            try:
+        if value is None:
+            return
+
+        try:
+            if isinstance(value, dict):
+                any(validate_variable_name(k) for k in value.keys())
+                # FIXME: add value validation as non-template strings
+            elif isinstance(value, str):
                 validate_variable_name(value)
-            except Exception as ex:
-                raise AnsibleParserError("Invalid 'register' specified.", obj=value) from ex
+        except Exception as ex:
+            raise AnsibleParserError("Invalid 'register' specified.", obj=value) from ex
 
     def post_validate(self, templar):
         """
@@ -602,7 +610,17 @@ class Task(Base, Conditional, Taggable, CollectionSearch, Notifiable, Delegatabl
         result_context: dict[str, t.Any] | None = None,
     ) -> bool:
         """Loops through the conditionals set on this object, returning False if any of them evaluate as such, as well as the condition that was False."""
-        engine = TemplateEngine(self._loader, variables=variables)
+
+        # early bailout, True seems weird though...
+        if not conditional:
+            return True
+
+        # FIXME: share this with TaskExecutor._project
+        from ansible.executor.task_executor import CurrentTask  # best way to resolve the circular import?
+
+        # bolt current_task into _task (or whatever) into an extended templar available variables
+        augmented_vars = ChainMap({}, {'_task': CurrentTask()}, variables)
+        engine = TemplateEngine(self._loader, variables=augmented_vars)
 
         for item in conditional:
             if not engine.evaluate_conditional(item):

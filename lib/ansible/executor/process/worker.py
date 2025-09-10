@@ -203,6 +203,7 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
         global current_worker
 
         current_worker = self
+        registered_values = {}
 
         executor_result = TaskExecutor(
             self._host,
@@ -213,6 +214,7 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
             self._shared_loader_obj,
             self._final_q,
             self._variable_manager,
+            registered_values=registered_values,
         ).run()
 
         self._host.vars = dict()
@@ -228,12 +230,18 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
                     formatted=True
                 )
 
+        final_task_attrs = self._task.dump_attrs()
+        task_ctx = _task.TaskContext.current()
+        final_task_attrs.update(dict(ignore_errors=task_ctx._ignore_errors, ignore_unreachable=task_ctx._ignore_unreachable))
+
         try:
             self._final_q.send_task_result(_RawTaskResult(
                 host=self._host,
                 task=self._task,
                 return_data=executor_result,
-                task_fields=self._task.dump_attrs(),
+                # FIXME: consolidate the copies of the task- do we want to see the last loop values for things like ignore_errors, or come up with a more consistent behavior like "any item declaring ignore_errors"
+                task_fields=final_task_attrs,
+                registered_values=registered_values,
             ))
         except Exception as ex:
             try:

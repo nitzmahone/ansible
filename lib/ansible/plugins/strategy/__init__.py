@@ -473,6 +473,7 @@ class StrategyBase:
             task=task,
             return_data=wire_task_result.return_data,
             task_fields=wire_task_result.task_fields,
+            registered_values=wire_task_result.registered_values,
         )
 
     def search_handlers_by_notification(self, notification: str, iterator: PlayIterator) -> t.Generator[Handler, None, None]:
@@ -664,7 +665,7 @@ class StrategyBase:
                             all_task_vars = combine_vars(found_task_vars, item_vars)
                         else:
                             all_task_vars = found_task_vars
-                        all_task_vars[original_task.register] = result_item
+                        all_task_vars[original_task.register] = result_item  # FIXME: need to account for projections here?
 
                         if original_task.changed_when:
                             result_item['changed'] = original_task._resolve_conditional(original_task.changed_when, all_task_vars)
@@ -748,12 +749,25 @@ class StrategyBase:
             if original_task.register:
                 host_list = self.get_task_hosts(iterator, original_host, original_task)
 
-                clean_copy = strip_internal_keys(module_response_deepcopy(task_result._return_data))
-                if 'invocation' in clean_copy:
-                    del clean_copy['invocation']
+                # FIXME: (maybe?) hook up result cleansing again, at least for stock result dicts- need to mark those somehow to distinguish from user projected data
+                # clean_copy = strip_internal_keys(module_response_deepcopy(task_result._return_data))
+                # if 'invocation' in clean_copy:
+                #     del clean_copy['invocation']
+
+                # register: some_var
+                # ^ ->
+                # register:
+                #   some_var: _task.result
+                # HACK: do better - legacy syntax should be normalized on DS load as a projection instead of dealt with here
+                if isinstance(original_task.register, str):
+                    what_to_register_fixme = { original_task.register: task_result._return_data }
+                elif isinstance(original_task.register, _c.Mapping):
+                    what_to_register_fixme = task_result.registered_values
+                else:
+                    what_to_register_fixme = None
 
                 for target_host in host_list:
-                    self._variable_manager.set_nonpersistent_facts(target_host, {original_task.register: clean_copy})
+                    self._variable_manager.set_nonpersistent_facts(target_host, what_to_register_fixme or {})  # FIXME: ensure the right shape on RawTaskResult, not here
 
             self._pending_results -= 1
             if original_host.name in self._blocked_hosts:

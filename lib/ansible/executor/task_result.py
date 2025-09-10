@@ -41,6 +41,7 @@ class _WireTaskResult:
     task_uuid: str
     return_data: _c.MutableMapping[str, object]
     task_fields: _c.Mapping[str, object]
+    registered_values: _c.Mapping[str, object]
 
 
 class _BaseTaskResult:
@@ -50,11 +51,12 @@ class _BaseTaskResult:
     the result of a given task.
     """
 
-    def __init__(self, host: Host, task: Task, return_data: _c.MutableMapping[str, t.Any], task_fields: _c.Mapping[str, t.Any]) -> None:
+    def __init__(self, host: Host, task: Task, return_data: _c.MutableMapping[str, t.Any], task_fields: _c.Mapping[str, t.Any], registered_values: _c.Mapping[str, t.Any] | None = None) -> None:
         self.__host = host
         self.__task = task
         self._return_data = return_data  # FIXME: this should be immutable, but strategy result processing mutates it in some corner cases
         self.__task_fields = task_fields
+        self.registered_values = registered_values  # FIXME: maybe only on RawTaskResult?
 
     @property
     def host(self) -> Host:
@@ -179,6 +181,7 @@ class _RawTaskResult(_BaseTaskResult):
             task_uuid=self.task._uuid,
             return_data=self._return_data,
             task_fields=self.task_fields,
+            registered_values=self.registered_values,
         )
 
     def as_callback_task_result(self) -> CallbackTaskResult:
