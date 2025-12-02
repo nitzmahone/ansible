@@ -1693,6 +1693,7 @@ def init_plugin_loader(prefix_collections_path=None):
     """
     _load_plugin_filter()
     _configure_collection_loader(prefix_collections_path)
+    _init_connection_broker()
 
 
 # TODO: Evaluate making these class instantiations lazy, but keep them in the global scope
@@ -1851,3 +1852,17 @@ become_loader = PluginLoader(
     C.BECOME_PLUGIN_PATH,
     'become_plugins'
 )
+
+
+
+_connection_broker: _connection_broker_module.ConnectionBroker
+_connection_broker_manager: _connection_broker_module.ConnectionBrokerManager
+
+def _init_connection_broker():
+    from .._internal._worker import _connection_broker as _connection_broker_module
+
+    global _connection_broker_manager
+    global _connection_broker
+    _connection_broker_manager = _connection_broker_module.ConnectionBrokerManager()
+    _connection_broker_manager.start()
+    _connection_broker = _connection_broker_manager.ConnectionBroker()

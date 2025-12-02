@@ -204,6 +204,10 @@ class TaskQueueManager:
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
+        from multiprocessing.managers import SharedMemoryManager
+
+        self._connection_mgr = SharedMemoryManager()
+
     def _initialize_processes(self, num: int) -> None:
         # mutable update to ensure the reference stays the same
         self._workers[:] = [None] * num
