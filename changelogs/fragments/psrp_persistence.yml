@@ -1,0 +1,10 @@
+# PCFIX: write full changelog once things are settled
+
+TODO:
+- Fix/rework after_fork manager removal from proxies, and possibly remote refcounting in general.
+  The after_fork cleanup makes sense for objects with remote-owned lifetimes to avoid multi-remote-decref'ing fork-shared proxies below 0.
+  Since our shared connection objects should always have server-local refs and internally-managed lifetimes anyway, remote ref tracking is just wasted IPC noise.
+- busy_connection tracking must be done with stable object reference/ID, not key-
+- Investigate/tweak cases where client RMI includes a proxy as an arg (eg, KeyedConnection arg to release_connection + busy_connections as a Set).
+  It looks like the proxies are not unwrapped on the server, which causes problems with object reference identity and performance.
+  Come up with a way to unwrap the objects, or use surrogate UUIDs (possibly via augmented AutoProxy behavior?) to ensure consistent object reference identity between client/server.
