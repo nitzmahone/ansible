@@ -360,49 +360,61 @@ class Connection(ConnectionBase):
         self._connection_inner = None
         super(Connection, self).__init__(*args, **kwargs)
 
-
     def _connect(self: T) -> T:
+        super()._connect()
+
         if self._connection_inner:
             return self
 
         from ansible.plugins import loader
 
-        self._build_kwargs()
+        conn_kwargs = self._build_kwargs()
 
         loader._connection_broker._manager = loader._connection_broker_manager
 
-        try:
-            self._connection_inner = loader._connection_broker.get_connection(_ConnectionInner, self._psrp_conn_kwargs)
-        except Exception as ex:
-            raise
-
+        self._connection_inner = loader._connection_broker.get_connection(_ConnectionInner, conn_kwargs)
+        self._connection_inner.connect()
         self._connected = True
 
         return self
 
     def close(self, *args, **kwargs: t.Any) -> None:
+        super().close(*args, **kwargs)
+
         from ansible.plugins import loader
         loader._connection_broker.release_connection(self._connection_inner)
 
-    def exec_command(self, *args, **kwargs: t.Any) -> None:
-        # why is nobody calling _connect()?
-        if not self._connection_inner:  # HACK: remove
-            self._connect()
+    def exec_command(self, *args, **kwargs: t.Any) -> tuple[int, bytes, bytes]:
+        super().exec_command(*args, **kwargs)
 
         return self._connection_inner.exec_command(*args, **kwargs)
 
     def fetch_file(self, *args, **kwargs: t.Any) -> None:
+        super().fetch_file(*args, **kwargs)
+
         return self._connection_inner.fetch_file(*args, **kwargs)
 
     def put_file(self, *args, **kwargs: t.Any) -> None:
+        super().put_file(*args, **kwargs)
+
         return self._connection_inner.put_file(*args, **kwargs)
 
     def reset(self, *args, **kwargs: t.Any) -> None:
-        raise NotImplementedError()
+        super().reset(*args, **kwargs)
 
-    def _build_kwargs(self) -> None:
-        self._psrp_host = self.get_option('remote_addr')
-        self._psrp_user = self.get_option('remote_user')
+        return self._connection_inner.reset(*args, **kwargs)
+
+    def set_option(self, option, value):
+        super().set_option(option, value)
+
+        # FIXME This is a hack but allows plugins like win_reboot to override
+        # the connection timeout.
+        new_opts = self._build_kwargs()
+        self._connection_inner.update_connection_options(**new_opts)
+
+    def _build_kwargs(self) -> dict[str, object]:
+        psrp_host = self.get_option('remote_addr')
+        psrp_user = self.get_option('remote_user')
 
         protocol = self.get_option('protocol')
         port = self.get_option('port')
@@ -414,9 +426,9 @@ class Connection(ConnectionBase):
         elif port is None:
             port = 5986 if protocol == 'https' else 5985
 
-        self._psrp_port = int(port)
-        self._psrp_auth = self.get_option('auth')
-        self._psrp_configuration_name = self.get_option('configuration_name')
+        psrp_port = int(port)
+        psrp_auth = self.get_option('auth')
+        # self._psrp_configuration_name = self.get_option('configuration_name')
 
         # cert validation can either be a bool or a path to the cert
         cert_validation = self.get_option('cert_validation')
@@ -428,14 +440,14 @@ class Connection(ConnectionBase):
         else:
             psrp_cert_validation = True
 
-        self._psrp_conn_kwargs = dict(
-            server=self._psrp_host,
-            port=self._psrp_port,
-            username=self._psrp_user,
+        return dict(
+            server=psrp_host,
+            port=psrp_port,
+            username=psrp_user,
             password=self.get_option('remote_password'),
             ssl=protocol == 'https',
             path=self.get_option('path'),
-            auth=self._psrp_auth,
+            auth=psrp_auth,
             cert_validation=psrp_cert_validation,
             connection_timeout=self.get_option('connection_timeout'),
             encryption=self.get_option('message_encryption'),
@@ -458,11 +470,15 @@ class Connection(ConnectionBase):
         )
 
 
-
 class _ConnectionInner(KeyedConnection):
 
     def __init__(self, *args, **kwargs) -> None:
         self._psrp_conn_kwargs = kwargs
+
+        # FIXME: Figure out a nicer way to do this.
+        # Cache the key value in case an action plugin temporarily overwrites
+        # it.
+        self._key = self.get_key(self._psrp_conn_kwargs)
 
         self._psrp_host = self._psrp_conn_kwargs['server']
         self._psrp_port = self._psrp_conn_kwargs['port']
@@ -484,26 +500,22 @@ class _ConnectionInner(KeyedConnection):
             logging.getLogger('requests_credssp').setLevel(logging.INFO)
             logging.getLogger('urllib3').setLevel(logging.INFO)
 
-        self._connect()
-
     @classmethod
     def get_key(cls, conn_kwargs: dict[str, object]) -> str:
         return f"PSRP {repr({(k, conn_kwargs[k]) for k in sorted(conn_kwargs)})}"
 
     #@property
     def key(self) -> str:
-        return self.get_key(self._psrp_conn_kwargs)
+        return self._key
 
     #@property
     def connected(self) -> bool:
         return True # FIXME
 
-    def _connect(self) -> Connection:
+    def connect(self) -> None:
         if not HAS_PYPSRP:
             raise AnsibleError("pypsrp or dependencies are not installed: %s"
                                % to_native(PYPSRP_IMP_ERR))
-        #super(Connection, self)._connect()
-
 
         display.vvv("ESTABLISH PSRP CONNECTION FOR USER: %s ON PORT %s TO %s" %
                     (self._psrp_user, self._psrp_port, self._psrp_host),
@@ -544,7 +556,6 @@ class _ConnectionInner(KeyedConnection):
 
             self._connected = True
             self._last_pipeline = None
-        return self
 
     def reset(self) -> None:
         if not self._connected:
@@ -560,12 +571,9 @@ class _ConnectionInner(KeyedConnection):
 
         display.vvvvv("PSRP: Reset Connection", host=self._psrp_host)
         self.runspace = None
-        self._connect()
+        self.connect()
 
     def exec_command(self, cmd: str, in_data: bytes | None = None, sudoable: bool = True) -> tuple[int, bytes, bytes]:
-        # super(Connection, self).exec_command(cmd, in_data=in_data,
-        #                                      sudoable=sudoable)
-
         pwsh_in_data: bytes | str | None = None
         script_args: list[str] | None = None
 
@@ -587,14 +595,6 @@ class _ConnectionInner(KeyedConnection):
                 # script = "$input | &'%s' -" % interpreter
                 raise AnsibleError("cannot run the interpreter '%s' on the psrp "
                                    "connection plugin" % interpreter)
-
-            # call build_module_command to get the bootstrap wrapper text
-            # bootstrap_wrapper = self._shell.build_module_command('', '', '')
-            # if bootstrap_wrapper == cmd:
-            #     # Do not display to the user each invocation of the bootstrap wrapper
-            #     display.vvv("PSRP: EXEC (via pipeline wrapper)")
-            # else:
-            #     display.vvv("PSRP: EXEC %s" % script, host=self._psrp_host)
 
         elif cmd.startswith(f"{common_args_prefix} -File "):  # trailing space is on purpose
             # Used when executing a script file, we will execute it in the runspace process
@@ -626,8 +626,6 @@ class _ConnectionInner(KeyedConnection):
         return rc, stdout, stderr
 
     def put_file(self, in_path: str, out_path: str) -> None:
-        super(Connection, self).put_file(in_path, out_path)
-
         display.vvv("PUT %s TO %s" % (in_path, out_path), host=self._psrp_host)
 
         script, in_data = _bootstrap_powershell_script('psrp_put_file.ps1', {
@@ -683,7 +681,6 @@ class _ConnectionInner(KeyedConnection):
                                % (to_native(remote_sha1), to_native(local_sha1)))
 
     def fetch_file(self, in_path: str, out_path: str) -> None:
-        super(Connection, self).fetch_file(in_path, out_path)
         display.vvv("FETCH %s TO %s" % (in_path, out_path),
                     host=self._psrp_host)
 
@@ -737,6 +734,9 @@ class _ConnectionInner(KeyedConnection):
         self.runspace = None
         self._connected = False
         self._last_pipeline = None
+
+    def update_connection_options(self, **options: dict[str, object]) -> None:
+        self._psrp_conn_kwargs = options
 
     def _exec_psrp_script(
         self,
