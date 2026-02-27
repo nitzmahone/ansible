@@ -330,7 +330,7 @@
   assert:
     that:
     - no_utils_res is not changed
-    - "no_utils_res.complex_args == {'foo': 'bar'}"
+    - no_utils_res.complex_args['foo'] == 'bar'
 
 - name: test builtin modules are imported correctly with ETS definitions
   test_builtin_module_ets:
