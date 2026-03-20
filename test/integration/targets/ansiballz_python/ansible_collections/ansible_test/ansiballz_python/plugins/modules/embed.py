@@ -16,14 +16,17 @@ baz = EmbedManager.embed("..module_utils", "embed_this.py")
 # even reassignment to a different embed
 other = EmbedManager.embed("..module_utils", "embed_that.py")
 
+
 # an unrelated function we should ignore calls to
 def embed() -> int:
     return 42
+
 
 # an unrelated class we should ignore calls to
 class NotEmbedManager:
     def embed(self) -> int:
         return 42
+
 
 # a bunch of other assignment forms that should be ignored (code coverage)
 a1 = 123
