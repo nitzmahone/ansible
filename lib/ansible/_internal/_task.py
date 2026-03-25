@@ -158,18 +158,20 @@ class PendingChanges:
     register_host_variables: dict[VariableLayer, dict[str, object]] = dataclasses.field(default_factory=dict)
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(kw_only=True)
 class TaskContext(AmbientContextBase):
     """Ambient context that wraps task execution on workers. It provides access to the currently executing task."""
 
     @classmethod
-    def create(cls, task: Task, task_vars: dict[str, t.Any]) -> t.Self:
+    def create(cls, task: Task, task_vars: dict[str, t.Any], host_name: str, rpc_client: t.Any = None) -> t.Self:
         task_vars.update(_task=CurrentTask())
 
         return cls(
             _task=task,
             _base_task_vars=task_vars,
             _active_task_vars=task_vars,  # starts out as a reference, but becomes a copy of _base_task_vars when starting a loop item
+            _rpc_client=rpc_client,  # RPFIX-3: rehome this?
+            _host_name=host_name,  # RPFIX-3: rehome this?
         )
 
     def get_register_projections(self) -> dict[str, _engine.TemplateExpressionWrapper] | None:
@@ -177,6 +179,14 @@ class TaskContext(AmbientContextBase):
             return None
 
         return {var_name: _engine.TemplateExpressionWrapper(expression=expression) for var_name, expression in self._task.register.items()}
+
+    @property
+    def rpc_client(self) -> t.Any:
+        return self._rpc_client
+
+    @property
+    def host_name(self) -> str:
+        return self._host_name
 
     @property
     def task(self) -> Task:
@@ -205,6 +215,8 @@ class TaskContext(AmbientContextBase):
     _task: Task
     _base_task_vars: dict[str, t.Any]
     _active_task_vars: dict[str, t.Any]
+    _rpc_client: t.Any  # RPFIX-3: rehome?
+    _host_name: str  # RPFIX-3: rehome?
     _registered_vars_enabled = False
     _raw_loop_results: list[UnifiedTaskResult] = dataclasses.field(default_factory=list)
     _loop_items: list[object] | None = None
@@ -216,6 +228,7 @@ class TaskContext(AmbientContextBase):
     _loop_extended: dict[str, object] | None = None
     _templar: _engine.TemplateEngine | None = None
     _break_when_triggered: bool = False
+
 
     pending_changes: PendingChanges | None = None
     """Pending changes which will be applied only if the current task succeeds."""

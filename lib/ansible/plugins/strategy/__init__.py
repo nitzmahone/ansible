@@ -52,7 +52,7 @@ from ansible.utils.display import Display
 from ansible.utils.fqcn import add_internal_fqcns
 from ansible.utils.sentinel import Sentinel
 from ansible.utils.vars import combine_vars
-from ansible._internal import _task
+from ansible._internal import _task, _rpc_host
 
 if t.TYPE_CHECKING:
     from ansible.playbook.role_include import IncludeRole
@@ -240,6 +240,7 @@ class StrategyBase:
         self._final_q = tqm._final_q
         self._step = context.CLIARGS.get('step', False)
         self._diff = context.CLIARGS.get('diff', False)
+        self._rpc_queue: queue.Queue[_rpc_host.RpcRequest] = queue.Queue()
 
         # the task cache is a dictionary of tuples of (host.name, task._uuid)
         # used to find the original task object of in-flight tasks and to store
@@ -402,6 +403,8 @@ class StrategyBase:
                         shared_loader_obj=plugin_loader.get_plugin_loader_namespace(),
                         worker_id=self._cur_worker,
                         cliargs=context.CLIARGS,
+                        rpc_address=_rpc_host._mgr.address,
+                        rpc_authkey=_rpc_host._mgr.authkey,
                     )
                     self._workers[self._cur_worker] = worker_prc
                     self._tqm.send_callback('v2_runner_on_start', host, task)
@@ -526,6 +529,13 @@ class StrategyBase:
 
         while True:
             try:
+                while True:
+                    rpc_request = self._rpc_queue.get(block=False)
+                    rpc_request.dispatch()
+            except queue.Empty:
+                pass
+
+            try:
                 self._results_lock.acquire()
                 task_result = self._results.popleft()
             except IndexError:
@@ -645,45 +655,6 @@ class StrategyBase:
                                     raise AnsibleError(msg)
 
                                 display.warning(msg)
-
-                    for add_host in result_utr.pending_changes.add_hosts:
-                        if self._inventory.add_dynamic_host(add_host):
-                            result_utr.changed = True
-
-                        # ensure host is available for subsequent plays
-                        if result_utr.changed and add_host.host_name not in self._hosts_cache_all:
-                            self._hosts_cache_all.append(add_host.host_name)
-
-                    for add_group in result_utr.pending_changes.add_groups:
-                        if self._inventory.add_dynamic_group(original_host.name, add_group):
-                            result_utr.changed = True
-
-                    if result_utr.pending_changes.add_hosts or result_utr.pending_changes.add_groups:
-                        item_vars = _get_item_vars(result_utr, original_task)
-                        found_task_vars = self._queued_task_cache.get((original_host.name, task_result.task._uuid))['task_vars']
-
-                        if item_vars:
-                            all_task_vars = combine_vars(found_task_vars, item_vars)
-                        else:
-                            all_task_vars = found_task_vars
-
-                        if original_task.changed_when:
-                            # RPFIX-1: CRASH: resolve_conditional failures can take down the process (may be resolved when RPC is implemented)
-                            result_utr.changed = original_task._resolve_conditional(original_task.changed_when, all_task_vars)
-
-                        if original_task.failed_when:
-                            # RPFIX-1: CRASH: resolve_conditional failures can take down the process (may be resolved when RPC is implemented)
-                            result_utr.set_failed_when_result(original_task._resolve_conditional(original_task.failed_when, all_task_vars))
-
-                        if original_task.loop or original_task.loop_with:
-                            # FUTURE: this value for `task` hasn't been seeing the templated values from the worker
-                            htr = HostTaskResult(host=task_result.host, task=task_result.task, utr=result_utr)
-                            self._tqm.send_callback('v2_runner_item_on_ok', htr)
-
-                            if result_utr.changed:
-                                task_result.utr.changed = True
-                            if result_utr.failed:
-                                task_result.utr.failed = True
 
                     if result_utr.pending_changes.register_host_variables:
                         original_host_list = self.get_task_hosts(iterator, original_host, original_task)

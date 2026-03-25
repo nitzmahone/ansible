@@ -32,6 +32,7 @@ from ansible import constants as C
 from ansible import context
 from ansible.errors import AnsibleError, ExitCode, AnsibleCallbackError
 from ansible._internal._errors._handler import ErrorHandler
+from ansible._internal import _rpc_host
 from ansible.executor.play_iterator import PlayIterator
 from ansible.executor.stats import AggregateStats
 from ansible.executor.task_result import CallbackTaskResult
@@ -42,7 +43,6 @@ from ansible.playbook.play_context import PlayContext
 from ansible.playbook.task import Task
 from ansible.plugins.callback import CallbackBase
 from ansible.plugins.loader import callback_loader, strategy_loader, module_loader
-from ansible.plugins.callback import CallbackBase
 from ansible._internal._templating._engine import TemplateEngine
 from ansible._internal._task import UnifiedTaskResult, WireTaskResult, HostTaskResult
 from ansible.vars.hostvars import HostVars
@@ -156,6 +156,9 @@ class TaskQueueManager:
         run_tree: bool = False,
         forks: int | None = None,
     ) -> None:
+        # RPFIX-3 uh no, context or something else
+        _rpc_host.tqm_instance_fixme = self
+
         self._inventory = inventory
         self._variable_manager = variable_manager
         self._loader = loader
@@ -375,6 +378,8 @@ class TaskQueueManager:
         strategy = strategy_loader.get(new_play.strategy, self)
         if strategy is None:
             raise AnsibleError("Invalid play strategy specified: %s" % new_play.strategy, obj=play._ds)
+
+        _rpc_host.strategy_instance_fixme = strategy
 
         # Because the TQM may survive multiple play runs, we start by marking
         # any hosts as failed in the iterator here which may have been marked

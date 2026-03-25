@@ -35,7 +35,7 @@ from ansible.utils.collection_loader._collection_finder import _AnsibleCollectio
 from ansible.utils.display import Display
 from ansible.utils.plugin_docs import add_fragments
 from ansible._internal._datatag import _tags
-from ansible._internal import _display_utils
+from ansible._internal import _display_utils, _rpc_host
 
 from . import _AnsiblePluginInfoMixin
 from .filter import AnsibleJinja2Filter
@@ -1719,6 +1719,7 @@ def init_plugin_loader(prefix_collections_path=None):
     """
     _load_plugin_filter()
     _configure_collection_loader(prefix_collections_path)
+    _rpc_host.init()  # RPFIX-3: is this a reasonable place for this? Possibly lazify so we don't even start it until we need to know its address? 
 
 
 # TODO: Evaluate making these class instantiations lazy, but keep them in the global scope

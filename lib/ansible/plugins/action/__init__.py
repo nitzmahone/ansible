@@ -109,6 +109,9 @@ class ActionBase(ABC, _AnsiblePluginInfoMixin):
         # Backwards compat: self._display isn't really needed, just import the global display and use that.
         self._display = display
 
+
+
+
     @abstractmethod
     def run(self, tmp: str | None = None, task_vars: dict[str, t.Any] | None = None) -> dict[str, t.Any]:
         """ Action Plugins should implement this method to perform their
@@ -220,15 +223,21 @@ class ActionBase(ABC, _AnsiblePluginInfoMixin):
         *,
         host_vars: dict[str, object] | None = None,
         parent_group_names: list[str] | None = None,
-    ) -> None:
+    ) -> bool:
         """Add the given host to inventory."""
         # RPFIX-1: RPC: switch this to RPC so the host can be created immediately and return changed as appropriate
 
-        self.__get_pending_changes().add_hosts.append(_task.AddHost(
+        return _task.TaskContext.current().rpc_client.InventoryGooFixme().add_host(_task.AddHost(
             host_name=host_name,
             host_vars=host_vars,
             parent_group_names=parent_group_names,
         ))
+
+        # self.__get_pending_changes().add_hosts.append(_task.AddHost(
+        #     host_name=host_name,
+        #     host_vars=host_vars,
+        #     parent_group_names=parent_group_names,
+        # ))
 
     def add_group(
         self,
@@ -236,15 +245,24 @@ class ActionBase(ABC, _AnsiblePluginInfoMixin):
         *,
         group_vars: dict[str, object] | None = None,
         parent_group_names: list[str] | None = None,
-    ) -> None:
+    ) -> bool:
         """Add the given group to inventory."""
         # RPFIX-1: RPC: switch this to RPC so the host can be created immediately and return changed as appropriate
 
-        self.__get_pending_changes().add_groups.append(_task.AddGroup(
+        task_ctx = _task.TaskContext.current()
+        host_name = task_ctx.host_name
+
+        return task_ctx.rpc_client.InventoryGooFixme().add_group(host_name, _task.AddGroup(
             group_name=group_name,
             group_vars=group_vars,
             parent_group_names=parent_group_names,
         ))
+
+        # self.__get_pending_changes().add_groups.append(_task.AddGroup(
+        #     group_name=group_name,
+        #     group_vars=group_vars,
+        #     parent_group_names=parent_group_names,
+        # ))
 
     def register_host_variables(self, variables: dict[str, object], layer: VariableLayer = VariableLayer.REGISTER_VARS) -> None:
         """

@@ -28,6 +28,7 @@ import types
 import typing as t
 
 from multiprocessing.queues import Queue
+from multiprocessing.managers import BaseManager
 
 from ansible._internal import _task
 from ansible.errors import AnsibleError
@@ -77,7 +78,9 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
             variable_manager: VariableManager,
             shared_loader_obj: types.SimpleNamespace,
             worker_id: int,
-            cliargs: CLIArgs
+            cliargs: CLIArgs,
+            rpc_address: str,
+            rpc_authkey: bytes,
     ) -> None:
 
         super(WorkerProcess, self).__init__()
@@ -90,6 +93,9 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
         self._loader = loader
         self._variable_manager = variable_manager
         self._shared_loader_obj = shared_loader_obj
+        self._rpc_address = rpc_address
+        self._rpc_authkey = rpc_authkey
+        self._rpc_client = None
 
         # NOTE: this works due to fork, if switching to threads this should change to per thread storage of temp files
         # clear var to ensure we only delete files for this child
@@ -190,8 +196,14 @@ class WorkerProcess(multiprocessing_context.Process):  # type: ignore[name-defin
         # propagate signals
         signal.signal(signal.SIGINT, self._term)
         signal.signal(signal.SIGTERM, self._term)
+
+        # RPFIX-3: make this lazy until it's used for more critical stuff
+        self._rpc_client = BaseManager(self._rpc_address, authkey=self._rpc_authkey)
+        self._rpc_client.register("InventoryGooFixme")
+        self._rpc_client.connect()
+
         try:
-            with _task.TaskContext.create(task=self._task, task_vars=self._task_vars):
+            with _task.TaskContext.create(task=self._task, task_vars=self._task_vars, rpc_client=self._rpc_client, host_name=self._host.name):
                 return self._run()
         except BaseException:
             self._hard_exit(traceback.format_exc())
